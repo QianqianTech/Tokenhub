@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace TokenHub\Services;
 
+use TokenHub\Services\Gateway\PublicVendorMask;
+use TokenHub\Services\Gateway\RouteHealth;
 use TokenHub\Support\App;
 
 final class ExternalModelService
@@ -24,10 +26,27 @@ final class ExternalModelService
             [$apiKey['id'] ?? 0]
         );
 
+        // OpenAI-compatible list shape; one entry per logical model even when
+        // several channels serve it.
+        $data = [];
+        foreach ($rows as $row) {
+            $id = (string) $row['name'];
+            if (isset($data[$id])) {
+                continue;
+            }
+            $data[$id] = [
+                'id' => $id,
+                'object' => 'model',
+                'created' => 0,
+                'owned_by' => PublicVendorMask::VENDOR,
+                'capability' => (string) $row['capability'],
+                'context_length' => isset($row['context_length']) ? (int) $row['context_length'] : null,
+            ];
+        }
+
         return [
-            'data' => array_map(fn (array $row): array => [
-                'id' => (string) $row['name'],
-            ], $rows),
+            'object' => 'list',
+            'data' => array_values($data),
         ];
     }
 
@@ -55,7 +74,7 @@ final class ExternalModelService
         $models = array_map(fn (array $row): array => [
             'model' => (string) $row['name'],
             'capability' => (string) $row['capability'],
-            'provider' => (string) $row['provider_name'],
+            'provider' => PublicVendorMask::VENDOR,
             'protocol' => (string) $row['protocol'],
             'health' => $this->healthFor($row),
         ], $rows);
@@ -118,8 +137,8 @@ final class ExternalModelService
             'capability' => (string) $row['capability'],
             'context_length' => $row['context_length'] === null ? null : (int) $row['context_length'],
             'protocol' => (string) $row['protocol'],
-            'provider' => (string) $row['provider_name'],
-            'supports_stream' => in_array((string) $row['capability'], ['text_generation', 'vision_understanding'], true),
+            'provider' => PublicVendorMask::VENDOR,
+            'supports_stream' => in_array((string) $row['capability'], \TokenHub\Services\Gateway\InputModalities::TEXT_FAMILY, true),
             'multimodal' => [
                 'input' => $this->modalitiesIn((string) $row['capability']),
                 'output' => $this->modalitiesOut((string) $row['capability']),
@@ -138,13 +157,49 @@ final class ExternalModelService
      */
     private function healthFor(array $row): array
     {
-        $status = (string) ($row['status'] ?? '') === 'active' && (string) ($row['provider_status'] ?? '') === 'active' ? 'active' : 'disabled';
+        // Configuration readiness, live circuit state and observed success
+        // rate are separate facts; "enabled" alone is not "healthy".
+        $configured = (string) ($row['status'] ?? '') === 'active' && (string) ($row['provider_status'] ?? '') === 'active' ? 'active' : 'disabled';
+        $circuit = (new RouteHealth())->snapshot((int) ($row['id'] ?? 0));
+        $observed = $this->observedHealth((int) ($row['id'] ?? 0));
+        $status = match (true) {
+            $configured !== 'active' => 'disabled',
+            ($circuit['state'] ?? 'closed') === 'open' => 'unhealthy',
+            $observed['requests'] === null => 'unknown',
+            $observed['requests'] === 0 => 'unknown',
+            $observed['success_rate'] !== null && $observed['success_rate'] < 0.7 => 'degraded',
+            default => 'healthy',
+        };
+
         return [
             'status' => $status,
-            'route_status' => $status,
+            'route_status' => $configured,
+            'circuit_state' => $circuit['state'] ?? 'closed',
+            'last_failure_reason' => $circuit['last_failure_reason'] ?? null,
+            'observed' => $observed,
             'timeout_ms' => isset($row['timeout_ms']) ? (int) $row['timeout_ms'] : null,
             'checked_at' => gmdate('Y-m-d H:i:s'),
         ];
+    }
+
+    /**
+     * Success rate over the last 15 minutes of real traffic.
+     *
+     * @return array{window_minutes: int, requests: int|null, success_rate: float|null}
+     */
+    private function observedHealth(int $modelId): array
+    {
+        try {
+            $row = App::db()->first(
+                'SELECT COALESCE(SUM(request_count), 0) requests, COALESCE(SUM(success_count), 0) successes FROM usage_aggregates_minute WHERE model_id = ? AND bucket_at >= DATE_SUB(UTC_TIMESTAMP(), INTERVAL 15 MINUTE)',
+                [$modelId]
+            );
+        } catch (\Throwable) {
+            return ['window_minutes' => 15, 'requests' => null, 'success_rate' => null];
+        }
+        $requests = (int) ($row['requests'] ?? 0);
+
+        return ['window_minutes' => 15, 'requests' => $requests, 'success_rate' => $requests > 0 ? round(((int) $row['successes']) / $requests, 4) : null];
     }
 
     /**
@@ -153,9 +208,12 @@ final class ExternalModelService
     private function modalitiesIn(string $capability): array
     {
         return match ($capability) {
-            'vision_understanding' => ['text', 'image'],
+            'vision_understanding', 'moderation' => ['text', 'image'],
+            'video_understanding' => ['text', 'image', 'video'],
+            'audio_understanding' => ['text', 'audio'],
             'asr' => ['audio'],
-            'image_generation', 'video_generation', 'tts' => ['text'],
+            'realtime' => ['text', 'audio'],
+            'image_generation', 'video_generation', 'tts', 'music_generation' => ['text'],
             default => ['text'],
         };
     }
@@ -167,10 +225,14 @@ final class ExternalModelService
     {
         return match ($capability) {
             'embedding' => ['embedding'],
+            'rerank' => ['score'],
+            'moderation' => ['classification'],
             'asr' => ['text'],
             'tts' => ['audio'],
             'image_generation' => ['image'],
             'video_generation' => ['video'],
+            'music_generation' => ['audio'],
+            'realtime' => ['text', 'audio'],
             default => ['text'],
         };
     }

@@ -1,4 +1,4 @@
-import { resources, resourcesForUser } from "./resources.js?v=20260710-admin-users-localization-v1";
+import { resources, resourcesForUser } from "./resources.js?v=20261028-admin-ops-v1";
 
 export const adminDomains = [
   { key: "permission", label: "权限配置", tabs: ["permission-config"] },
@@ -8,7 +8,6 @@ export const adminDomains = [
   { key: "access", label: "API 接入", tabs: ["api-keys", "api-key-model-quotas", "quota-policies", "quota-bindings"] },
   { key: "usage", label: "用量中心", tabs: ["usage-records", "multimodal-tasks", "media-assets", "usage-contents", "content-archive", "export-tasks"] },
   { key: "rag", label: "RAG 知识库", tabs: ["rag-build", "rag-retrieval-lab", "rag-quality", "rag-operations"] },
-  { key: "waf", label: "WAF 防火墙", superAdmin: true, tabs: ["waf-overview", "settings-firewall", "waf-rules", "waf-rule-versions", "waf-events", "waf-ip-bans", "waf-alerts"] },
   { key: "security", label: "安全审计", tabs: ["desensitization-policies", "desensitization-events", "alert-events", "logs", "audit-logs"] },
   { key: "system", label: "系统运维", superAdmin: true, tabs: ["operations-status", "settings-tls-certificates", "settings-brand-identity", "content-retention-policy", "log-retention-policies", "log-archive-files", "settings-alert-thresholds", "system-settings"] }
 ];
@@ -22,7 +21,7 @@ if (permissionDomain && organizationDomain) {
 export function domainsForRole(role) {
   return adminDomains.filter((domain) => !domain.superAdmin || role === "super_admin").map((domain) => ({
     ...domain,
-    tabs: domain.tabs.filter((tab) => tab === "dashboard" || tab === "waf-overview" || tab === "waf-ip-bans" || tab === "waf-alerts" || tab === "operations-status" || resources[tab])
+    tabs: domain.tabs.filter((tab) => tab === "dashboard" || tab === "operations-status" || resources[tab])
   }));
 }
 
@@ -31,9 +30,6 @@ export function domainsForUser(user) {
   const permissions = new Set(user?.permissions || []);
   const specialCapabilities = {
     dashboard: "dashboard.read",
-    "waf-overview": "security.read",
-    "waf-ip-bans": "security.read",
-    "waf-alerts": "security.read",
     "operations-status": "operations.read",
     "rag-settings": "rag.read"
   };

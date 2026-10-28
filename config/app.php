@@ -16,9 +16,14 @@ return [
         'model_per_minute' => (int) env('EXTERNAL_API_MODEL_PER_MINUTE', 600),
         'other_per_minute' => (int) env('EXTERNAL_API_OTHER_PER_MINUTE', 120),
     ],
+    'mcp' => [
+        // POST /mcp: Model Context Protocol endpoint (Streamable HTTP) authenticated with API keys.
+        'enabled' => env('MCP_ENABLED', true),
+        // Browser origins allowed besides this site's own host; desktop/CLI clients send no Origin.
+        'allowed_origins' => array_values(array_filter(array_map('trim', explode(',', (string) env('MCP_ALLOWED_ORIGINS', ''))))),
+    ],
     'external_event_retention_days' => (int) env('EXTERNAL_EVENT_RETENTION_DAYS', 90),
     'caddy_config_path' => env('CADDY_CONFIG_PATH', base_path('docker/caddy/Caddyfile')),
-    'caddy_waf_fragment_path' => env('CADDY_WAF_FRAGMENT_PATH', storage_path('caddy/waf-current.caddy')),
     'caddy_tls_fragment_path' => env('CADDY_TLS_FRAGMENT_PATH', storage_path('caddy/tls-current.caddy')),
     'caddy_validate_command' => env('CADDY_VALIDATE_COMMAND', 'caddy validate --config {config}'),
     'caddy_reload_command' => env('CADDY_RELOAD_COMMAND', 'caddy reload --config {config}'),

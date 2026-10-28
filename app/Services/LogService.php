@@ -11,7 +11,6 @@ final class LogService
 {
     public const LOG_TYPES = [
         'caddy-access',
-        'caddy-security',
         'gateway-access',
         'provider',
         'usage',
@@ -227,8 +226,6 @@ final class LogService
                         ? (parse_url($request['uri'], PHP_URL_PATH) ?: $request['uri'])
                         : null,
                     'size' => $row['size'] ?? null,
-                    'waf_rule' => $row['vars']['waf_rule'] ?? $row['waf_rule'] ?? null,
-                    'waf_action' => $row['vars']['waf_action'] ?? $row['waf_action'] ?? null,
                 ],
             ];
 
@@ -279,14 +276,6 @@ final class LogService
     {
         foreach (['request_id', 'trace_id', 'user_id', 'department_id', 'api_key_id', 'provider_id', 'model_id', 'status', 'error_code'] as $field) {
             if (isset($filters[$field]) && (string) $filters[$field] !== '' && (string) ($row[$field] ?? '') !== (string) $filters[$field]) {
-                return false;
-            }
-        }
-
-        if (isset($filters['security_event']) && (string) $filters['security_event'] !== '') {
-            $context = is_array($row['context'] ?? null) ? $row['context'] : [];
-            $needle = (string) $filters['security_event'];
-            if (!in_array($needle, [(string) ($context['waf_rule'] ?? ''), (string) ($context['waf_action'] ?? '')], true)) {
                 return false;
             }
         }

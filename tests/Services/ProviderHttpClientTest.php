@@ -106,5 +106,6 @@ $providerSource = file_get_contents(__DIR__ . '/../../app/Services/ProviderHttpC
 $gatewaySource = file_get_contents(__DIR__ . '/../../app/Services/GatewayService.php') ?: '';
 assert_true(str_contains($providerSource, 'ProviderAdapterInterface $adapter, ?string $idempotencyKey = null'), 'Non-streaming provider requests must accept an upstream idempotency key.');
 assert_true(str_contains($providerSource, '\'Idempotency-Key\' => $idempotencyKey'), 'Non-streaming retries must forward the same upstream idempotency key.');
-assert_true(str_contains($providerSource, '$attempts = 1;'), 'Streaming provider requests must not retry after a possible partial response.');
+assert_true(str_contains($providerSource, 'retried only before the first byte'), 'Streaming provider requests must not retry after a possible partial response.');
+assert_true(str_contains($providerSource, "'follow_location' => 0"), 'Provider requests must not follow redirects past the outbound policy.');
 assert_true(str_contains($gatewaySource, 'upstreamIdempotencyKey($request)'), 'Gateway requests must derive one stable upstream idempotency key.');

@@ -7,6 +7,8 @@ namespace TokenHub\Services;
 use TokenHub\Services\Gateway\GatewayRequest;
 use TokenHub\Services\Providers\OpenAIAdapter;
 use TokenHub\Support\App;
+use TokenHub\Support\Request;
+use TokenHub\Support\Response;
 
 final class AdminChatSessionService
 {
@@ -16,16 +18,81 @@ final class AdminChatSessionService
     public function models(): array
     {
         $where = $this->chatModelWhereClause();
-        return App::db()->select(
+        $supported = array_flip((new ModelSupportPolicy())->modelIds(true));
+        return array_values(array_filter(App::db()->select(
             "SELECT m.id, m.name, m.external_name, m.context_length, m.route_priority, p.name AS provider_name
              FROM models m
              JOIN providers p ON p.id = m.provider_id
              WHERE {$where}
              ORDER BY m.route_priority ASC, p.name ASC, m.name ASC"
-        );
+        ), static fn (array $model): bool => isset($supported[(int) $model['id']])));
     }
 
     /**
+     * Verified trial: runs the message through the production gateway as the
+     * selected API key, so authorization, quotas, desensitization, RAG,
+     * routing/failover and usage records behave exactly as for that key.
+     *
+     * The administrator must be allowed to manage the key's department; the
+     * trial is audited with the admin id and the resulting request id, and is
+     * charged to the selected key like any other call (no silent bypass).
+     *
+     * @param array<string, mixed> $payload must contain api_key_id
+     */
+    public function gatewayTrial(array $payload, bool $stream): Response
+    {
+        $actor = App::context()->adminUser();
+        if ($actor === null) {
+            abort_json('ADMIN_UNAUTHENTICATED', 'Admin login required', 401);
+        }
+        $apiKeyId = (int) ($payload['api_key_id'] ?? 0);
+        $apiKey = App::db()->first(
+            'SELECT k.*, u.status AS user_status, d.status AS department_status FROM api_keys k JOIN users u ON u.id = k.user_id JOIN departments d ON d.id = k.department_id WHERE k.id = ?',
+            [$apiKeyId]
+        );
+        if ($apiKey === null || !(new PermissionService())->canManage($actor, (int) $apiKey['department_id'])) {
+            abort_json('ADMIN_CHAT_KEY_NOT_FOUND', 'API key not found or outside admin scope', 404);
+        }
+        if ($apiKey['status'] !== 'active' || $apiKey['user_status'] !== 'active' || $apiKey['department_status'] !== 'active') {
+            abort_json('API_KEY_INVALID', 'Selected API key is not active', 409);
+        }
+        unset($apiKey['key_hash']);
+        $apiKey['allowed_model_ids'] = (new ApiKeyService())->routableModelIds(['id' => $apiKeyId]);
+        $model = trim((string) ($payload['model'] ?? ''));
+        if (!(new ApiKeyService())->assertModelAllowed($apiKey, $model)['ok']) {
+            abort_json('MODEL_FORBIDDEN', 'Model is not allowed for the selected key', 403);
+        }
+
+        $body = [
+            'model' => $model,
+            'messages' => $this->normalizeMessages(is_array($payload['messages'] ?? null) ? $payload['messages'] : []),
+            'temperature' => $this->floatInRange($payload['temperature'] ?? 1, 0, 2, 1),
+            'max_tokens' => $this->intInRange($payload['max_tokens'] ?? 1024, 1, 16000, 1024),
+            'stream' => $stream,
+        ];
+        foreach (['rag', 'tools', 'tool_choice', 'response_format', 'stream_options'] as $passThrough) {
+            if (isset($payload[$passThrough])) {
+                $body[$passThrough] = $payload[$passThrough];
+            }
+        }
+        if ($stream) {
+            $body['stream_options'] ??= ['include_usage' => true];
+        }
+
+        App::context()->setApiKey($apiKey);
+        (new AuditService())->write('admin_chat.gateway_trial', 'api_keys', $apiKeyId, ['model' => $model, 'stream' => $stream]);
+        $request = new Request('POST', '/v1/chat/completions', $_SERVER, [], $body, (string) json_encode($body, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE), App::context());
+
+        return (new GatewayService())->handle($request)
+            ->withHeader('X-TokenHub-Trial-Mode', 'gateway')
+            ->withHeader('X-TokenHub-Trial-Api-Key', (string) $apiKeyId);
+    }
+
+    /**
+     * Direct diagnostic call: bypasses quotas, desensitization, RAG and usage
+     * records. Kept for connectivity checks only; results are labelled so they
+     * are not mistaken for production-path verification.
+     *
      * @param array<string, mixed> $payload
      * @return array<string, mixed>
      */
@@ -63,6 +130,8 @@ final class AdminChatSessionService
         $content = is_array($message) ? (string) ($message['content'] ?? '') : '';
 
         return [
+            'mode' => 'direct_diagnostic',
+            'governance' => 'bypassed',
             'model' => $model,
             'provider_model' => (string) ($route['external_name'] ?? $model),
             'provider' => (string) ($route['provider_name'] ?? ''),

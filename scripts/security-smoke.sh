@@ -7,7 +7,7 @@ ADMIN_PASSWORD="${ADMIN_PASSWORD:-}"
 API_KEY="${API_KEY:-}"
 LOG_PATH="${LOG_PATH:-}"
 TIMEOUT_SECONDS="${TIMEOUT_SECONDS:-20}"
-EXPECT_WAF_QUERY_BLOCK="${EXPECT_WAF_QUERY_BLOCK:-0}"
+EXPECT_QUERY_BLOCK="${EXPECT_QUERY_BLOCK:-0}"
 EXPECT_ADMIN_IP_BLOCK="${EXPECT_ADMIN_IP_BLOCK:-0}"
 BLOCKED_IP="${BLOCKED_IP:-203.0.113.10}"
 
@@ -65,17 +65,17 @@ check_headers() {
   fi
 }
 
-check_waf_paths() {
+check_sensitive_paths() {
   curl -fsS -m "$TIMEOUT_SECONDS" "$BASE_URL/health" >/dev/null || fail "health endpoint failed"
   assert_status_in ".env block" "403 404" -I "$BASE_URL/.env"
   assert_status_in ".git block" "403 404" -I "$BASE_URL/.git/config"
   assert_status_in "backup file block" "403 404" -I "$BASE_URL/config.php.bak"
   assert_status_in "debug path block" "403 404" -I "$BASE_URL/debug"
-  if [[ "$EXPECT_WAF_QUERY_BLOCK" = "1" ]]; then
+  if [[ "$EXPECT_QUERY_BLOCK" = "1" ]]; then
     assert_status_in "abnormal query block" "403" "$BASE_URL/health?token=leak-check&secret=leak-check"
   else
     assert_status_in "abnormal query block" "200 400 403 404" "$BASE_URL/health?token=leak-check&secret=leak-check"
-    echo "SKIP: EXPECT_WAF_QUERY_BLOCK=1 not set; abnormal query block is accepted as optional"
+    echo "SKIP: EXPECT_QUERY_BLOCK=1 not set; abnormal query block is accepted as optional"
   fi
 }
 
@@ -152,7 +152,7 @@ need_cmd curl
 need_cmd grep
 need_cmd sed
 
-check_waf_paths
+check_sensitive_paths
 check_ip_whitelist
 check_headers
 check_admin_security

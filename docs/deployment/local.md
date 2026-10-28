@@ -11,11 +11,15 @@
 ## 容器部署
 
 ```bash
-cp .env.example .env
-docker compose up -d --build mysql redis php caddy
-docker compose exec -T php php bin/migrate.php
+cp .env.example .env && sed -i.bak 's/^APP_ENV=.*/APP_ENV=local/' .env
+docker compose up -d --build
+docker compose exec -T php php bin/install.php run --admin-password='change-this-password'
 docker compose exec -T php php bin/run-tests.php
 ```
+
+开发栈与生产栈的区别：开发栈挂载源码，第一次启动时自动执行 `composer install`，使用开发镜像 `tokenhub-php-dev`。生产部署请使用 `deploy/docker/install.sh`，详见 `docs/deployment/README.md`。
+
+`.env.example` 中的密码默认为 `change-me`，开发环境可以直接使用。`php bin/doctor.php` 在 `APP_ENV=local` 时只给出警告，不会阻止启动。
 
 默认入口：
 
@@ -54,7 +58,8 @@ curl -i http://localhost:8080/screen/
 
 ```bash
 docker compose exec -T php php bin/migrate.php
-docker compose exec -T mysql mysql -utokenhub -pchange-me tokenhub -e "SHOW TABLES;"
+docker compose exec -T php php bin/migrate.php --status
+docker compose exec -T mysql sh -c 'mysql -utokenhub -p"$MYSQL_PASSWORD" tokenhub -e "SHOW TABLES;"'
 ```
 
 如果 `.env` 中密码被修改，应同步调整 MySQL 检查命令。
@@ -65,7 +70,7 @@ Redis 用于限额、会话和队列。检查 Redis：
 
 ```bash
 docker compose ps redis
-docker compose exec -T redis redis-cli ping
+docker compose exec -T redis sh -c 'redis-cli --no-auth-warning -a "$REDIS_PASSWORD" ping'
 ```
 
 ## Worker

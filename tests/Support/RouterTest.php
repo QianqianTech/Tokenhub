@@ -27,5 +27,9 @@ $guardedRouter->get('/guarded', fn () => 'handler-reached');
 $guarded = $guardedRouter->dispatch('GET', '/guarded');
 assert_same('blocked-by-global-middleware', $guarded, 'Global middleware should run before route handlers.');
 
+$router->get('/v1/models/{model+}', fn (array $params) => $params['model']);
+assert_same('openai/gpt-4o', $router->dispatch('GET', '/v1/models/openai/gpt-4o'), 'Greedy parameters should accept namespaced model ids.');
+assert_same('openai/gpt-4o:free', $router->dispatch('GET', '/v1/models/openai%2Fgpt-4o:free'), 'Encoded slashes should be decoded.');
+
 $missing = $router->dispatch('DELETE', '/health');
 assert_same(null, $missing, 'Unsupported method should not match route.');

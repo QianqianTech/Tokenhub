@@ -44,10 +44,25 @@ final class HealthCheckService
         } catch (\Throwable) {
             $services['queue-worker'] = ['healthy' => false];
         }
+        $services['schema'] = ['healthy' => $this->schemaUpToDate()];
 
         return [
             'healthy' => !in_array(false, array_map(static fn (array $service): bool => (bool) ($service['healthy'] ?? false), $services), true),
             'services' => $services,
         ];
+    }
+
+    private function schemaUpToDate(): bool
+    {
+        try {
+            $applied = array_map('strval', array_column($this->database->select('SELECT migration FROM migrations'), 'migration'));
+
+            return \TokenHub\Console\MigrationRunner::pendingFrom(
+                \TokenHub\Console\MigrationRunner::discover(base_path('database/migrations')),
+                $applied
+            ) === [];
+        } catch (\Throwable) {
+            return false;
+        }
     }
 }

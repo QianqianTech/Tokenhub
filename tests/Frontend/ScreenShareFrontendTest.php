@@ -57,13 +57,10 @@ foreach (['id="token-summary"', 'id="token-details"', 'id="model-share-chart"', 
 assert_true(!str_contains($screenHtml, 'class="screen-view-nav"'), 'Independent screen pages should not expose an in-screen view switcher.');
 assert_true(str_contains($screenHtml, 'data-screen-view="overview"'), 'Screen page should expose an overview view.');
 assert_true(str_contains($screenHtml, 'data-screen-view="operations"'), 'Screen page should expose an operations view.');
-assert_true(str_contains($screenHtml, 'data-screen-view="firewall"'), 'Screen page should expose a firewall screen 3 view.');
+assert_true(!str_contains($screenHtml, 'data-screen-view="firewall"'), 'Screen page should not expose the removed firewall screen 3 view.');
 assert_true(!str_contains($screenHtml, 'data-view-target="overview"'), 'Independent screen pages should not expose an overview switch button.');
 assert_true(!str_contains($screenHtml, 'data-view-target="operations"'), 'Independent screen pages should not expose an operations switch button.');
 assert_true(str_contains($screenHtml, 'id="rankings"'), 'Operations screen should expose a rankings panel.');
-foreach (['id="firewall-summary"', 'id="firewall-rules"', 'id="firewall-sources"', 'id="firewall-events"'] as $requiredFirewallNode) {
-    assert_true(str_contains($screenHtml, $requiredFirewallNode), "Firewall screen 3 should expose {$requiredFirewallNode}.");
-}
 assert_true(str_contains($screenCss, '.screen-shell'), 'Screen CSS should style the screen shell.');
 assert_true(
     str_contains($screenCss, '.screen-login[hidden]') || str_contains($screenCss, 'body [hidden]'),
@@ -103,7 +100,7 @@ assert_true(!str_contains($screenJs, 'SCREEN_VIEW_ROTATE_INTERVAL_MS'), 'Indepen
 assert_true(str_contains($screenJs, 'screenViewFromPath'), 'Screen JS should derive the active screen view from the path.');
 assert_true(!str_contains($screenJs, 'screenPathForView'), 'Independent screen pages should not rewrite URLs for in-screen view switching.');
 assert_true(str_contains($screenJs, 'SCREEN_VIEW_KEYS.has(parts[1])'), 'Screen JS should not mistake built-in view names for share codes.');
-assert_true(str_contains($screenJs, 'SCREEN_VIEW_ORDER = ["overview", "operations", "firewall"]'), 'Screen JS should route firewall as screen 3.');
+assert_true(str_contains($screenJs, 'SCREEN_VIEW_ORDER = ["overview", "operations"]'), 'Screen JS should only route the overview and operations screens.');
 assert_true(str_contains($screenJs, 'renderOverview'), 'Screen JS should render the overview payload.');
 assert_true(str_contains($screenJs, 'renderModelShare'), 'Screen JS should render model token share as a local pie chart.');
 assert_true(str_contains($screenJs, 'renderPeriodTotals'), 'Screen JS should render day/week/month/quarter/year token totals.');
@@ -113,7 +110,6 @@ assert_true(str_contains($screenJs, 'renderLiveGenerations'), 'Screen JS should 
 assert_true(str_contains($screenJs, 'renderTrendBars'), 'Screen JS should render trend data without remote chart libraries.');
 assert_true(str_contains($screenJs, 'renderRankingList'), 'Screen JS should render rankings as a local list.');
 assert_true(str_contains($screenJs, 'renderSecurityPanel'), 'Screen JS should render security events as a local panel.');
-assert_true(str_contains($screenJs, 'renderFirewallScreen'), 'Screen JS should render the firewall screen 3 view.');
 assert_true(str_contains($screenJs, 'renderPerformancePanel'), 'Screen JS should render performance buckets as local cards.');
 assert_true(str_contains($screenJs, 'formatNumber'), 'Screen JS should format large values for big-screen readability.');
 assert_true(str_contains($screenJs, 'animateMetricValue'), 'Screen JS should animate metric values between refreshes.');
@@ -132,8 +128,7 @@ assert_true(str_contains($screenJs, '总调用次数'), 'Screen metrics should l
 assert_true(str_contains($screenJs, 'row.user_name'), 'Live generation rows should render the user name.');
 assert_true(str_contains($screenJs, 'row.department_name'), 'Live generation rows should render the department name.');
 assert_true(str_contains($screenJs, 'formatTokenMillions(tokens)'), 'Token detail rows should render model token totals in M units.');
-assert_true(str_contains($screenJs, 'type: "防火墙"'), 'Screen security event type should localize WAF.');
-assert_true(!str_contains($screenJs, 'type: "WAF"'), 'Screen security event type should not display WAF in English.');
+assert_true(!str_contains($screenJs, 'source.waf') && !str_contains($screenJs, 'blocked_ips'), 'Screen security panel should not read removed WAF data.');
 assert_true(str_contains($adminTableJs, 'reset-password'), 'Admin table should expose share-link password reset action.');
 assert_true(str_contains($adminTableJs, 'showShareLinkPasswordResetResult(result.data || {})'), 'Share-link password reset should render a dedicated one-time password result.');
 assert_true(!str_contains($adminTableJs, 'showModal("reset-password", el("pre", { text: JSON.stringify(result.data, null, 2) }))'), 'Share-link password reset must not render the full API payload as JSON.');
@@ -147,7 +142,7 @@ $allowIpModalSource = substr($adminTableJs, $allowIpModalStart, $allowIpModalEnd
 assert_true(!str_contains($allowIpModalSource, 'form.append(output);'), 'Allow-client-IP modal should not display the raw JSON result panel.');
 assert_true(str_contains($adminTableJs, '/overview'), 'Admin table should expose a screen 1 share-link open action.');
 assert_true(str_contains($adminTableJs, '/operations'), 'Admin table should expose a screen 2 share-link open action.');
-assert_true(str_contains($adminTableJs, '/firewall'), 'Admin table should expose a screen 3 firewall share-link open action.');
+assert_true(!str_contains($adminTableJs, '/firewall'), 'Admin table should not expose the removed firewall screen share-link action.');
 assert_true(!str_contains($adminAppJs, 'dashboard-screen-1'), 'Admin app should not expose dashboard screen 1 as a direct admin page.');
 assert_true(!str_contains($adminAppJs, 'dashboard-screen-2'), 'Admin app should not expose dashboard screen 2 as a direct admin page.');
 assert_true(!str_contains($adminAppJs, 'dashboard-screen-3'), 'Admin app should not expose dashboard screen 3 as a direct admin page.');

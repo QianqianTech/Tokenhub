@@ -192,7 +192,6 @@ TokenHub 有三类管理角色：
 | 会话存档 | 查询、查看和导出留存内容 |
 | 导出任务 | 创建和下载 CSV 等导出文件 |
 | 大屏分享 | 创建独立大屏账号、密码、访问范围和有效期 |
-| WAF | 管理安全规则、发布规则、回滚版本、查看命中事件 |
 | 脱敏策略 | 配置敏感信息解析、阻断、替换或摘要 |
 | 日志中心 | 查询应用、Worker、Caddy、安全等日志 |
 | 审计日志 | 查看登录、退出、配置变更、敏感操作 |
@@ -325,6 +324,17 @@ GET  /v1/assets/{id}/download-url
 
 `/v1/messages` 使用 Anthropic 兼容解析，其余默认按 OpenAI 兼容格式解析。
 
+### 7.4 MCP 接入
+
+TokenHub 在 `/mcp` 提供 MCP Server（Streamable HTTP），用同一个 API Key 认证。Claude Code、Cursor、VS Code、Claude Desktop 等客户端接入后可调用知识库检索（`search_knowledge_base`）以及模型、额度、用量查询工具，权限与该 Key 的知识库绑定和模型授权一致。
+
+```sh
+claude mcp add --transport http tokenhub https://tokenhub.example.com/mcp \
+  --header "Authorization: Bearer tkh_xxx"
+```
+
+其他客户端的配置、工具清单和开关（`MCP_ENABLED`、`MCP_ALLOWED_ORIGINS`）见 `docs/mcp.md`。
+
 ## 8. 限额和用量
 
 限额策略可绑定到：
@@ -407,39 +417,9 @@ GET  /v1/assets/{id}/download-url
 
 大屏分享登录使用独立 Cookie `screen_session`。禁用分享链接、重置密码或撤销会话会立即使已有大屏会话失效。
 
-## 11. WAF、脱敏和安全管理
+## 11. 脱敏和安全管理
 
-### 11.1 WAF
-
-WAF 规则包含：
-
-- `rule_code`：规则编码。
-- `scope`：规则范围。
-- `matcher`：匹配器 JSON。
-- `action`：`block`、`redact`、`remove_header`、`allow`。
-- `priority`：优先级。
-- `status`：状态。
-
-发布和回滚接口：
-
-```text
-POST /admin-api/waf/publish
-POST /admin-api/waf/rollback
-GET  /admin-api/waf/versions
-GET  /admin-api/waf/versions/{version_code}/diff
-```
-
-生产环境可配合脚本：
-
-```bash
-sudo SOURCE_FRAGMENT=/var/www/tokenhub/storage/caddy/waf-current.caddy \
-  ACTIVE_FRAGMENT=/var/lib/tokenhub/caddy/waf-current.caddy \
-  /var/www/tokenhub/scripts/caddy-publish.sh
-
-sudo /var/www/tokenhub/scripts/caddy-rollback.sh
-```
-
-### 11.2 脱敏策略
+### 11.1 脱敏策略
 
 脱敏策略包含：
 
@@ -450,7 +430,7 @@ sudo /var/www/tokenhub/scripts/caddy-rollback.sh
 
 出站请求会先经过脱敏处理，再发送到上游模型供应商。
 
-### 11.3 安全基线
+### 11.2 安全基线
 
 生产环境必须确认：
 
@@ -473,14 +453,12 @@ sudo /var/www/tokenhub/scripts/caddy-rollback.sh
 | `audit.jsonl` | 审计日志 |
 | `security.jsonl` | 安全日志 |
 | `caddy-access.jsonl` | Caddy 访问日志 |
-| `caddy-security.jsonl` | Caddy 安全日志 |
 
 审计日志会记录：
 
 - 管理员登录和退出。
 - 用户、部门、厂商、模型、价格、API Key 等变更。
 - 密码重置。
-- WAF 发布和回滚。
 - 大屏分享创建、禁用、密码重置和会话撤销。
 
 后台“日志中心”和“审计日志”支持按时间、用户、部门、API Key、模型、错误码等条件筛选。
@@ -607,7 +585,7 @@ MODEL='model-id' \
 bash scripts/pressure-smoke.sh
 
 BASE_URL=http://localhost:8080 \
-EXPECT_WAF_QUERY_BLOCK=1 \
+EXPECT_QUERY_BLOCK=1 \
 EXPECT_ADMIN_IP_BLOCK=1 \
 BLOCKED_IP=203.0.113.10 \
 bash scripts/security-smoke.sh

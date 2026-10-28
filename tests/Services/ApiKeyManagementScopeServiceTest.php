@@ -64,5 +64,6 @@ try {
 }
 
 $runner = file_get_contents(__DIR__ . '/../../app/Console/MigrationRunner.php') ?: '';
-assert_true(str_contains($runner, '*api_key_management_scopes*.sql'), 'Migration runner should discover the management-scope migration family.');
-assert_true(str_contains($runner, '*api_key_management_delegations*.sql'), 'Migration runner should discover the management-delegation migration family.');
+$discovered = array_map('basename', \TokenHub\Console\MigrationRunner::discover(__DIR__ . '/../../database/migrations'));
+assert_true(in_array('2026_07_13_000001_api_key_management_scopes.sql', $discovered, true), 'Migration runner should discover the management-scope migration family.');
+assert_true(in_array('2026_07_13_000002_api_key_management_delegations.sql', $discovered, true), 'Migration runner should discover the management-delegation migration family.');

@@ -10,7 +10,8 @@ $kernel = file_get_contents(__DIR__ . '/../../app/Bootstrap/Kernel.php') ?: '';
 $docs = file_get_contents(__DIR__ . '/../../docs/external-api-sync.md') ?: '';
 
 assert_true(str_contains($service, 'final class ExternalUsageService'), 'External usage service should exist.');
-assert_true(str_contains($service, 'api_key_id = ?'), 'External usage service should scope queries to the current API key.');
+assert_true(str_contains($service, "return ['api_key_id' => (int) (\$apiKey['id'] ?? 0)];") && str_contains($service, '$this->keySubject($apiKey)'), 'External usage service should scope /v1/usage queries to the current API key.');
+assert_true(str_contains($service, "['department_id', 'user_id', 'api_key_id']"), 'Usage subjects should be limited to known aggregate columns.');
 assert_true(str_contains($service, 'usage_aggregates_day'), 'External usage summary should read aggregated usage.');
 assert_true(str_contains($service, 'usage_aggregates_hour'), 'External usage trends should support hourly buckets.');
 assert_true(str_contains($controller, 'final class UsageController'), 'Usage API controller should exist.');

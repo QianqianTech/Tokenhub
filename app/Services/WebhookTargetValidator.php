@@ -21,6 +21,7 @@ final class WebhookTargetValidator
 
     public function isAllowed(string $url): bool
     {
+        // Same rules as OutboundUrlPolicy::PURPOSE_WEBHOOK: https + public addresses only.
         $parts = parse_url($url);
         if (!is_array($parts) || ($parts['scheme'] ?? '') !== 'https' || empty($parts['host']) || isset($parts['user']) || isset($parts['pass'])) {
             return false;

@@ -1,0 +1,218 @@
+# TokenHub production stack (Docker mode).
+#
+# Works the same with images from a registry, images loaded from an offline bundle,
+# or images built from source with compose.build.yml. Use install.sh / install.ps1 for the
+# first installation; they create .env next to this file.
+#
+#   docker compose up -d            start (the init service migrates and creates the first admin)
+#   docker compose ps               status
+#   docker compose logs -f php      logs
+name: ${COMPOSE_PROJECT_NAME:-tokenhub}
+
+x-tokenhub-image: &tokenhub-php-image ${TOKENHUB_IMAGE_PREFIX:-}tokenhub-php:${TOKENHUB_IMAGE_TAG:?TOKENHUB_IMAGE_TAG must be set in .env}
+
+x-app: &app
+  image: *tokenhub-php-image
+  env_file: .env
+  working_dir: /srv/app
+  # tini as PID 1: forwards SIGTERM so workers finish the current job on stop/upgrade.
+  init: true
+  volumes:
+    - tokenhub_storage:/srv/app/storage
+    - caddy_data:/srv/caddy-data:ro
+  restart: unless-stopped
+  logging: &logging
+    driver: json-file
+    options:
+      max-size: "20m"
+      max-file: "5"
+
+services:
+  # One-shot: wait for MySQL/Redis, apply migrations, create the first super administrator.
+  init:
+    <<: *app
+    command: ["php", "bin/install.php", "run", "--non-interactive", "--wait=180"]
+    restart: "no"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  php:
+    <<: *app
+    healthcheck:
+      test: ["CMD", "tokenhub-healthcheck", "fpm"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    depends_on:
+      init:
+        condition: service_completed_successfully
+      qdrant:
+        condition: service_healthy
+
+  queue-worker:
+    <<: *app
+    command: ["php", "bin/queue-worker.php"]
+    deploy:
+      replicas: ${QUEUE_WORKER_REPLICAS:-2}
+    healthcheck:
+      test: ["CMD", "tokenhub-healthcheck", "worker", "120"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+    depends_on:
+      init:
+        condition: service_completed_successfully
+
+  # Enqueues periodic maintenance jobs (retention, export and media cleanup).
+  scheduler:
+    <<: *app
+    command: ["php", "bin/scheduler.php"]
+    environment:
+      TOKENHUB_WORKER_HEARTBEAT_FILE: /tmp/tokenhub-scheduler.heartbeat
+    healthcheck:
+      test: ["CMD", "tokenhub-healthcheck", "worker", "180"]
+      interval: 60s
+      timeout: 5s
+      retries: 3
+      start_period: 90s
+    depends_on:
+      init:
+        condition: service_completed_successfully
+
+  rag-worker:
+    image: ${TOKENHUB_IMAGE_PREFIX:-}tokenhub-rag-worker:${TOKENHUB_IMAGE_TAG:?TOKENHUB_IMAGE_TAG must be set in .env}
+    env_file: .env
+    user: "33:33"
+    working_dir: /worker
+    command: ["python", "-m", "tokenhub_rag_worker"]
+    environment:
+      RAG_WORKER_STORAGE_ROOT: /srv/app/storage
+    volumes:
+      - tokenhub_storage:/srv/app/storage
+    depends_on:
+      init:
+        condition: service_completed_successfully
+      qdrant:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-m", "tokenhub_rag_worker", "--healthcheck"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    restart: unless-stopped
+    logging: *logging
+
+  realtime-gateway:
+    image: ${TOKENHUB_IMAGE_PREFIX:-}tokenhub-realtime-gateway:${TOKENHUB_IMAGE_TAG:?TOKENHUB_IMAGE_TAG must be set in .env}
+    environment:
+      REALTIME_INTERNAL_TOKEN: ${REALTIME_INTERNAL_TOKEN:-}
+      TOKENHUB_INTERNAL_URL: http://caddy:8082
+    restart: unless-stopped
+    logging: *logging
+
+  caddy:
+    image: ${TOKENHUB_IMAGE_PREFIX:-}tokenhub-caddy:${TOKENHUB_IMAGE_TAG:?TOKENHUB_IMAGE_TAG must be set in .env}
+    environment:
+      TOKENHUB_SITE_ADDRESS: ${TOKENHUB_SITE_ADDRESS:-:80}
+      TOKENHUB_CADDY_TLS: ${TOKENHUB_CADDY_TLS:-}
+      TOKENHUB_CADDY_GLOBAL: ${TOKENHUB_CADDY_GLOBAL:-}
+    ports:
+      - "${TOKENHUB_BIND_ADDRESS:-0.0.0.0}:${TOKENHUB_HTTP_PORT:-80}:80"
+      - "${TOKENHUB_BIND_ADDRESS:-0.0.0.0}:${TOKENHUB_HTTPS_PORT:-443}:443"
+    volumes:
+      - tokenhub_storage:/srv/app/storage
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      php:
+        condition: service_healthy
+    restart: unless-stopped
+    logging: *logging
+
+  mysql:
+    image: ${MYSQL_IMAGE:-mysql:9.7}
+    command: ["--character-set-server=utf8mb4", "--collation-server=utf8mb4_unicode_ci"]
+    environment:
+      MYSQL_DATABASE: ${DB_DATABASE:-tokenhub}
+      MYSQL_USER: ${DB_USERNAME:-tokenhub}
+      MYSQL_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD must be set}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:?DB_ROOT_PASSWORD must be set}
+    volumes:
+      - mysql_97_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p\"$$MYSQL_ROOT_PASSWORD\" --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+    restart: unless-stopped
+    logging: *logging
+
+  redis:
+    image: ${REDIS_IMAGE:-redis:8.0-alpine}
+    command: ["sh", "-c", "exec redis-server --requirepass \"$$REDIS_PASSWORD\" --appendonly yes"]
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD must be set}
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli --no-auth-warning -a \"$$REDIS_PASSWORD\" ping | grep -q PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+    logging: *logging
+
+  qdrant:
+    image: ${QDRANT_IMAGE:-qdrant/qdrant:v1.15.0}
+    environment:
+      QDRANT__SERVICE__API_KEY: ${QDRANT_API_KEY:-}
+      QDRANT__TELEMETRY_DISABLED: "true"
+    volumes:
+      - qdrant_data:/qdrant/storage
+      - qdrant_snapshots:/qdrant/snapshots
+    healthcheck:
+      test: ["CMD-SHELL", "timeout 5 bash -c '</dev/tcp/127.0.0.1/6333'"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+    logging: *logging
+
+  # Optional: scales queue-worker with the queue length. It mounts the Docker socket (root-equivalent
+  # access to the host), so it only starts with `--profile autoscaling`.
+  worker-autoscaler:
+    profiles: ["autoscaling"]
+    image: ${TOKENHUB_IMAGE_PREFIX:-}tokenhub-worker-autoscaler:${TOKENHUB_IMAGE_TAG:?TOKENHUB_IMAGE_TAG must be set in .env}
+    command: /usr/local/bin/worker-autoscaler
+    env_file: .env
+    environment:
+      QUEUE_NAME: ${QUEUE_NAME:-tokenhub:jobs}
+      TOKENHUB_COMPOSE_PROJECT_DIR: /srv/app
+      TOKENHUB_COMPOSE_FILE: /srv/app/compose.yml
+      TOKENHUB_COMPOSE_PROJECT_NAME: ${COMPOSE_PROJECT_NAME:-tokenhub}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./compose.yml:/srv/app/compose.yml:ro
+      - ./.env:/srv/app/.env:ro
+    depends_on:
+      redis:
+        condition: service_healthy
+      queue-worker:
+        condition: service_started
+    restart: unless-stopped
+    logging: *logging
+
+volumes:
+  tokenhub_storage:
+  mysql_97_data:
+  redis_data:
+  qdrant_data:
+  qdrant_snapshots:
+  caddy_data:
+  caddy_config:

@@ -1,18 +1,23 @@
-# Production template.
+# Production template for source installs (deploy/linux/install.sh fills the variables through
+# /etc/tokenhub/caddy.env and a systemd drop-in for caddy.service).
 # Environment defaults:
-# - TOKENHUB_DOMAIN=tokenhub.example.com
+# - TOKENHUB_SITE_ADDRESS=tokenhub.example.com   (or https://10.0.0.8, :80, or several comma separated)
+# - TOKENHUB_CADDY_TLS=                          (e.g. "tls internal" for https://IP)
+# - TOKENHUB_CADDY_GLOBAL=                       (e.g. "default_sni 10.0.0.8")
+# - TOKENHUB_APP_DIR=/var/www/tokenhub
 # - CADDY_ADMIN_API=off
 # - TOKENHUB_PHP_FASTCGI=unix//run/php/php8.2-fpm-tokenhub.sock
 #   Multiple upstreams are allowed, for example: "127.0.0.1:9000 127.0.0.1:9001"
-# - TOKENHUB_WAF_FRAGMENT=/var/lib/tokenhub/caddy/waf-current.caddy
 # - TOKENHUB_TLS_FRAGMENT=/var/lib/tokenhub/caddy/tls-current.caddy
 # - TOKENHUB_LOG_PATH=/var/log/tokenhub/caddy-access.log
 {
 	admin {$CADDY_ADMIN_API:off}
+	{$TOKENHUB_CADDY_GLOBAL}
 }
 
-{$TOKENHUB_DOMAIN:localhost} {
+{$TOKENHUB_SITE_ADDRESS:localhost} {
 	encode zstd gzip
+	{$TOKENHUB_CADDY_TLS}
 	import {$TOKENHUB_TLS_FRAGMENT:/var/lib/tokenhub/caddy/tls-current.caddy}
 
 	header {
@@ -39,56 +44,72 @@
 	@blockedQuery query token=* secret=* api_key=* apikey=* access_token=*
 	respond @blockedQuery 403
 
-	import {$TOKENHUB_WAF_FRAGMENT:/var/lib/tokenhub/caddy/waf-current.caddy}
-
 	redir /admin /admin/
 	redir /screen /screen/
 
 	handle_path /admin/* {
-		root * /var/www/tokenhub/public/admin
+		root * {$TOKENHUB_APP_DIR:/var/www/tokenhub}/public/admin
 		try_files {path} /index.html
 		file_server
 	}
 
 	handle_path /screen/* {
-		root * /var/www/tokenhub/public/screen
+		root * {$TOKENHUB_APP_DIR:/var/www/tokenhub}/public/screen
 		try_files {path} /index.html
 		file_server
 	}
 
 	handle /admin-api/* {
 		php_fastcgi {$TOKENHUB_PHP_FASTCGI:unix//run/php/php8.2-fpm-tokenhub.sock} {
-			root /var/www/tokenhub/public
+			root {$TOKENHUB_APP_DIR:/var/www/tokenhub}/public
 		}
 	}
 
 	handle /screen-api/* {
 		php_fastcgi {$TOKENHUB_PHP_FASTCGI:unix//run/php/php8.2-fpm-tokenhub.sock} {
-			root /var/www/tokenhub/public
+			root {$TOKENHUB_APP_DIR:/var/www/tokenhub}/public
 		}
+	}
+
+	# Realtime speech (WebSocket) is served by the Go realtime-gateway (tokenhub-realtime.service).
+	handle /v1/realtime {
+		reverse_proxy {$TOKENHUB_REALTIME_UPSTREAM:127.0.0.1:8090}
 	}
 
 	handle /v1/* {
 		php_fastcgi {$TOKENHUB_PHP_FASTCGI:unix//run/php/php8.2-fpm-tokenhub.sock} {
-			root /var/www/tokenhub/public
+			root {$TOKENHUB_APP_DIR:/var/www/tokenhub}/public
+		}
+	}
+
+	# Gemini-native API (Google GenAI SDKs).
+	handle /v1beta/* {
+		php_fastcgi {$TOKENHUB_PHP_FASTCGI:unix//run/php/php8.2-fpm-tokenhub.sock} {
+			root {$TOKENHUB_APP_DIR:/var/www/tokenhub}/public
+		}
+	}
+
+	handle /mcp {
+		php_fastcgi {$TOKENHUB_PHP_FASTCGI:unix//run/php/php8.2-fpm-tokenhub.sock} {
+			root {$TOKENHUB_APP_DIR:/var/www/tokenhub}/public
 		}
 	}
 
 	handle /health {
 		php_fastcgi {$TOKENHUB_PHP_FASTCGI:unix//run/php/php8.2-fpm-tokenhub.sock} {
-			root /var/www/tokenhub/public
+			root {$TOKENHUB_APP_DIR:/var/www/tokenhub}/public
 		}
 	}
 
 	handle /ready {
 		php_fastcgi {$TOKENHUB_PHP_FASTCGI:unix//run/php/php8.2-fpm-tokenhub.sock} {
-			root /var/www/tokenhub/public
+			root {$TOKENHUB_APP_DIR:/var/www/tokenhub}/public
 		}
 	}
 
 	handle /download/* {
 		php_fastcgi {$TOKENHUB_PHP_FASTCGI:unix//run/php/php8.2-fpm-tokenhub.sock} {
-			root /var/www/tokenhub/public
+			root {$TOKENHUB_APP_DIR:/var/www/tokenhub}/public
 		}
 	}
 
@@ -98,6 +119,7 @@
 
 	log {
 		output file {$TOKENHUB_LOG_PATH:/var/log/tokenhub/caddy-access.log} {
+			mode 0640
 			roll_size 100MiB
 			roll_keep 10
 			roll_keep_for 720h
@@ -117,5 +139,17 @@
 			}
 			wrap json
 		}
+	}
+}
+
+# Internal API for the realtime gateway: loopback only, never public.
+http://127.0.0.1:8082 {
+	handle /internal/* {
+		php_fastcgi {$TOKENHUB_PHP_FASTCGI:unix//run/php/php8.2-fpm-tokenhub.sock} {
+			root {$TOKENHUB_APP_DIR:/var/www/tokenhub}/public
+		}
+	}
+	handle {
+		respond "Not Found" 404
 	}
 }

@@ -17,4 +17,4 @@ foreach (['cache_read_tokens', 'cache_write_tokens'] as $column) {
 }
 
 assert_true(str_contains($resources, 'cache_tokens'), 'Admin resources should expose total cache tokens.');
-assert_true(str_contains($runner, 'cache_usage_metrics'), 'Console migration runner should include cache usage migration files.');
+assert_true(in_array('2026_07_08_000014_cache_usage_metrics.sql', array_map('basename', \TokenHub\Console\MigrationRunner::discover($root . '/database/migrations')), true), 'Console migration runner should include cache usage migration files.');

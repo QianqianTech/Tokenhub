@@ -34,7 +34,7 @@ final class RecentGenerationService
              LEFT JOIN models m ON m.id = r.model_id
              LEFT JOIN users u ON u.id = r.user_id
              LEFT JOIN departments d ON d.id = r.department_id
-             WHERE r.capability IN ('text_generation','vision_understanding','asr','tts','image_generation','video_generation'){$scopeWhere}
+             WHERE r.capability IN ('text_generation','vision_understanding','asr','tts','image_generation','video_generation','music_generation'){$scopeWhere}
              ORDER BY r.created_at DESC, r.id DESC
              LIMIT {$limit}",
             $scopeBindings

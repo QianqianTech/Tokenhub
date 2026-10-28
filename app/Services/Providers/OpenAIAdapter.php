@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace TokenHub\Services\Providers;
 
 use TokenHub\Services\Gateway\GatewayRequest;
+use TokenHub\Services\Gateway\MultipartUpload;
 
 final class OpenAIAdapter implements ProviderAdapterInterface
 {
@@ -19,6 +20,27 @@ final class OpenAIAdapter implements ProviderAdapterInterface
         if (($route['external_name'] ?? '') !== '') {
             $payload['model'] = $route['external_name'];
         }
+        unset($payload['rag'], $payload['__tokenhub_callback_url']);
+
+        if (isset($payload[MultipartUpload::FILES_KEY]) && str_contains($request->endpoint, '/images/edits') && $this->editsAsJson($route)) {
+            // JSON-only edit APIs (xAI): uploaded files become data URIs.
+            return [
+                'json' => $this->jsonImageEdit($payload),
+                'headers' => ['Content-Type' => 'application/json', 'Accept' => 'application/json'],
+            ];
+        }
+
+        if (isset($payload[MultipartUpload::FILES_KEY])) {
+            $multipart = MultipartUpload::encode($payload);
+
+            return [
+                'body' => $multipart['body'],
+                'headers' => [
+                    'Content-Type' => $multipart['content_type'],
+                    'Accept' => 'application/json',
+                ],
+            ];
+        }
 
         return [
             'json' => $payload,
@@ -31,7 +53,67 @@ final class OpenAIAdapter implements ProviderAdapterInterface
 
     public function normalizeResponse(GatewayRequest $request, array $route, array $providerResponse): array
     {
+        // Image APIs that answer "images" instead of "data" (SiliconFlow).
+        if ($request->capability === 'image_generation' && !isset($providerResponse['data']) && is_array($providerResponse['images'] ?? null)) {
+            $providerResponse['data'] = array_values(array_filter(array_map(static function (mixed $item): ?array {
+                if (is_string($item)) {
+                    return ['url' => $item];
+                }
+                return is_array($item) ? $item : null;
+            }, $providerResponse['images'])));
+            unset($providerResponse['images']);
+        }
+
         return $providerResponse;
+    }
+
+    /**
+     * @param array<string, mixed> $route
+     */
+    private function editsAsJson(array $route): bool
+    {
+        $controls = (new \TokenHub\Services\ProviderHeaderVault())->decode(is_array($route['default_headers'] ?? null) || is_string($route['default_headers'] ?? null) ? $route['default_headers'] : null);
+        $mode = strtolower((string) ($controls['tokenhub_image_edits'] ?? ''));
+        if ($mode !== '') {
+            return $mode === 'json';
+        }
+
+        return str_contains(strtolower((string) ($route['base_url'] ?? '')), 'api.x.ai');
+    }
+
+    /**
+     * @param array<string, mixed> $payload
+     * @return array<string, mixed>
+     */
+    private function jsonImageEdit(array $payload): array
+    {
+        $images = [];
+        $mask = null;
+        foreach ((array) $payload[MultipartUpload::FILES_KEY] as $name => $file) {
+            $bytes = is_file((string) ($file['path'] ?? '')) ? (string) file_get_contents((string) $file['path']) : (string) ($file['contents'] ?? '');
+            $uri = 'data:' . (string) ($file['mime'] ?? 'image/png') . ';base64,' . base64_encode($bytes);
+            if (str_starts_with((string) $name, 'mask')) {
+                $mask = $uri;
+            } else {
+                $images[] = $uri;
+            }
+        }
+        unset($payload[MultipartUpload::FILES_KEY]);
+        foreach (['n'] as $integer) {
+            if (isset($payload[$integer]) && is_numeric($payload[$integer])) {
+                $payload[$integer] = (int) $payload[$integer];
+            }
+        }
+        if (count($images) === 1) {
+            $payload['image'] = ['url' => $images[0], 'type' => 'image_url'];
+        } elseif ($images !== []) {
+            $payload['images'] = array_map(static fn (string $uri): array => ['url' => $uri, 'type' => 'image_url'], $images);
+        }
+        if ($mask !== null) {
+            $payload['mask'] = ['url' => $mask, 'type' => 'image_url'];
+        }
+
+        return $payload;
     }
 
     public function normalizeError(int $status, string $body): array
@@ -56,8 +138,34 @@ final class OpenAIAdapter implements ProviderAdapterInterface
         foreach (['audio_seconds', 'tts_chars', 'image_count', 'video_seconds'] as $metric) {
             $usage[$metric] = (int) ($response['usage'][$metric] ?? $request->estimatedUsage[$metric] ?? 0);
         }
+        if ($request->capability === 'asr') {
+            $seconds = $this->transcriptionSeconds($response);
+            if ($seconds !== null) {
+                $usage['audio_seconds'] = $seconds;
+            }
+        }
 
         return $usage;
+    }
+
+    /**
+     * Billable audio length of a transcription/translation response:
+     * usage {"type":"duration","seconds":N} (whisper-1), verbose_json
+     * "duration", or the subtitle length the gateway derived for srt/vtt.
+     * Rounded up to whole seconds.
+     *
+     * @param array<string, mixed> $response
+     */
+    private function transcriptionSeconds(array $response): ?int
+    {
+        $usage = is_array($response['usage'] ?? null) ? $response['usage'] : [];
+        foreach ([$usage['audio_seconds'] ?? null, ($usage['type'] ?? null) === 'duration' ? ($usage['seconds'] ?? null) : null, $response['duration'] ?? null] as $value) {
+            if (is_numeric($value) && (float) $value > 0) {
+                return (int) ceil((float) $value);
+            }
+        }
+
+        return null;
     }
 
     public function accumulateStreamUsage(GatewayRequest $request, string $chunk, array $state): array

@@ -1,6 +1,12 @@
-# TokenHub 生产部署说明
+# TokenHub 生产部署说明（手工步骤）
 
-目标环境为 Ubuntu + PHP-FPM + Caddy + MySQL + Redis + systemd Worker。Caddy 是唯一公网入口，PHP-FPM 只监听本机 Unix socket。
+> 推荐用安装脚本完成全部步骤：
+> - 源码安装：`sudo deploy/linux/install.sh`，见 [linux-source.md](linux-source.md)
+> - Docker 部署：`deploy/docker/install.sh`，见 [README.md](README.md)
+>
+> 本文保留手工步骤，供审计或定制安装参考。
+
+目标环境为 Ubuntu + PHP-FPM + Caddy + MySQL + Redis + Qdrant + systemd Worker。Caddy 是唯一公网入口，PHP-FPM 只监听本机 Unix socket。
 
 ## 服务账号和目录
 
@@ -25,16 +31,20 @@ sudo chmod 0750 /var/lib/tokenhub/exports /var/lib/tokenhub/media /var/lib/token
 | `/var/log/tokenhub` | PHP、Worker、Caddy 日志 | `www-data:www-data`, `0750` |
 | `/var/lib/tokenhub/media` | 媒体资产 | `www-data:www-data`, `0750` |
 | `/var/lib/tokenhub/exports` | 导出归档 | `www-data:www-data`, `0750` |
-| `/var/lib/tokenhub/caddy` | WAF 发布片段 | `www-data:www-data`, `0750` |
+| `/var/lib/tokenhub/caddy` | TLS 证书片段 | `www-data:www-data`, `0750` |
 
 ## 软件包
 
 ```bash
 sudo apt update
-sudo apt install -y php8.2-fpm php8.2-cli php8.2-mysql php8.2-redis php8.2-curl php8.2-mbstring mysql-server redis-server caddy unzip
+# Ubuntu 24.04 自带 PHP 8.3；Ubuntu 22.04 需先添加 ppa:ondrej/php。PHP 要求 8.2 – 8.5。
+PHP=8.3
+sudo apt install -y php$PHP-fpm php$PHP-cli php$PHP-mysql php$PHP-redis php$PHP-curl php$PHP-mbstring php$PHP-gd php$PHP-zip php$PHP-xml php$PHP-intl redis-server caddy unzip
 ```
 
-MySQL 生产版本必须与开发主线一致，当前要求为 MySQL 9.7 系列。使用外部 MySQL 时，先确认版本：
+`gd`、`zip`、`xml` 是 PhpSpreadsheet 的必需扩展，缺少时 `composer install` 会失败。
+
+MySQL 要求 8.0.19 以上，推荐 8.4 LTS 或 9.x（Ubuntu 自带的是 8.0，生产环境建议使用 MySQL 官方 APT 源）。使用外部 MySQL 时，先确认版本：
 
 ```bash
 mysql --version
@@ -44,8 +54,11 @@ mysql -uroot -p -e "SELECT VERSION();"
 ## 应用发布
 
 ```bash
-sudo rsync -a --delete ./ /var/www/tokenhub/
-sudo cp deploy/ubuntu/.env.production.example /etc/tokenhub/tokenhub.env
+sudo rsync -a --delete --exclude .git ./ /var/www/tokenhub/
+cd /var/www/tokenhub && sudo -u www-data composer install --no-dev --optimize-autoloader
+# 生成带随机密钥的配置（也可以复制 deploy/ubuntu/.env.production.example 后手工修改）
+sudo php bin/install.php env --target=native --output=/etc/tokenhub/tokenhub.env --site=your-domain.example
+# sudo cp deploy/ubuntu/.env.production.example /etc/tokenhub/tokenhub.env
 sudo chown root:www-data /etc/tokenhub/tokenhub.env
 sudo chmod 0640 /etc/tokenhub/tokenhub.env
 sudo ln -sfn /etc/tokenhub/tokenhub.env /var/www/tokenhub/.env
@@ -77,7 +90,8 @@ FLUSH PRIVILEGES;
 
 ```bash
 cd /var/www/tokenhub
-sudo -u www-data php scripts/migrate.php
+sudo -u www-data php bin/install.php run --non-interactive    # 迁移、创建首个管理员、记录版本
+sudo -u www-data php bin/doctor.php
 ```
 
 迁移前必须完成一次数据库备份；迁移后执行：
@@ -101,7 +115,6 @@ PHP-FPM socket：`/run/php/php8.2-fpm-tokenhub.sock`。
 
 ```bash
 sudo cp /var/www/tokenhub/Caddyfile.example /etc/caddy/Caddyfile
-sudo install -o www-data -g www-data -m 0644 /dev/null /var/lib/tokenhub/caddy/waf-current.caddy
 sudo install -o www-data -g www-data -m 0644 /dev/null /var/lib/tokenhub/caddy/tls-current.caddy
 sudo TOKENHUB_DOMAIN=your-domain.example caddy validate --config /etc/caddy/Caddyfile
 sudo systemctl restart caddy
@@ -112,16 +125,8 @@ sudo systemctl restart caddy
 - `TOKENHUB_DOMAIN`
 - `CADDY_ADMIN_API`
 - `TOKENHUB_PHP_FASTCGI`：可传单个 PHP-FPM upstream，也可传多个 upstream 用于 Caddy 负载均衡。
-- `TOKENHUB_WAF_FRAGMENT`
 - `TOKENHUB_TLS_FRAGMENT`
 - `TOKENHUB_LOG_PATH`
-
-WAF 发布和回滚：
-
-```bash
-sudo SOURCE_FRAGMENT=/var/www/tokenhub/storage/caddy/waf-current.caddy ACTIVE_FRAGMENT=/var/lib/tokenhub/caddy/waf-current.caddy /var/www/tokenhub/scripts/caddy-publish.sh
-sudo /var/www/tokenhub/scripts/caddy-rollback.sh
-```
 
 ## Worker 运维
 
@@ -157,10 +162,12 @@ redis-cli LLEN tokenhub:failed-jobs
 
 ## 定时清理
 
+由常驻进程 `bin/scheduler.php` 投递保留期清理任务：`cleanup.retention` 每分钟，`cleanup.exports` 每 5 分钟，`cleanup.media` 每 10 分钟，`cleanup.external-events` 每小时。systemd 单元见 `deploy/linux/systemd/tokenhub-scheduler.service`。
+
+只能使用 cron 的环境，可以改用以下配置：
+
 ```cron
-* * * * * www-data cd /var/www/tokenhub && php scripts/enqueue.php cleanup.retention >/dev/null 2>&1
-*/5 * * * * www-data cd /var/www/tokenhub && php scripts/enqueue.php cleanup.exports >/dev/null 2>&1
-*/10 * * * * www-data cd /var/www/tokenhub && php scripts/enqueue.php cleanup.media >/dev/null 2>&1
+* * * * * www-data cd /var/www/tokenhub && php bin/scheduler.php --once >/dev/null 2>&1
 ```
 
 ## 生产验收

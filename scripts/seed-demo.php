@@ -29,9 +29,6 @@ $requiredTables = [
     'export_tasks',
     'dashboard_share_links',
     'dashboard_share_access_logs',
-    'waf_rules',
-    'waf_rule_versions',
-    'waf_events',
     'desensitization_policies',
     'desensitization_events',
     'log_archive_files',
@@ -74,7 +71,7 @@ $db->transaction(function (Database $db) use ($now, &$summary): void {
         'usage_records' => count($usage),
         'usage_aggregates_hour' => countRowsLike($db, 'usage_aggregates_hour', 'capability', 'text_generation'),
         'multimodal_tasks' => countRowsLike($db, 'multimodal_tasks', 'task_id', 'demo-task-%'),
-        'waf_events' => countRowsLike($db, 'waf_events', 'request_id', 'demo-waf-%'),
+        'desensitization_events' => countRowsLike($db, 'desensitization_events', 'request_id', 'demo-desens-%'),
         'dashboard_share_links' => countRowsLike($db, 'dashboard_share_links', 'share_code', 'demo-share-%'),
     ];
 });
@@ -448,7 +445,7 @@ function seedUsage(Database $db, array $departments, array $users, array $provid
         ['suffix' => 'tts-007', 'user' => 'platform-admin', 'dept' => 'platform', 'key' => 'media', 'provider' => 'native', 'model' => 'tts-demo', 'capability' => 'tts', 'status' => 'success', 'in' => 520, 'out' => 0, 'latency' => 1350, 'hours' => -12, 'endpoint' => '/v1/audio/speech', 'tts_chars' => 1180],
         ['suffix' => 'image-008', 'user' => 'platform-admin', 'dept' => 'platform', 'key' => 'media', 'provider' => 'native', 'model' => 'image-demo', 'capability' => 'image_generation', 'status' => 'success', 'in' => 240, 'out' => 0, 'latency' => 6200, 'hours' => -14, 'endpoint' => '/v1/images/generations', 'image_count' => 4],
         ['suffix' => 'video-009', 'user' => 'platform-admin', 'dept' => 'platform', 'key' => 'media', 'provider' => 'native', 'model' => 'video-demo', 'capability' => 'video_generation', 'status' => 'timeout', 'in' => 400, 'out' => 0, 'latency' => 30000, 'hours' => -16, 'endpoint' => '/v1/videos/generations', 'video_seconds' => 12, 'error' => 'PROVIDER_TIMEOUT'],
-        ['suffix' => 'blocked-010', 'user' => 'risk-user', 'dept' => 'risk', 'key' => 'risk', 'provider' => 'anthropic', 'model' => 'claude-demo', 'capability' => 'text_generation', 'status' => 'blocked', 'in' => 300, 'out' => 0, 'latency' => 24, 'hours' => -18, 'endpoint' => '/v1/messages', 'error' => 'WAF_BLOCKED'],
+        ['suffix' => 'blocked-010', 'user' => 'risk-user', 'dept' => 'risk', 'key' => 'risk', 'provider' => 'anthropic', 'model' => 'claude-demo', 'capability' => 'text_generation', 'status' => 'blocked', 'in' => 300, 'out' => 0, 'latency' => 24, 'hours' => -18, 'endpoint' => '/v1/messages', 'error' => 'DESENSITIZATION_BLOCKED'],
     ];
 
     $records = [];
@@ -691,50 +688,6 @@ function seedSecurity(Database $db, array $users, DateTimeImmutable $now): void
     ]);
 
     foreach ([
-        ['demo-waf-sqli', 'global', ['path' => ['/v1/chat/completions'], 'keywords' => ['UNION SELECT', 'sleep(']], 'block', 10, '阻断疑似 SQL 注入提示词'],
-        ['demo-waf-leakage', 'global', ['headers' => ['Authorization'], 'patterns' => ['sk-*', 'tkh_*']], 'redact', 20, '脱敏请求中的密钥片段'],
-        ['demo-waf-internal-path', 'global', ['path_prefix' => ['/admin-api']], 'allow', 90, '允许后台受保护路径通过应用鉴权'],
-    ] as $rule) {
-        [$code, $scope, $matcher, $action, $priority, $description] = $rule;
-        insertOnDuplicate($db, 'waf_rules', [
-            'rule_code' => $code,
-            'scope' => $scope,
-            'matcher' => jsonValue($matcher),
-            'action' => $action,
-            'priority' => $priority,
-            'status' => 'active',
-            'description' => $description,
-        ]);
-    }
-
-    insertOnDuplicate($db, 'waf_rule_versions', [
-        'version_code' => 'waf-version-20260708',
-        'rules_snapshot' => jsonValue(['rules' => ['demo-waf-sqli', 'demo-waf-leakage', 'demo-waf-internal-path']]),
-        'caddyfile_fragment' => "# demo waf fragment\n@demoBlocked path /v1/*\n",
-        'status' => 'published',
-        'published_by' => $users['super'],
-        'created_at' => ts($now, '-6 hours'),
-    ]);
-
-    foreach ([
-        ['demo-waf-001', 'demo-waf-sqli', '198.51.100.12', 'POST', '/v1/chat/completions', 'block', ['reason' => 'sqli_keyword']],
-        ['demo-waf-002', 'demo-waf-leakage', '198.51.100.21', 'POST', '/v1/messages', 'redact', ['fields' => ['Authorization']]],
-        ['demo-waf-003', 'demo-waf-sqli', '203.0.113.8', 'POST', '/v1/images/generations', 'block', ['reason' => 'prompt_injection']],
-    ] as $index => $event) {
-        [$requestId, $ruleCode, $ip, $method, $path, $action, $summary] = $event;
-        upsertByKey($db, 'waf_events', ['request_id' => $requestId], [
-            'rule_code' => $ruleCode,
-            'request_id' => $requestId,
-            'client_ip' => $ip,
-            'method' => $method,
-            'path' => $path,
-            'action' => $action,
-            'summary' => jsonValue($summary),
-            'created_at' => ts($now, '-' . (20 + $index * 17) . ' minutes'),
-        ]);
-    }
-
-    foreach ([
         ['demo-desens-001', 'request_payload', 'replace', 5, ['types' => ['phone', 'email']]],
         ['demo-desens-002', 'provider_response', 'summary', 2, ['types' => ['id_card']]],
         ['demo-desens-003', 'usage_content', 'replace', 9, ['types' => ['api_key']]],
@@ -814,7 +767,7 @@ function seedOperations(Database $db, array $users, array $departments, DateTime
         ['demo-audit-001', $users['super'], 'admin.login', 'users', (string) $users['super'], '192.0.2.10'],
         ['demo-audit-002', $users['platform-admin'], 'api_key.create', 'api_keys', 'demo-key-platform', '192.0.2.11'],
         ['demo-audit-003', $users['ops-admin'], 'export.create', 'export_tasks', 'demo-export-usage-001', '192.0.2.12'],
-        ['demo-audit-004', $users['super'], 'waf.publish', 'waf_rule_versions', 'waf-version-20260708', '192.0.2.10'],
+        ['demo-audit-004', $users['super'], 'desensitization_policy.update', 'desensitization_policies', 'demo-policy-pii-redaction', '192.0.2.10'],
     ] as $index => $audit) {
         [$requestId, $actor, $action, $targetType, $targetId, $ip] = $audit;
         upsertByKey($db, 'audit_logs', ['request_id' => $requestId], [

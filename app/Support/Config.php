@@ -13,6 +13,13 @@ final class Config
 
     private readonly string $configPath;
 
+    /**
+     * Values this process loaded from a .env file, by key.
+     *
+     * @var array<string, string>
+     */
+    private static array $fileValues = [];
+
     public function __construct(string $configPathOrBasePath, ?string $envFile = null)
     {
         $candidate = rtrim($configPathOrBasePath, DIRECTORY_SEPARATOR);
@@ -69,10 +76,36 @@ final class Config
             $key = trim($key);
             $value = trim($value, " \t\n\r\0\x0B\"'");
 
+            if ($key === '' || !$this->fileMayDefine($key)) {
+                continue;
+            }
+
             $_ENV[$key] = $value;
             $_SERVER[$key] = $value;
             putenv($key . '=' . $value);
+            self::$fileValues[$key] = $value;
         }
+    }
+
+    /**
+     * Real environment variables win over the .env file (Docker/systemd
+     * `environment:` entries, CI, tests that set $_ENV before booting).
+     * A value this loader itself placed earlier may be refreshed, so a
+     * rewritten .env (installer, key rotation) still takes effect on reload.
+     */
+    private function fileMayDefine(string $key): bool
+    {
+        if (array_key_exists($key, $_ENV)) {
+            $current = (string) $_ENV[$key];
+        } else {
+            $fromProcess = getenv($key);
+            if ($fromProcess === false) {
+                return true;
+            }
+            $current = $fromProcess;
+        }
+
+        return array_key_exists($key, self::$fileValues) && self::$fileValues[$key] === $current;
     }
 
     private function loadConfigFiles(): void

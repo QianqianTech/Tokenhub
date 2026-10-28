@@ -23,6 +23,7 @@ if (is_file($autoload)) {
 
 use TokenHub\Bootstrap\Kernel;
 use TokenHub\Support\App;
+use TokenHub\Support\HttpAbortException;
 use TokenHub\Support\Response;
 
 App::bootstrap($basePath);
@@ -33,6 +34,8 @@ try {
     if ($response === null) {
         $response = Response::error('NOT_FOUND', 'Route not found', 404);
     }
+} catch (HttpAbortException $abort) {
+    $response = $abort->response();
 } catch (Throwable $throwable) {
     App::logger()->error('Unhandled request exception', [
         'request_id' => App::context()->requestId(),
@@ -41,7 +44,21 @@ try {
     $response = Response::error('INTERNAL_ERROR', 'Internal server error', 500);
 }
 
-$response
-    ->withHeader('X-Request-Id', App::context()->requestId())
-    ->withHeader('X-Trace-Id', App::context()->traceId())
-    ->send();
+try {
+    $response
+        ->withHeader('X-Request-Id', App::context()->requestId())
+        ->withHeader('X-Trace-Id', App::context()->traceId())
+        ->send();
+} catch (HttpAbortException $abort) {
+    // A streaming writer aborted after headers may already be sent.
+    if (!headers_sent()) {
+        $abort->response()->send();
+    } else {
+        echo 'event: error' . "\n" . 'data: ' . json_encode(['error' => ['code' => $abort->errorCode, 'message' => $abort->getMessage()]], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) . "\n\n";
+    }
+} catch (Throwable $throwable) {
+    App::logger()->error('Unhandled response exception', [
+        'request_id' => App::context()->requestId(),
+        'error' => $throwable->getMessage(),
+    ]);
+}

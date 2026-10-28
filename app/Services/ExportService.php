@@ -58,7 +58,7 @@ final class ExportService
             return $normalized;
         }
 
-        foreach (['log_type', 'request_id', 'trace_id', 'status', 'error_code', 'security_event'] as $key) {
+        foreach (['log_type', 'request_id', 'trace_id', 'status', 'error_code'] as $key) {
             if (isset($filters[$key]) && is_scalar($filters[$key]) && trim((string) $filters[$key]) !== '') {
                 $normalized[$key] = trim((string) $filters[$key]);
             }

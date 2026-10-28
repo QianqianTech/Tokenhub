@@ -1,6 +1,6 @@
-import { adminErrorMessage, api } from "./api.js?v=20260710-csrf-shared-v1";
-import { button, clear, el, statusMessage } from "./dom.js";
-import { columnLabel, formatResourceValue } from "./resources.js";
+import { adminErrorMessage, api } from "./api.js?v=20261028-admin-ops-v1";
+import { button, clear, el, statusMessage } from "./dom.js?v=20260722-modal-close-label-v1";
+import { columnLabel, formatResourceValue } from "./resources.js?v=20261028-admin-ops-v1";
 
 export async function renderDashboard(content, navigate) {
   clear(content);
@@ -133,7 +133,7 @@ function operationsStatusStrip(today, performance, security, periodLabel) {
   const buckets = Array.isArray(performance.buckets) ? performance.buckets : [];
   const latest = buckets[0] || {};
   const failed = numberValue(today.failed_count);
-  const securityEvents = sumRows(security.waf, "event_count") + sumRows(security.desensitization, "event_count");
+  const securityEvents = sumRows(security.desensitization, "event_count");
   const attention = failed > 0 || securityEvents > 0;
   const items = [
     ["统计时间", periodLabel],
@@ -408,11 +408,6 @@ function multimodalChart(rows) {
 
 function securityPanel(data, navigate) {
   return el("div", { className: "stack" }, [
-    el("h3", { text: "防火墙命中" }),
-    simpleTable(data.waf || [], ["action", "event_count"]),
-    button("查看防火墙事件", () => navigate("waf-events"), "secondary"),
-    el("h3", { text: "IP 拦截" }),
-    simpleTable(data.blocked_ips || [], ["client_ip", "event_count"]),
     el("h3", { text: "脱敏事件" }),
     simpleTable(data.desensitization || [], ["action", "match_count", "event_count"]),
     button("查看脱敏事件", () => navigate("desensitization-events"), "secondary"),
@@ -425,12 +420,8 @@ function sumRows(rows, key) {
 }
 
 function securityCharts(data, navigate) {
-  const waf = data.waf || [];
-  const blockedIps = data.blocked_ips || [];
   const desensitization = data.desensitization || [];
   const cards = [
-    ["防火墙命中", sumRows(waf, "event_count"), waf[0]?.action || "规则命中"],
-    ["IP 拦截", sumRows(blockedIps, "event_count"), blockedIps[0]?.client_ip || "访问控制"],
     ["脱敏事件", sumRows(desensitization, "event_count"), desensitization[0]?.action || "内容策略"]
   ];
   return el("div", { className: "chart-stack" }, [
@@ -442,7 +433,6 @@ function securityCharts(data, navigate) {
       ])
     ))),
     el("div", { className: "chart-actions" }, [
-      button("防火墙事件", () => navigate("waf-events"), "secondary"),
       button("脱敏事件", () => navigate("desensitization-events"), "secondary"),
       button("审计日志", () => navigate("audit-logs"), "secondary")
     ])

@@ -35,7 +35,6 @@ function screenErrorMessage(error, fallback = "大屏请求失败，请稍后重
     SCREEN_LINK_EXPIRED: "大屏链接已过期",
     SCREEN_IP_FORBIDDEN: "当前 IP 不在允许范围内",
     SCREEN_UNAUTHENTICATED: "大屏链接无效或会话已失效",
-    SYSTEM_IP_BANNED: "当前 IP 已被系统安全策略阻止",
     CONTENT_FORBIDDEN: "无权访问该大屏内容",
     NOT_FOUND: "大屏接口不存在，请检查部署配置",
     INTERNAL_ERROR: "大屏服务暂时不可用，请稍后重试"
@@ -49,10 +48,10 @@ const SCREEN_BRAND_DEFAULTS = {
   product_name: "白云区智慧政务",
   screen_title: "白云区智慧政务 运营大屏",
   logo_url: "",
-  favicon_url: ""
+  favicon_url: "/screen/assets/brand/favicon.ico"
 };
 const SCREEN_REFRESH_INTERVAL_MS = 10000;
-const SCREEN_VIEW_ORDER = ["overview", "operations", "firewall"];
+const SCREEN_VIEW_ORDER = ["overview", "operations"];
 const SCREEN_VIEW_KEYS = new Set(SCREEN_VIEW_ORDER);
 let refreshTimer = null;
 let clockTimer = null;
@@ -489,10 +488,8 @@ function renderRankingList(rows) {
 
 function securityEvents(data) {
   const source = data?.data || data || {};
-  const waf = Array.isArray(source.waf) ? source.waf.map((item) => ({ ...item, type: "防火墙" })) : [];
-  const blocked = Array.isArray(source.blocked_ips) ? source.blocked_ips.map((item) => ({ ...item, type: "IP" })) : [];
   const desensitization = Array.isArray(source.desensitization) ? source.desensitization.map((item) => ({ ...item, type: "脱敏" })) : [];
-  return [...waf, ...blocked, ...desensitization].slice(0, 8);
+  return desensitization.slice(0, 8);
 }
 
 function renderSecurityPanel(data) {
@@ -512,102 +509,6 @@ function renderSecurityPanel(data) {
     item.append(type, title, meta, count);
     return item;
   }));
-}
-
-function firewallSource(data) {
-  return data?.data || data || {};
-}
-
-function firewallEventCount(rows, field = "event_count") {
-  return (Array.isArray(rows) ? rows : []).reduce((sum, row) => sum + numericValue(row[field]), 0);
-}
-
-function firewallActionLabel(action) {
-  const labels = {
-    block: "拦截",
-    log: "记录",
-    allow: "放行",
-    redact: "脱敏",
-    remove_header: "移除 Header"
-  };
-  return labels[action] || action || "防火墙规则";
-}
-
-function renderFirewallSummary(data) {
-  const source = firewallSource(data);
-  const wafRows = Array.isArray(source.waf) ? source.waf : [];
-  const blockedRows = Array.isArray(source.blocked_ips) ? source.blocked_ips : [];
-  const desensitizationRows = Array.isArray(source.desensitization) ? source.desensitization : [];
-  const desensitizationMatches = desensitizationRows.reduce((sum, row) => sum + numericValue(row.match_count || row.event_count), 0);
-  const cards = [
-    { label: "防火墙命中", value: firewallEventCount(wafRows), hint: "WAF 规则事件" },
-    { label: "拦截来源", value: blockedRows.length, hint: "来源 IP 数" },
-    { label: "拦截请求", value: firewallEventCount(blockedRows), hint: "已阻断请求" },
-    { label: "脱敏命中", value: desensitizationMatches, hint: "敏感内容策略" }
-  ];
-  $("firewall-summary").replaceChildren(...cards.map((card, index) => {
-    const node = document.createElement("article");
-    node.className = `firewall-summary-card accent-${index % 3}`;
-    node.append(
-      createText("span", "firewall-summary-label", card.label),
-      createText("strong", "firewall-summary-value", formatNumber(card.value)),
-      createText("small", "firewall-summary-hint", card.hint)
-    );
-    return node;
-  }));
-}
-
-function renderFirewallRank(hostId, rows, nameForRow, emptyMessage) {
-  const host = $(hostId);
-  const data = Array.isArray(rows) ? rows.slice(0, 8) : [];
-  if (data.length === 0) {
-    renderEmpty(host, emptyMessage);
-    return;
-  }
-  const max = Math.max(1, ...data.map((row) => numericValue(row.event_count || row.match_count || row.count)));
-  host.replaceChildren(...data.map((row, index) => {
-    const count = numericValue(row.event_count || row.match_count || row.count);
-    const item = document.createElement("div");
-    item.className = "firewall-rank-row";
-    const progress = document.createElement("span");
-    progress.className = "firewall-rank-fill";
-    progress.style.width = `${Math.max(6, Math.round(count / max * 100))}%`;
-    item.append(
-      createText("span", "firewall-rank-index", String(index + 1).padStart(2, "0")),
-      createText("strong", "firewall-rank-name", nameForRow(row, index)),
-      createText("span", "firewall-rank-count", formatNumber(count)),
-      progress
-    );
-    return item;
-  }));
-}
-
-function renderFirewallEvents(data) {
-  const host = $("firewall-events");
-  const events = securityEvents(data).filter((event) => event.type === "防火墙" || event.type === "IP").slice(0, 10);
-  if (events.length === 0) {
-    renderEmpty(host, "暂无防火墙事件");
-    return;
-  }
-  host.replaceChildren(...events.map((event) => {
-    const item = document.createElement("div");
-    item.className = "firewall-event-row";
-    item.append(
-      createText("span", "firewall-event-type", event.type),
-      createText("strong", "firewall-event-title", event.client_ip || firewallActionLabel(event.action)),
-      createText("small", "firewall-event-meta", event.rule_name || event.pattern || event.target || "系统防火墙策略"),
-      createText("span", "firewall-event-count", formatNumber(event.event_count || event.match_count || event.count))
-    );
-    return item;
-  }));
-}
-
-function renderFirewallScreen(data) {
-  const source = firewallSource(data);
-  renderFirewallSummary(source);
-  renderFirewallRank("firewall-rules", source.waf, (row) => firewallActionLabel(row.action), "暂无防火墙命中");
-  renderFirewallRank("firewall-sources", source.blocked_ips, (row) => row.client_ip || "未知来源", "暂无来源 IP 拦截");
-  renderFirewallEvents(source);
 }
 
 function renderPerformancePanel(data) {
@@ -644,7 +545,6 @@ async function render() {
   renderTrendBars(trends.data || trends || []);
   renderRankingList(rankings.data || rankings || []);
   renderSecurityPanel(security);
-  renderFirewallScreen(security);
   renderPerformancePanel(performance);
   setStatus("已更新", "ready");
 }

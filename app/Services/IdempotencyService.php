@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace TokenHub\Services;
 
+use TokenHub\Http\Controllers\GatewayController;
 use Throwable;
 use TokenHub\Support\App;
 use TokenHub\Support\Request;
@@ -17,10 +18,7 @@ final class IdempotencyService
             return false;
         }
 
-        return !in_array($request->path, [
-            '/v1/chat/completions', '/v1/responses', '/v1/embeddings', '/v1/messages', '/v1/messages/count_tokens',
-            '/v1/audio/transcriptions', '/v1/audio/speech', '/v1/images/generations', '/v1/videos/generations',
-        ], true);
+        return !in_array($request->path, GatewayController::ENDPOINTS, true);
     }
 
     public function requestHash(Request $request): string

@@ -101,14 +101,6 @@ final class DashboardService
     {
         [$where, $bindings] = $this->timeWhere($query, 'created_at');
         return [
-            'waf' => App::db()->select(
-                "SELECT action, COUNT(*) event_count FROM waf_events{$where} GROUP BY action ORDER BY event_count DESC LIMIT 20",
-                $bindings
-            ),
-            'blocked_ips' => App::db()->select(
-                "SELECT client_ip, COUNT(*) event_count FROM waf_events{$this->appendWhere($where, 'action = ?')} GROUP BY client_ip ORDER BY event_count DESC LIMIT 20",
-                [...$bindings, 'block']
-            ),
             'desensitization' => App::db()->select(
                 "SELECT action, SUM(match_count) match_count, COUNT(*) event_count FROM desensitization_events{$where} GROUP BY action ORDER BY event_count DESC LIMIT 20",
                 $bindings
@@ -123,11 +115,19 @@ final class DashboardService
     public function performance(array $query): array
     {
         [$where, $bindings] = $this->aggregateWhere($query, 'hour', App::context()->adminUser());
+        // p95/p99 need the histogram columns; they were not selected before,
+        // which made every percentile read 0.
+        $bucketColumns = ['latency_bucket_100', 'latency_bucket_300', 'latency_bucket_1000', 'latency_bucket_3000', 'latency_bucket_over_3000'];
+        if (\TokenHub\Support\SchemaInspector::hasColumn('usage_aggregates_hour', 'latency_bucket_over_120000')) {
+            array_push($bucketColumns, 'latency_bucket_10000', 'latency_bucket_30000', 'latency_bucket_120000', 'latency_bucket_over_120000');
+        }
+        $bucketSql = implode(', ', array_map(static fn (string $column): string => "SUM({$column}) {$column}", $bucketColumns));
         $rows = App::db()->select(
             "SELECT bucket_at,
                     SUM(request_count) request_count,
                     SUM(failed_count) failed_count,
-                    SUM(latency_ms_sum) latency_ms_sum
+                    SUM(latency_ms_sum) latency_ms_sum,
+                    {$bucketSql}
              FROM usage_aggregates_hour{$where}
              GROUP BY bucket_at
              ORDER BY bucket_at DESC
@@ -336,11 +336,6 @@ final class DashboardService
         return $conditions === [] ? ['', []] : [' WHERE ' . implode(' AND ', $conditions), $bindings];
     }
 
-    private function appendWhere(string $where, string $condition): string
-    {
-        return trim($where) === '' ? " WHERE {$condition}" : "{$where} AND {$condition}";
-    }
-
     private function tokenSummary(array $query, string $from): array
     {
         [$where, $bindings] = $this->aggregateWhere(['from' => $from, ...$query], 'day', App::context()->adminUser());
@@ -543,8 +538,21 @@ final class DashboardService
             300 => (int) ($row['latency_bucket_300'] ?? 0),
             1000 => (int) ($row['latency_bucket_1000'] ?? 0),
             3000 => (int) ($row['latency_bucket_3000'] ?? 0),
-            3001 => (int) ($row['latency_bucket_over_3000'] ?? 0),
         ];
+        $extended = isset($row['latency_bucket_10000']) || isset($row['latency_bucket_over_120000']);
+        if ($extended) {
+            // Long requests (streams) are split instead of all reading "3001 ms".
+            // Rows recorded before the extended buckets existed are only in
+            // over_3000; they are attributed to the 10 s bucket.
+            $long = (int) ($row['latency_bucket_10000'] ?? 0) + (int) ($row['latency_bucket_30000'] ?? 0) + (int) ($row['latency_bucket_120000'] ?? 0) + (int) ($row['latency_bucket_over_120000'] ?? 0);
+            $legacyLong = max(0, (int) ($row['latency_bucket_over_3000'] ?? 0) - $long);
+            $buckets[10000] = (int) ($row['latency_bucket_10000'] ?? 0) + $legacyLong;
+            $buckets[30000] = (int) ($row['latency_bucket_30000'] ?? 0);
+            $buckets[120000] = (int) ($row['latency_bucket_120000'] ?? 0);
+            $buckets[120001] = (int) ($row['latency_bucket_over_120000'] ?? 0);
+        } else {
+            $buckets[3001] = (int) ($row['latency_bucket_over_3000'] ?? 0);
+        }
         $total = array_sum($buckets);
         if ($total <= 0) {
             return 0;
@@ -557,7 +565,7 @@ final class DashboardService
                 return $threshold;
             }
         }
-        return 3001;
+        return (int) array_key_last($buckets);
     }
 
     /**

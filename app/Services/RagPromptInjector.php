@@ -11,14 +11,24 @@ final class RagPromptInjector
      * @param list<array<string, mixed>> $sources
      * @return array<string, mixed>
      */
-    public function inject(array $payload, array $sources): array
+    public function inject(array $payload, array $sources, ?string $kind = null, ?int $maxChars = null): array
     {
         unset($payload['rag']);
         if ($sources === []) {
             return $payload;
         }
 
-        $context = $this->contextBlock($sources);
+        $context = $this->contextBlock($sources, $maxChars);
+        if ($kind === 'anthropic') {
+            return $this->injectAnthropicSystem($payload, $context);
+        }
+        if ($kind === 'responses') {
+            // Responses keeps system guidance in "instructions"; a system role
+            // item inside input is not accepted by every compatible upstream.
+            $instructions = trim((string) ($payload['instructions'] ?? ''));
+            $payload['instructions'] = $instructions === '' ? $context : $instructions . "\n\n" . $context;
+            return $payload;
+        }
         if (isset($payload['messages']) && is_array($payload['messages'])) {
             $payload['messages'] = $this->injectMessages($payload['messages'], $context);
             return $payload;
@@ -76,10 +86,43 @@ final class RagPromptInjector
     }
 
     /**
+     * Anthropic Messages has no system role inside messages; context goes to
+     * the top-level "system" field (string or list of text blocks).
+     *
+     * @param array<string, mixed> $payload
+     * @return array<string, mixed>
+     */
+    private function injectAnthropicSystem(array $payload, string $context): array
+    {
+        $system = $payload['system'] ?? null;
+        if (is_array($system)) {
+            $system[] = ['type' => 'text', 'text' => $context];
+            $payload['system'] = $system;
+        } else {
+            $existing = trim((string) ($system ?? ''));
+            $payload['system'] = $existing === '' ? $context : $existing . "\n\n" . $context;
+        }
+
+        return $payload;
+    }
+
+    /**
+     * Sources truncated by the last inject() because of the context budget.
+     */
+    public function truncatedSources(): int
+    {
+        return $this->truncated;
+    }
+
+    private int $truncated = 0;
+
+    /**
      * @param list<array<string, mixed>> $sources
      */
-    private function contextBlock(array $sources): string
+    private function contextBlock(array $sources, ?int $maxChars = null): string
     {
+        $maxChars ??= (int) env_value('RAG_CONTEXT_MAX_CHARS', 12000);
+        $this->truncated = 0;
         $lines = [
             'Use the following TokenHub knowledge base context when it is relevant. If the context is insufficient or conflicts with the user request, say so instead of inventing facts.',
             'Cite source_id values when answering factual questions.',
@@ -107,7 +150,17 @@ final class RagPromptInjector
                 $content = '[image source] ' . $content . ($details === [] ? '' : ' (' . implode('; ', $details) . ')');
             }
             $prefix = $title !== '' ? "{$sourceId} {$title}" : $sourceId;
-            $lines[] = '[' . $prefix . '] ' . $content;
+            $line = '[' . $prefix . '] ' . $content;
+            $used = strlen(implode("\n", $lines));
+            if ($maxChars > 0 && $used + strlen($line) + 1 > $maxChars) {
+                $remaining = $maxChars - $used - 1;
+                if ($remaining > 200) {
+                    $lines[] = mb_strcut($line, 0, $remaining) . ' [truncated]';
+                }
+                $this->truncated++;
+                continue;
+            }
+            $lines[] = $line;
         }
 
         return implode("\n", $lines);

@@ -89,25 +89,4 @@ assert_same(245, $caddyRows[0]['latency_ms'], 'Caddy duration seconds should map
 assert_true(isset($caddyRows[0]['timestamp']), 'Caddy ts should map to timestamp.');
 assert_true(!str_contains(json_encode($caddyRows[0], JSON_UNESCAPED_SLASHES), 'Bearer secret'), 'Caddy Authorization header should be removed from normalized query results.');
 
-file_put_contents($root . DIRECTORY_SEPARATOR . 'caddy-security.jsonl', json_encode([
-    'ts' => 1783500001.0,
-    'level' => 'info',
-    'msg' => 'handled request',
-    'request' => ['remote_ip' => '198.51.100.7', 'method' => 'TRACE', 'uri' => '/admin'],
-    'status' => 405,
-    'duration' => 0.01,
-    'vars' => ['waf_rule' => 'bad_method', 'waf_action' => 'block'],
-], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) . PHP_EOL . json_encode([
-    'ts' => 1783500002.0,
-    'level' => 'info',
-    'msg' => 'handled request',
-    'request' => ['remote_ip' => '198.51.100.8', 'method' => 'GET', 'uri' => '/.env'],
-    'status' => 403,
-    'duration' => 0.02,
-    'vars' => ['waf_rule' => 'high_risk_path', 'waf_action' => 'block'],
-], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) . PHP_EOL);
-
-$securityRows = $service->query(['log_type' => 'caddy-security', 'security_event' => 'bad_method']);
-assert_same(1, count($securityRows), 'Log query should filter caddy-security rows by security_event.');
-assert_same('bad_method', $securityRows[0]['context']['waf_rule'], 'Security event filter should expose the WAF rule in context.');
-assert_same('block', $securityRows[0]['context']['waf_action'], 'Security event filter should expose the WAF action in context.');
+assert_true(!in_array('caddy-security', LogService::LOG_TYPES, true), 'The WAF caddy-security log type should be removed.');

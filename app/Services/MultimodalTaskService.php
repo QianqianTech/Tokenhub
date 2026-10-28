@@ -10,7 +10,7 @@ use TokenHub\Support\Crypto;
 
 final class MultimodalTaskService
 {
-    private const TASK_CAPABILITIES = ['asr', 'tts', 'image_generation', 'video_generation'];
+    private const TASK_CAPABILITIES = ['asr', 'tts', 'image_generation', 'video_generation', 'music_generation'];
 
     public function isTaskCapability(string $capability): bool
     {
@@ -91,6 +91,58 @@ final class MultimodalTaskService
     }
 
     /**
+     * Terminal-state guarantee for asynchronous tasks.
+     *
+     * - queued/processing without an upstream task id after
+     *   TASK_STALE_MINUTES (default 30): nothing will ever execute it ->
+     *   failed / TASK_EXECUTOR_MISSING.
+     * - any non-terminal task older than TASK_MAX_AGE_HOURS (default 24) ->
+     *   failed / TASK_TIMEOUT.
+     *
+     * @return array{executor_missing: int, timed_out: int}
+     */
+    public function expireStale(): array
+    {
+        $staleMinutes = max(1, (int) env_value('TASK_STALE_MINUTES', 30));
+        $maxHours = max(1, (int) env_value('TASK_MAX_AGE_HOURS', 24));
+        $missing = App::db()->execute(
+            'UPDATE multimodal_tasks SET status = "failed", error_code = "TASK_EXECUTOR_MISSING", error_message = "No execution backend picked up the task", finished_at = NOW()
+             WHERE status IN ("queued","processing") AND (provider_task_id IS NULL OR provider_task_id = "") AND created_at <= DATE_SUB(NOW(), INTERVAL ? MINUTE)',
+            [$staleMinutes]
+        );
+        $timedOut = App::db()->execute(
+            'UPDATE multimodal_tasks SET status = "failed", error_code = "TASK_TIMEOUT", error_message = "Task did not finish within the maximum age", finished_at = NOW()
+             WHERE status IN ("queued","processing") AND created_at <= DATE_SUB(NOW(), INTERVAL ? HOUR)',
+            [$maxHours]
+        );
+
+        return ['executor_missing' => $missing, 'timed_out' => $timedOut];
+    }
+
+    /**
+     * Polls upstream for processing tasks (worker job "tasks.poll").
+     */
+    public function pollProcessing(int $limit = 20): int
+    {
+        $rows = App::db()->select(
+            'SELECT * FROM multimodal_tasks WHERE status = "processing" AND provider_task_id IS NOT NULL AND provider_task_id <> "" AND updated_at <= DATE_SUB(NOW(), INTERVAL 15 SECOND) ORDER BY updated_at ASC LIMIT ' . max(1, min(200, $limit))
+        );
+        $gateway = new GatewayService();
+        $refreshed = 0;
+        foreach ($rows as $row) {
+            try {
+                if (($gateway->refreshTaskRow($row)['refreshed'] ?? false) === true) {
+                    $refreshed++;
+                }
+            } catch (\Throwable $throwable) {
+                App::logger()->warning('worker', 'task poll failed', ['task_id' => $row['task_id'] ?? null, 'error' => $throwable->getMessage()]);
+            }
+        }
+
+        return $refreshed;
+    }
+
+    /**
      * @param array<string, mixed>|null $apiKey
      * @return array<string, mixed>|null
      */
@@ -115,23 +167,7 @@ final class MultimodalTaskService
      */
     public function canAccess(array $task, ?array $apiKey): bool
     {
-        if ($apiKey === null) {
-            return false;
-        }
-
-        if (($task['api_key_id'] ?? null) !== null && (int) $task['api_key_id'] === (int) ($apiKey['id'] ?? 0)) {
-            return true;
-        }
-
-        if (($task['user_id'] ?? null) !== null && (int) $task['user_id'] === (int) ($apiKey['user_id'] ?? 0)) {
-            return true;
-        }
-
-        if (($task['department_id'] ?? null) !== null && (int) $task['department_id'] === (int) ($apiKey['department_id'] ?? 0)) {
-            return true;
-        }
-
-        return false;
+        return (new AssetAccessPolicy())->allows($task, $apiKey);
     }
 
     /**

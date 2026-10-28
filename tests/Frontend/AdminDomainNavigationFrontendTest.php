@@ -10,8 +10,7 @@ $app = file_get_contents(__DIR__ . '/../../public/admin/assets/js/app.js') ?: ''
 $css = file_get_contents(__DIR__ . '/../../public/admin/assets/css/app.css') ?: '';
 $adminHtml = file_get_contents(__DIR__ . '/../../public/admin/index.html') ?: '';
 
-assert_true(str_contains($domains, 'key: "waf"') && str_contains($domains, 'label: "WAF 防火墙"'), 'Admin navigation should expose WAF as an independent domain.');
-assert_true(str_contains($domains, '"waf-overview"') && str_contains($domains, '"waf-ip-bans"'), 'WAF domain should include overview and IP ban tabs.');
+assert_true(!str_contains($domains, 'key: "waf"') && !str_contains($domains, '"waf-'), 'Admin navigation should not expose the removed WAF domain.');
 assert_true(str_contains($domains, '"operations-status"'), 'System operations should expose an operations-status tab.');
 assert_true(str_contains($domains, '"rag-build", "rag-retrieval-lab", "rag-quality", "rag-operations"'), 'RAG domain should use the current four workspace tabs.');
 assert_true(str_contains($app, 'hashchange') && str_contains($domains, 'location.hash'), 'Admin navigation should support refreshable hash deep links.');
@@ -27,8 +26,12 @@ assert_true(
     (bool) preg_match('/\.domain-tab\.active\s*\{[^}]*background:\s*color-mix\(in srgb, var\(--primary\) 12%, var\(--surface\)\);[^}]*color:\s*var\(--primary\);/s', $css),
     'Active domain tabs should keep readable primary-colored text on a themed light background.'
 );
+// Derive the current cache version from the entry module instead of pinning a date.
+preg_match('/app\.js\?v=(\d{8}-[A-Za-z0-9._-]+)/', $adminHtml, $entryVersionMatch);
+$adminAssetVersion = $entryVersionMatch[1] ?? '';
+assert_true($adminAssetVersion !== '', 'Admin HTML should load a cache-busted entry module.');
 assert_true(
-    (bool) preg_match('/app\.css\?v=20260710-[A-Za-z0-9._-]+/', $adminHtml),
-    'Admin HTML should load the current cache-busted stylesheet.'
+    str_contains($adminHtml, 'app.css?v=' . $adminAssetVersion . '"'),
+    'Admin HTML should load the current cache-busted stylesheet with the same version as the entry module.'
 );
 assert_true(str_contains($css, '.nav-section.active > .nav-section-toggle'), 'The active business domain should have a clear sidebar selection style.');

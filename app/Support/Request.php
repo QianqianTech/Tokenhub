@@ -77,6 +77,30 @@ final class Request
         return null;
     }
 
+    /**
+     * API key from the header each SDK family uses: Authorization: Bearer
+     * (OpenAI), x-api-key (Anthropic SDK / Claude Code with ANTHROPIC_API_KEY),
+     * x-goog-api-key (Google GenAI SDK); ?key= only on Gemini-native paths.
+     */
+    public function apiKeyToken(): ?string
+    {
+        $bearer = $this->bearerToken();
+        if ($bearer !== null && $bearer !== '') {
+            return $bearer;
+        }
+        foreach (['x-api-key', 'x-goog-api-key'] as $header) {
+            $value = trim((string) $this->header($header, ''));
+            if ($value !== '') {
+                return $value;
+            }
+        }
+        if (str_starts_with($this->path, '/v1beta/') && is_string($this->query['key'] ?? null) && $this->query['key'] !== '') {
+            return (string) $this->query['key'];
+        }
+
+        return null;
+    }
+
     public function clientIp(): string
     {
         return $this->ip();

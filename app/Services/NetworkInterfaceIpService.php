@@ -32,46 +32,6 @@ final class NetworkInterfaceIpService
     /**
      * @return list<string>
      */
-    public function localAccessIps(): array
-    {
-        $ips = $this->candidates()['ips'];
-        if (!$this->isContainerRuntime()) {
-            return $ips;
-        }
-
-        $routeOutput = @file_get_contents('/proc/net/route');
-        if (is_string($routeOutput)) {
-            $ips = array_merge($ips, $this->parseProcNetRouteOutput($routeOutput));
-        }
-
-        return array_values(array_unique($ips));
-    }
-
-    /**
-     * @return list<string>
-     */
-    public function parseProcNetRouteOutput(string $output): array
-    {
-        $ips = [];
-        foreach (preg_split('/\r?\n/', trim($output)) ?: [] as $line) {
-            $columns = preg_split('/\s+/', trim($line)) ?: [];
-            if (($columns[1] ?? '') !== '00000000' || !preg_match('/^[0-9A-Fa-f]{8}$/', (string) ($columns[2] ?? ''))) {
-                continue;
-            }
-
-            $octets = array_reverse(str_split((string) $columns[2], 2));
-            $ip = implode('.', array_map('hexdec', $octets));
-            if ($this->isPrivateIpv4($ip)) {
-                $ips[] = $ip;
-            }
-        }
-
-        return array_values(array_unique($ips));
-    }
-
-    /**
-     * @return list<string>
-     */
     public function parseLinuxIpOutput(string $output): array
     {
         $ips = [];
@@ -197,16 +157,6 @@ final class NetworkInterfaceIpService
         }
 
         return !preg_match('/^172\.(1[7-9]|2\d|3[0-1])\./', $ip);
-    }
-
-    private function isContainerRuntime(): bool
-    {
-        if (is_file('/.dockerenv')) {
-            return true;
-        }
-
-        $cgroup = @file_get_contents('/proc/1/cgroup');
-        return is_string($cgroup) && preg_match('/docker|containerd|kubepods/i', $cgroup) === 1;
     }
 
     private function command(string $command): ?string

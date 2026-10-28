@@ -23,8 +23,7 @@ assert_true(str_contains($source, 'function multimodal('), 'Dashboard multimodal
 assert_true(str_contains($source, 'PermissionService'), 'Dashboard aggregate queries should apply actor permission scope.');
 assert_true(str_contains($source, 'p95_latency_ms'), 'Dashboard performance metric should expose P95 latency.');
 assert_true(str_contains($source, 'p99_latency_ms'), 'Dashboard performance metric should expose P99 latency.');
-assert_true(str_contains($source, 'blocked_ips'), 'Dashboard security metric should expose blocked IP data.');
-assert_true(str_contains($source, 'client_ip'), 'Dashboard security metric should use client IP data.');
+assert_true(!str_contains($source, 'waf_events'), 'Dashboard security metric should not query removed WAF events.');
 assert_true(str_contains($schema, 'latency_bucket_100'), 'Aggregate schema should store latency buckets.');
 assert_true(str_contains($workerSource, 'new UsageService())->write'), 'Worker usage aggregation should delegate to UsageService.');
 assert_true(str_contains($usageSource, 'latencyBuckets'), 'Usage service aggregation should maintain latency buckets.');

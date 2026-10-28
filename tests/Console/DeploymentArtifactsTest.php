@@ -26,7 +26,7 @@ foreach (['CONCURRENCY', 'REQUESTS', 'STREAM_REQUESTS', 'TIMEOUT_SECONDS', 'chec
 }
 
 $security = file_get_contents($root . '/scripts/security-smoke.sh');
-foreach (['ADMIN_PASSWORD', 'content-security-policy', 'set-cookie', 'csrf', 'LOG_PATH', 'assert_secret_absent', 'EXPECT_WAF_QUERY_BLOCK', 'EXPECT_ADMIN_IP_BLOCK', 'X-Forwarded-For'] as $needle) {
+foreach (['ADMIN_PASSWORD', 'content-security-policy', 'set-cookie', 'csrf', 'LOG_PATH', 'assert_secret_absent', 'EXPECT_QUERY_BLOCK', 'EXPECT_ADMIN_IP_BLOCK', 'X-Forwarded-For'] as $needle) {
     assert_true(str_contains($security, $needle), 'security-smoke.sh should include ' . $needle . '.');
 }
 
@@ -36,7 +36,7 @@ foreach (['/v1/responses', '/v1/embeddings', '/v1/messages', '/screen/', 'stream
 }
 
 $caddyfile = file_get_contents($root . '/Caddyfile.example');
-foreach (['TOKENHUB_PHP_FASTCGI', 'TOKENHUB_WAF_FRAGMENT', 'TOKENHUB_LOG_PATH', 'Strict-Transport-Security', 'request>headers>Authorization delete'] as $needle) {
+foreach (['TOKENHUB_PHP_FASTCGI', 'TOKENHUB_LOG_PATH', 'Strict-Transport-Security', 'request>headers>Authorization delete'] as $needle) {
     assert_true(str_contains($caddyfile, $needle), 'Caddyfile.example should include ' . $needle . '.');
 }
 

@@ -1,7 +1,7 @@
 ﻿const roleAccess = {
   user: ["dashboard", "usage-records", "multimodal-tasks", "media-assets", "usage-contents", "content-archive", "export-tasks"],
   admin: ["dashboard", "admin-chat-sessions", "departments", "users", "api-keys", "api-key-model-quotas", "quota-policies", "usage-records", "multimodal-tasks", "media-assets", "rag-build", "rag-retrieval-lab", "rag-quality", "rag-operations", "rag-dashboard", "rag-template-center", "rag-upload-workbench", "rag-upload-detail", "rag-knowledge-bases", "rag-vector-datasets", "rag-import-templates", "rag-uploads", "rag-image-preview", "rag-vectorization-metrics", "rag-retrieval-evaluation", "rag-image-assets", "rag-embedding-jobs", "rag-evaluation", "rag-answer-feedback", "rag-correction-tasks", "rag-eval-cases", "usage-contents", "content-archive", "export-tasks", "logs", "audit-logs"],
-  super_admin: ["dashboard", "admin-chat-sessions", "departments", "users", "admin-users", "providers", "models", "model-prices", "api-keys", "api-key-model-quotas", "quota-policies", "quota-bindings", "usage-records", "multimodal-tasks", "media-assets", "rag-build", "rag-retrieval-lab", "rag-quality", "rag-operations", "rag-dashboard", "rag-template-center", "rag-upload-workbench", "rag-upload-detail", "rag-knowledge-bases", "rag-knowledge-base-bindings", "rag-vector-datasets", "rag-dataset-bindings", "rag-vector-configs", "rag-import-templates", "rag-uploads", "rag-image-preview", "rag-vectorization-metrics", "rag-retrieval-evaluation", "rag-upload-preview-items", "rag-documents", "rag-chunks", "rag-image-assets", "rag-embedding-jobs", "rag-vector-records", "rag-retrieval-logs", "rag-evaluation", "rag-answer-feedback", "rag-correction-tasks", "rag-retention-policies", "rag-eval-cases", "rag-eval-runs", "rag-eval-results", "usage-contents", "content-archive", "export-tasks", "dashboard-share-links", "dashboard-share-access-logs", "waf-rules", "waf-rule-versions", "waf-events", "desensitization-policies", "desensitization-events", "log-retention-policies", "log-archive-files", "logs", "alert-events", "audit-logs", "content-retention-policy", "settings-center", "system-settings"]
+  super_admin: ["dashboard", "admin-chat-sessions", "departments", "users", "admin-users", "providers", "models", "model-prices", "api-keys", "api-key-model-quotas", "quota-policies", "quota-bindings", "usage-records", "multimodal-tasks", "media-assets", "rag-build", "rag-retrieval-lab", "rag-quality", "rag-operations", "rag-dashboard", "rag-template-center", "rag-upload-workbench", "rag-upload-detail", "rag-knowledge-bases", "rag-knowledge-base-bindings", "rag-vector-datasets", "rag-dataset-bindings", "rag-vector-configs", "rag-import-templates", "rag-uploads", "rag-image-preview", "rag-vectorization-metrics", "rag-retrieval-evaluation", "rag-upload-preview-items", "rag-documents", "rag-chunks", "rag-image-assets", "rag-embedding-jobs", "rag-vector-records", "rag-retrieval-logs", "rag-evaluation", "rag-answer-feedback", "rag-correction-tasks", "rag-retention-policies", "rag-eval-cases", "rag-eval-runs", "rag-eval-results", "usage-contents", "content-archive", "export-tasks", "dashboard-share-links", "dashboard-share-access-logs", "desensitization-policies", "desensitization-events", "log-retention-policies", "log-archive-files", "logs", "alert-events", "audit-logs", "content-retention-policy", "settings-center", "system-settings"]
 };
 
 roleAccess.super_admin.push("permission-config");
@@ -36,7 +36,7 @@ const resourceCapability = (resourceKey) => {
   if (["usage-records", "multimodal-tasks", "media-assets"].includes(resourceKey)) return "usage.read";
   if (["usage-contents", "content-archive", "export-tasks"].includes(resourceKey)) return "content.read";
   if (["admin-chat-sessions", "dashboard-share-links", "dashboard-share-access-logs"].includes(resourceKey)) return "operations.read";
-  if (resourceKey.startsWith("waf-") || resourceKey.startsWith("desensitization-")) return "security.read";
+  if (resourceKey.startsWith("desensitization-")) return "security.read";
   if (["logs", "log-retention-policies", "log-archive-files", "alert-events", "audit-logs"].includes(resourceKey)) return "logs.read";
   if (resourceKey.includes("settings") || resourceKey === "content-retention-policy") return "system.read";
   return null;
@@ -59,6 +59,10 @@ export const valueLabels = {
     global: "全局",
     departments: "授权部门及子部门"
   },
+  disabled_by: {
+    admin: "管理员",
+    management: "智能体（管理 API）"
+  },
   status: {
     "active": "启用",
     "disabled": "停用",
@@ -76,11 +80,15 @@ export const valueLabels = {
   capability: {
     "text_generation": "文本生成",
     "vision_understanding": "视觉理解",
+    "video_understanding": "视频理解",
+    "audio_understanding": "音频理解",
     "embedding": "向量检索",
     "asr": "语音识别",
     "tts": "语音合成",
     "image_generation": "文生图",
-    "video_generation": "文生视频"
+    "video_generation": "文生视频",
+    "rerank": "检索重排",
+    "moderation": "内容审核"
   },
   protocol: {
     "openai": "OpenAI",
@@ -157,7 +165,7 @@ export function formatResourceValue(column, value) {
 
 const option = (column, value) => [value, valueLabel(column, value)];
 const statusOptions = [["", "全部状态"], ...["active", "disabled", "queued", "processing", "succeeded", "failed", "success", "blocked", "timeout"].map((value) => option("status", value))];
-const capabilityOptions = [["", "全部能力"], ...["text_generation", "vision_understanding", "embedding", "asr", "tts", "image_generation", "video_generation"].map((value) => option("capability", value))];
+const capabilityOptions = [["", "全部能力"], ...["text_generation", "vision_understanding", "video_understanding", "audio_understanding", "embedding", "asr", "tts", "image_generation", "video_generation", "rerank", "moderation", "music_generation", "realtime"].map((value) => option("capability", value))];
 
 export const columnLabels = {
   "id": "编号",
@@ -205,6 +213,8 @@ export const columnLabels = {
   "key_suffix": "密钥后缀",
   "expires_at": "过期时间",
   "last_used_at": "最后使用时间",
+  "disabled_by": "停用来源",
+  "gateway_support": "网关支持",
   "period": "周期",
   "request_limit": "请求限制",
   "input_token_limit": "输入 Token 限制",
@@ -261,13 +271,10 @@ export const columnLabels = {
   "event_type": "事件类型",
   "client_ip": "客户端 IP",
   "reason": "原因",
-  "rule_code": "规则编码",
   "scope": "范围",
   "action": "动作",
   "priority": "优先级",
   "description": "说明",
-  "version_code": "版本编码",
-  "published_by": "发布人",
   "method": "方法",
   "match_count": "命中数量",
   "log_type": "日志类型",
@@ -304,7 +311,7 @@ export const navigationSections = [
   { key: "models", label: "模型", symbol: "模", items: ["providers", "models", "model-prices"] },
   { key: "access", label: "访问", symbol: "钥", items: ["api-keys", "api-key-model-quotas", "quota-policies", "quota-bindings"] },
   { key: "usage", label: "用量", symbol: "量", items: ["usage-records", "multimodal-tasks", "media-assets"] },
-  { key: "security", label: "安全", symbol: "安", items: ["waf-rules", "waf-rule-versions", "waf-events", "desensitization-policies", "desensitization-events"] },
+  { key: "security", label: "安全", symbol: "安", items: ["desensitization-policies", "desensitization-events"] },
   { key: "logs", label: "日志", symbol: "志", items: ["usage-contents", "content-archive", "export-tasks", "logs", "log-retention-policies", "log-archive-files", "alert-events", "audit-logs"] },
   { key: "system", label: "\u7cfb\u7edf\u8bbe\u7f6e", symbol: "设", items: ["content-retention-policy", "settings-center", "admin-users", "permission-config", "system-settings"] }
 ];
@@ -352,7 +359,7 @@ export const resources = {
     columns: ["id", "name", "protocol", "base_url", "status", "timeout_ms", "retry_count", "created_at"],
     form: [
       { name: "name", label: "名称" },
-      { name: "protocol", label: "协议", type: "select", options: ["openai", "anthropic", "native"].map((value) => option("protocol", value)) },
+      { name: "protocol", label: "协议", type: "select", options: ["openai", "anthropic", "gemini", "native"].map((value) => option("protocol", value)) },
       { name: "base_url", label: "基础地址" },
       { name: "secret", label: "密钥", type: "password", optional: true },
       { name: "timeout_ms", label: "超时毫秒", type: "number", optional: true },
@@ -362,7 +369,7 @@ export const resources = {
   },
   "models": {
     label: "模型", group: "模型",
-    columns: ["id", "provider_name", "name", "external_name", "capability", "context_length", "status", "route_priority"],
+    columns: ["id", "provider_name", "name", "external_name", "capability", "context_length", "status", "route_priority", "gateway_support"],
     form: [
       { name: "provider_id", label: "厂商 ID", type: "number" },
       { name: "name", label: "内部模型名" },
@@ -384,6 +391,10 @@ export const resources = {
       { name: "image_price", label: "图片单价", optional: true },
       { name: "video_second_price", label: "视频秒单价", optional: true },
       { name: "request_price", label: "请求单价", optional: true },
+      { name: "cache_read_token_price", label: "缓存命中 Token 单价", optional: true },
+      { name: "cache_write_token_price", label: "缓存写入 Token 单价", optional: true },
+      { name: "reasoning_token_price", label: "推理 Token 单价", optional: true },
+      { name: "pricing_rules", label: "计价规则 JSON（分时段/分档/分辨率/上游成本，可选）", type: "json", optional: true },
       { name: "currency", label: "币种", optional: true },
       { name: "effective_at", label: "生效时间", optional: true }
     ]
@@ -391,7 +402,7 @@ export const resources = {
   "api-keys": {
     label: "API 密钥", group: "访问",
     columns: ["id", "name", "created_at", "key", "status"],
-    detailColumns: ["id", "name", "user_id", "department_id", "key_prefix", "key_suffix", "status", "request_count", "success_count", "failed_count", "input_tokens", "output_tokens", "cache_read_tokens", "cache_write_tokens", "cache_tokens", "total_tokens", "total_cost", "expires_at", "last_used_at", "created_at"],
+    detailColumns: ["id", "name", "user_id", "department_id", "key_prefix", "key_suffix", "status", "disabled_by", "request_count", "success_count", "failed_count", "input_tokens", "output_tokens", "cache_read_tokens", "cache_write_tokens", "cache_tokens", "total_tokens", "total_cost", "expires_at", "last_used_at", "created_at"],
     oneTimeSecret: true,
     form: [
       { name: "department_id", label: "部门", type: "select", coerce: "number", reference: "departments", emptyOption: "请选择部门" },
@@ -447,9 +458,6 @@ export const resources = {
   "export-tasks": { label: "导出任务", group: "日志", readOnly: true, columns: ["id", "export_id", "export_type", "status", "file_path", "error_code", "expires_at", "created_at"] },
   "dashboard-share-links": { label: "大屏分享", group: "运营", columns: ["id", "share_code", "name", "username", "scope_type", "scope_ids", "allowed_metrics", "allow_drilldown", "allowed_ip_cidrs", "expires_at", "status"], form: [{ name: "share_code", label: "链接码", optional: true }, { name: "name", label: "名称" }, { name: "scope_type", label: "范围", type: "select", options: ["global", "department", "user", "api_key"].map((value) => option("scope_type", value)) }, { name: "scope_ids", label: "范围 ID 列表 JSON", type: "json", optional: true }, { name: "allowed_metrics", label: "允许指标列表 JSON", type: "json", optional: true }, { name: "allow_drilldown", label: "允许下钻", type: "select", options: [[0, "否"], [1, "是"]] }, { name: "allowed_ip_cidrs", label: "允许 IP 网段（每行一个，留空不限）", type: "cidr-list", optional: true }, { name: "expires_at", label: "访问截止时间", optional: true }, { name: "status", label: "状态", type: "select", options: ["active", "disabled"].map((value) => option("status", value)) }] },
   "dashboard-share-access-logs": { label: "大屏访问日志", group: "运营", readOnly: true, columns: ["id", "share_link_id", "event_type", "client_ip", "reason", "created_at"] },
-  "waf-rules": { label: "防火墙规则", group: "安全", columns: ["id", "rule_code", "scope", "action", "priority", "status", "description"], form: [{ name: "rule_code", label: "规则编码" }, { name: "scope", label: "范围" }, { name: "matcher", label: "匹配器 JSON", type: "json" }, { name: "action", label: "动作", type: "select", options: ["block", "redact", "remove_header", "allow"].map((value) => option("action", value)) }, { name: "priority", label: "优先级", type: "number", optional: true }, { name: "description", label: "说明", optional: true }] },
-  "waf-rule-versions": { label: "防火墙发布版本", group: "安全", readOnly: true, columns: ["id", "version_code", "status", "published_by", "created_at"], actions: [{ key: "wafPublish", label: "发布当前规则", method: "POST", path: "/admin-api/waf/publish" }, { key: "wafPreview", label: "预览当前规则", method: "POST", path: "/admin-api/waf/preview" }, { key: "wafTemplates", label: "规则模板", method: "GET", path: "/admin-api/waf/templates" }, { key: "wafRollback", label: "回滚版本", method: "POST", path: "/admin-api/waf/rollback", bodyField: "version_code" }, { key: "wafDiff", label: "查看差异", method: "GET", diffField: "version_code", pathPrefix: "/admin-api/waf/versions/" }] },
-  "waf-events": { label: "防火墙攻击记录", group: "安全", readOnly: true, columns: ["id", "rule_code", "request_id", "client_ip", "method", "path", "action", "detection_mode", "risk_score", "attack_categories", "disposition_status", "false_positive", "summary", "created_at"] },
   "desensitization-policies": { label: "脱敏策略", group: "安全", columns: ["id", "name", "scope_type", "scope_id", "action", "status"], form: [{ name: "name", label: "名称" }, { name: "scope_type", label: "范围类型", type: "select", options: ["system", "department", "api_key", "model", "provider"].map((value) => option("scope_type", value)) }, { name: "scope_id", label: "范围 ID", type: "number", optional: true }, { name: "parsers", label: "解析器 JSON", type: "json" }, { name: "action", label: "动作", type: "select", options: ["block", "replace", "summary"].map((value) => option("action", value)) }] },
   "desensitization-events": { label: "脱敏事件", group: "安全", readOnly: true, columns: ["id", "policy_id", "request_id", "target_type", "action", "match_count", "summary", "created_at"] },
   "log-retention-policies": { label: "日志留存", group: "日志", columns: ["id", "log_type", "online_retention_days", "archive_retention_days", "min_retention_days", "compress_enabled", "encrypt_enabled"] },
@@ -462,17 +470,12 @@ export const resources = {
   "settings-brand-identity": { label: "标题与标识", group: "系统设置", readOnly: true, settingsSection: "brand_identity" },
   "settings-tls-certificates": { label: "证书与入口", group: "系统设置", readOnly: true, settingsSection: "tls_certificates" },
   "settings-entry-security": { label: "访问安全", group: "系统设置", readOnly: true, settingsSection: "entry_security" },
-  "settings-firewall": { label: "WAF 防火墙", group: "系统设置", readOnly: true, settingsSection: "firewall_settings" },
-  "settings-waf-detection": { label: "WAF 核心检测", group: "系统设置", readOnly: true, settingsSection: "waf_detection_settings" },
   "settings-retention-export": { label: "留存与导出", group: "系统设置", readOnly: true, settingsSection: "retention_export" },
   "settings-alert-thresholds": { label: "告警设置", group: "系统设置", readOnly: true, settingsSection: "alert_thresholds" },
   "settings-rag-upload-review": { label: "RAG上传审核", group: "系统设置", readOnly: true, settingsSection: "rag_upload_review" },
   "settings-rag-package-upload": { label: "RAG图片包上传", group: "系统设置", readOnly: true, settingsSection: "rag_package_upload" },
   "settings-rag-ai-image-processing": { label: "RAG图片AI处理", group: "系统设置", readOnly: true, settingsSection: "rag_ai_image_processing" },
   "settings-rag-vectorization-monitoring": { label: "RAG向量监控", group: "系统设置", readOnly: true, settingsSection: "rag_vectorization_monitoring" },
-  "waf-overview": { label: "WAF 总览", group: "WAF 防火墙", readOnly: true },
-  "waf-ip-bans": { label: "IP 封禁", group: "WAF 防火墙", readOnly: true },
-  "waf-alerts": { label: "WAF 告警", group: "WAF 防火墙", readOnly: true },
   "operations-status": { label: "运行状态", group: "系统运维", readOnly: true },
   "rag-settings": { label: "RAG 设置", group: "RAG知识库", readOnly: true },
   "system-settings": { label: "高级设置", group: "系统设置", readOnly: true }
@@ -499,9 +502,6 @@ const navigationLabels = {
   "export-tasks": { label: "导出任务", group: "日志" },
   "dashboard-share-links": { label: "大屏分享", group: "运营" },
   "dashboard-share-access-logs": { label: "大屏访问日志", group: "运营" },
-  "waf-rules": { label: "防火墙规则", group: "安全" },
-  "waf-rule-versions": { label: "防火墙发布版本", group: "安全" },
-  "waf-events": { label: "防火墙攻击记录", group: "安全" },
   "desensitization-policies": { label: "脱敏策略", group: "安全" },
   "desensitization-events": { label: "脱敏事件", group: "安全" },
   "log-retention-policies": { label: "日志留存", group: "日志" },
@@ -514,8 +514,6 @@ const navigationLabels = {
   "settings-brand-identity": { label: "标题与标识", group: "系统设置" },
   "settings-tls-certificates": { label: "证书与入口", group: "系统设置" },
   "settings-entry-security": { label: "访问安全", group: "系统设置" },
-  "settings-firewall": { label: "WAF 防火墙", group: "系统设置" },
-  "settings-waf-detection": { label: "WAF 核心检测", group: "系统设置" },
   "settings-retention-export": { label: "留存与导出", group: "系统设置" },
   "settings-alert-thresholds": { label: "告警设置", group: "系统设置" },
   "settings-rag-upload-review": { label: "RAG上传审核", group: "系统设置" },
@@ -673,8 +671,16 @@ export function filterFields(resourceKey) {
       { name: "to", label: "结束时间", optional: true }
     ];
   }
-  if (["usage-records", "multimodal-tasks", "media-assets", "usage-contents", "export-tasks", "waf-events", "desensitization-events", "audit-logs", "alert-events", "log-archive-files"].includes(resourceKey)) {
+  if (["usage-records", "multimodal-tasks", "media-assets", "usage-contents", "export-tasks", "desensitization-events", "audit-logs", "alert-events", "log-archive-files"].includes(resourceKey)) {
     return fields;
+  }
+  if (resourceKey === "models") {
+    return [
+      { name: "status", label: "状态", type: "select", options: statusOptions },
+      { name: "capability", label: "能力", type: "select", options: capabilityOptions },
+      // Server default (empty) = only models the gateway can serve.
+      { name: "support", label: "网关支持", type: "select", options: [["", "仅可调用的模型"], ["unsupported", "不支持的模型"], ["all", "全部模型"]] }
+    ];
   }
   if (resourceKey === "api-key-model-quotas") {
     return [

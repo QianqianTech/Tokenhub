@@ -1,8 +1,32 @@
 {
-	admin off
+	# Admin API only inside the container (not published); used by the entrypoint to hot-reload certificates.
+	admin localhost:2019
+	{$TOKENHUB_CADDY_GLOBAL}
 }
 
-:80 {
+# Internal health endpoint used by the container health check (not published).
+:8081 {
+	respond /caddy-health "ok" 200
+}
+
+# Internal API for the realtime gateway (not published).
+:8082 {
+	root * /srv/app/public
+	@internal path /internal/*
+	handle @internal {
+		php_fastcgi php:9000
+	}
+	handle {
+		respond "Not Found" 404
+	}
+}
+
+# TOKENHUB_SITE_ADDRESS: ":80" (HTTP), "tokenhub.example.com" (automatic HTTPS) or
+# "https://10.0.0.8" (HTTPS with Caddy's internal CA); several addresses may be comma separated.
+{$TOKENHUB_SITE_ADDRESS::80} {
+	{$TOKENHUB_CADDY_TLS}
+	import /srv/app/storage/caddy/tls-current.caddy
+
 	root * /srv/app/public
 
 	header {
@@ -20,7 +44,9 @@
 	}
 
 	log {
-		output file /srv/app/storage/logs/caddy-access.jsonl
+		output file /srv/app/storage/logs/caddy-access.jsonl {
+			mode 0644
+		}
 		format filter {
 			wrap json
 			fields {
@@ -28,26 +54,12 @@
 				request>headers>Cookie replace "****"
 				request>headers>X-Api-Key replace "****"
 				request>headers>Api-Key replace "****"
+				request>headers>X-Goog-Api-Key replace "****"
+				request>headers>Sec-Websocket-Protocol replace "****"
 				request>uri delete
 			}
 		}
 	}
-
-	log caddy-security {
-		output file /srv/app/storage/logs/caddy-security.jsonl
-		format filter {
-			wrap json
-			fields {
-				request>headers>Authorization replace "****"
-				request>headers>Cookie replace "****"
-				request>headers>X-Api-Key replace "****"
-				request>headers>Api-Key replace "****"
-				request>uri delete
-			}
-		}
-	}
-
-	import /srv/app/storage/caddy/waf-current.caddy
 
 	@admin path /admin /admin/*
 	handle @admin {
@@ -61,8 +73,20 @@
 		file_server
 	}
 
-	@php path /health /ready /admin-api/* /screen-api/* /v1/* /download/*
+	# Realtime speech (WebSocket) is served by the Go realtime-gateway.
+	@realtime path /v1/realtime
+	handle @realtime {
+		reverse_proxy realtime-gateway:8090
+	}
+
+	@php path /health /ready /admin-api/* /screen-api/* /v1/* /download/* /mcp
 	handle @php {
+		php_fastcgi php:9000
+	}
+
+	# Gemini-native API (Google GenAI SDKs).
+	@gemini path /v1beta/*
+	handle @gemini {
 		php_fastcgi php:9000
 	}
 

@@ -13,7 +13,15 @@ $key = ['user_id' => 10, 'department_id' => 99];
 assert_true($service->canAccess($asset, $key), 'Owner user should access own media asset.');
 
 $departmentKey = ['user_id' => 99, 'department_id' => 20];
-assert_true($service->canAccess($asset, $departmentKey), 'Same department key should access department media asset.');
+putenv('ASSET_SHARING_SCOPE');
+unset($_ENV['ASSET_SHARING_SCOPE'], $_SERVER['ASSET_SHARING_SCOPE']);
+assert_true(!$service->canAccess($asset, $departmentKey), 'By default (user scope) another user of the same department must not access the asset.');
+$_ENV['ASSET_SHARING_SCOPE'] = 'department';
+assert_true($service->canAccess($asset, $departmentKey), 'Department sharing scope should allow same-department keys.');
+$_ENV['ASSET_SHARING_SCOPE'] = 'api_key';
+assert_true(!$service->canAccess($asset, $key), 'api_key scope should deny the same user on another key.');
+unset($_ENV['ASSET_SHARING_SCOPE']);
+assert_true(!$service->canAccess(['owner_user_id' => 10, 'deleted_at' => '2026-01-01 00:00:00'], $key), 'Soft-deleted assets are never accessible.');
 
 $keyScoped = ['owner_user_id' => 11, 'department_id' => 21, 'api_key_id' => 77, 'expires_at' => null];
 $matchingKey = ['id' => 77, 'user_id' => 99, 'department_id' => 99];
@@ -40,8 +48,8 @@ assert_true($service->canAccessDownloadPayload($asset, $screenToken), 'Screen do
 $badScreenToken = ['screen' => true, 'scope_type' => 'department', 'scope_ids' => '[99]'];
 assert_true(!$service->canAccessDownloadPayload($asset, $badScreenToken), 'Screen download token should reject media outside its scope.');
 
-$apiKeyToken = ['id' => 77, 'user_id' => 99, 'department_id' => 99];
-assert_true($service->canAccessDownloadPayload($keyScoped, $apiKeyToken), 'API key download token should still use API key scope.');
+$apiKeyToken = ['id' => 0, 'api_key_id' => 0, 'user_id' => 11, 'department_id' => 99];
+assert_true(!$service->canAccessDownloadPayload($keyScoped, $apiKeyToken), 'A download token without a valid issuing API key must be rejected.');
 
 $public = $service->publicAsset([
     'asset_id' => 'asset_test',

@@ -4,13 +4,15 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>TokenHub 管理后台</title>
-    <link rel="stylesheet" href="/admin/assets/css/app.css?v=20260717-multiselect-checkbox-v2">
+    <link rel="icon" href="/admin/assets/brand/favicon.ico" sizes="any">
+    <link rel="apple-touch-icon" href="/admin/assets/brand/apple-touch-icon.png">
+    <link rel="stylesheet" href="/admin/assets/css/app.css?v=20261028-admin-ops-v1">
   </head>
   <body>
     <main id="app" class="app-shell theme-light is-login">
       <aside id="sidebar" class="sidebar" aria-label="管理菜单">
         <div class="sidebar-header">
-          <div class="brand">TokenHub</div>
+          <div class="brand"><img class="brand-logo" src="/admin/assets/brand/tokenhub-app-icon.svg" alt=""><span>TokenHub</span></div>
           <button id="sidebar-mode-toggle" type="button" class="sidebar-mode-toggle" aria-label="收起菜单" aria-pressed="false">‹</button>
         </div>
         <nav id="nav" aria-label="主导航"></nav>
@@ -35,7 +37,7 @@
         </header>
         <section id="global-error" class="global-error"></section>
         <section id="login" class="login-panel">
-          <div id="login-brand" class="login-brand">TokenHub</div>
+          <div id="login-brand" class="login-brand"><img class="brand-logo" src="/admin/assets/brand/tokenhub-app-icon.svg" alt=""><span>TokenHub</span></div>
           <h2 id="login-title">管理员登录</h2>
           <label>用户名<input id="username" autocomplete="username"></label>
           <label>密码<input id="password" type="password" autocomplete="current-password"></label>
@@ -47,6 +49,6 @@
         <div class="app-copyright" aria-label="版权信息">黔前智算 TokenHub 版权所有</div>
       </section>
     </main>
-    <script type="module" src="/admin/assets/js/app.js?v=20260717-multiselect-checkbox-v2"></script>
+    <script type="module" src="/admin/assets/js/app.js?v=20261028-admin-ops-v1"></script>
   </body>
 </html>

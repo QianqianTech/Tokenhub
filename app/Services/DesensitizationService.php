@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace TokenHub\Services;
 
+use TokenHub\Services\Gateway\MediaPayload;
 use TokenHub\Support\App;
+use TokenHub\Support\ConfigVersion;
 
 final class DesensitizationService
 {
@@ -60,6 +62,48 @@ final class DesensitizationService
     }
 
     /**
+     * Applies the key's outbound policy to a free-text query that leaves
+     * TokenHub without a model route, e.g. a knowledge-base search query sent
+     * to the embedding provider and written to rag_retrieval_logs
+     * (POST /v1/rag/search, MCP search_knowledge_base). Policies scoped to
+     * the system, the key's department or the key apply; model/provider
+     * scoped policies need a route and do not.
+     *
+     * replace -> masked text; block (with matches) and summary -> 422, since
+     * a search cannot run on a summary of its own query.
+     *
+     * @param array<string, mixed> $apiKey
+     */
+    public function outboundText(string $text, array $apiKey, string $purpose): string
+    {
+        // No route: -1 never matches a model/provider id (0 could match rows
+        // with an unset scope_id).
+        $policies = $this->policiesFor($apiKey, ['id' => -1, 'provider_id' => -1]);
+        if ($policies === []) {
+            return $text;
+        }
+
+        $policy = $policies[0];
+        $result = $this->applyPolicy(['query' => $text], $policy);
+        App::db()->execute(
+            'INSERT INTO desensitization_events (policy_id, request_id, target_type, action, match_count, summary) VALUES (?, ?, "outbound", ?, ?, ?)',
+            [
+                $policy['id'],
+                App::context()->requestId(),
+                $result['action'],
+                $result['match_count'],
+                json_encode(['purpose' => $purpose, ...($result['summary'] ?? [])], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
+            ]
+        );
+
+        if ($result['blocked'] || $result['action'] === 'summary') {
+            abort_json('DESENSITIZATION_BLOCKED', 'The query matched a desensitization policy that does not allow sending it', 422);
+        }
+
+        return (string) ($result['payload']['query'] ?? '');
+    }
+
+    /**
      * @param array<string, mixed> $apiKey
      * @param array<string, mixed> $route
      * @return list<array<string, mixed>>
@@ -99,7 +143,8 @@ final class DesensitizationService
         return 'desensitization_policies:' . (int) ($apiKey['department_id'] ?? 0)
             . ':' . (int) ($apiKey['id'] ?? 0)
             . ':' . (int) ($route['id'] ?? 0)
-            . ':' . (int) ($route['provider_id'] ?? 0);
+            . ':' . (int) ($route['provider_id'] ?? 0)
+            . ConfigVersion::cacheSuffix();
     }
 
     private int $lastMatchCount = 0;
@@ -122,11 +167,13 @@ final class DesensitizationService
         ];
 
         if ($action === 'block') {
+            // Nothing matched: the request goes out unchanged. Returning null
+            // here used to make outbound() send an empty payload upstream.
             return [
                 'action' => 'block',
                 'blocked' => $matchCount > 0,
                 'match_count' => $matchCount,
-                'payload' => null,
+                'payload' => $matchCount > 0 ? null : $payload,
                 'summary' => $summary,
             ];
         }
@@ -156,11 +203,18 @@ final class DesensitizationService
         return $this->redactValue($value);
     }
 
-    private function redactValue(mixed $value, ?string $key = null): mixed
+    private function redactValue(mixed $value, ?string $key = null, ?string $parentKey = null): mixed
     {
         if ($key !== null && $this->isSensitiveKey($key)) {
             $this->lastMatchCount++;
             return '****';
+        }
+
+        // Inline media (base64) and media URLs are forwarded byte-for-byte:
+        // text patterns would corrupt them (a signed URL's Security-Token
+        // parameter, an 11-digit run inside a millisecond timestamp).
+        if (is_string($value) && MediaPayload::isMediaValue($value, $key, $parentKey)) {
+            return $value;
         }
 
         if (is_string($value)) {
@@ -193,7 +247,11 @@ final class DesensitizationService
 
         $out = [];
         foreach ($value as $childKey => $childValue) {
-            $out[$childKey] = $this->redactValue($childValue, (string) $childKey);
+            // List items inherit their list's key so content[0].image_url.url
+            // still knows it sits inside an image part.
+            $out[$childKey] = is_string($childKey)
+                ? $this->redactValue($childValue, $childKey, $key)
+                : $this->redactValue($childValue, $key, $parentKey);
         }
         return $out;
     }

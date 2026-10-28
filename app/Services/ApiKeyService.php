@@ -5,12 +5,15 @@ declare(strict_types=1);
 namespace TokenHub\Services;
 
 use TokenHub\Support\App;
+use TokenHub\Support\SchemaInspector;
+use TokenHub\Support\ConfigVersion;
 use TokenHub\Support\Crypto;
 
 final class ApiKeyService
 {
     private const CACHE_TTL_SECONDS = 60;
     private const LAST_USED_UPDATE_TTL_SECONDS = 60;
+    private const MISS_CACHE_TTL_SECONDS = 30;
 
     public function create(array $data, int $createdBy): array
     {
@@ -48,6 +51,7 @@ final class ApiKeyService
             ]
         );
         $id = (int) App::db()->pdo()->lastInsertId();
+        App::redis()->delete($this->missCacheKey(Crypto::hashKey($plain)));
         (new ApiKeyManagementScopeService())->replace($id, $managementScopes);
         foreach ($data['model_ids'] ?? [] as $modelId) {
             App::db()->execute('INSERT IGNORE INTO api_key_model_permissions (api_key_id, model_id) VALUES (?, ?)', [$id, $modelId]);
@@ -56,7 +60,13 @@ final class ApiKeyService
         return ['id' => $id, 'key' => $plain, 'display' => $prefix . '****' . $suffix];
     }
 
-    public function update(int $id, array $data): array
+    /**
+     * @param string $actorType who changes the key: 'admin' (console) or
+     *        'management' (agent management API). Recorded in
+     *        api_keys.disabled_by when the key is disabled, so an agent cannot
+     *        re-enable a key an administrator switched off.
+     */
+    public function update(int $id, array $data, string $actorType = 'admin'): array
     {
         $fields = $this->sanitizeForStorage($data);
         $allowed = ['name', 'status', 'allowed_ip_cidrs', 'expires_at'];
@@ -69,9 +79,34 @@ final class ApiKeyService
             }
         }
 
+        $scopeChange = null;
+        if (array_key_exists('management_scopes', $data)) {
+            // Admin path only: the management API never forwards this field.
+            try {
+                $scopeChange = (new ApiKeyManagementScopeService())->normalize($data['management_scopes'] ?? []);
+            } catch (\InvalidArgumentException) {
+                abort_json('ADMIN_INVALID_PAYLOAD', 'Invalid management scopes', 422);
+            }
+            // A delegated key may never hold more than its parent (the same
+            // invariant ApiKeyManagementScopeService::delegate() enforces).
+            $beyond = (new ApiKeyManagementScopeService())->scopesBeyondParent($id, $scopeChange);
+            if ($beyond !== []) {
+                abort_json('ADMIN_INVALID_PAYLOAD', 'This key was delegated by another management key that does not hold: ' . implode(', ', $beyond), 422);
+            }
+        }
+
+        if (isset($updates['status']) && SchemaInspector::hasColumn('api_keys', 'disabled_by')) {
+            $updates['disabled_by'] = $updates['status'] === 'disabled' ? self::disabledByValue($actorType) : null;
+        }
+
         if ($updates !== []) {
             $sets = implode(', ', array_map(fn (string $field): string => "{$field} = ?", array_keys($updates)));
             App::db()->execute("UPDATE api_keys SET {$sets} WHERE id = ?", [...array_values($updates), $id]);
+        }
+        if ($scopeChange !== null) {
+            (new ApiKeyManagementScopeService())->replace($id, $scopeChange);
+            (new ApiKeyManagementScopeService())->pruneDescendants($id);
+            $updates['management_scopes'] = $scopeChange;
         }
 
         $this->invalidateById($id);
@@ -103,14 +138,18 @@ final class ApiKeyService
         $knowledgeBaseIds = $this->normalizeIds($knowledgeBaseIds);
         $datasetIds = $this->normalizeIds($datasetIds);
         foreach ($knowledgeBaseIds as $knowledgeBaseId) {
-            if (App::db()->first('SELECT id FROM rag_knowledge_bases WHERE id = ? AND deleted_at IS NULL', [$knowledgeBaseId]) === null) {
+            $knowledgeBase = App::db()->first('SELECT id, department_id, visibility FROM rag_knowledge_bases WHERE id = ? AND deleted_at IS NULL', [$knowledgeBaseId]);
+            if ($knowledgeBase === null) {
                 abort_json('ADMIN_INVALID_PAYLOAD', 'Knowledge base not found', 422);
             }
+            $this->assertKnowledgeBaseInAdminScope($knowledgeBase);
         }
         foreach ($datasetIds as $datasetId) {
-            if (App::db()->first('SELECT id FROM rag_vector_datasets WHERE id = ? AND deleted_at IS NULL', [$datasetId]) === null) {
+            $dataset = App::db()->first('SELECT d.id, kb.department_id, kb.visibility FROM rag_vector_datasets d JOIN rag_knowledge_bases kb ON kb.id = d.kb_id WHERE d.id = ? AND d.deleted_at IS NULL AND kb.deleted_at IS NULL', [$datasetId]);
+            if ($dataset === null) {
                 abort_json('ADMIN_INVALID_PAYLOAD', 'Dataset not found', 422);
             }
+            $this->assertKnowledgeBaseInAdminScope($dataset);
         }
 
         App::db()->execute('DELETE FROM rag_knowledge_base_bindings WHERE subject_type = "api_key" AND subject_id = ?', [$id]);
@@ -126,12 +165,92 @@ final class ApiKeyService
         return $this->ragBindings($id);
     }
 
+    /**
+     * Department-scoped admins may only bind knowledge bases of departments
+     * they manage, or knowledge bases shared platform-wide.
+     *
+     * @param array<string, mixed> $knowledgeBase department_id, visibility
+     */
+    private function assertKnowledgeBaseInAdminScope(array $knowledgeBase): void
+    {
+        $actor = App::context()->adminUser();
+        if ($actor === null || ($knowledgeBase['visibility'] ?? '') === 'shared') {
+            return;
+        }
+        $departmentId = $knowledgeBase['department_id'] === null ? null : (int) $knowledgeBase['department_id'];
+        if (!(new PermissionService())->canManage($actor, $departmentId)) {
+            abort_json('ADMIN_PERMISSION_DENIED', 'Knowledge base is outside admin scope', 403);
+        }
+    }
+
     public function ragBindings(int $id): array
     {
         return [
             'knowledge_base_ids' => array_map(static fn (array $row): int => (int) $row['kb_id'], App::db()->select('SELECT kb_id FROM rag_knowledge_base_bindings WHERE subject_type = "api_key" AND subject_id = ? ORDER BY kb_id', [$id])),
             'dataset_ids' => array_map(static fn (array $row): int => (int) $row['dataset_id'], App::db()->select('SELECT dataset_id FROM rag_dataset_bindings WHERE subject_type = "api_key" AND subject_id = ? ORDER BY dataset_id', [$id])),
         ];
+    }
+
+    /**
+     * Rotates an API key without downtime: a new secret with the same owner,
+     * model grants, RAG bindings, IP allowlist and management scopes is
+     * issued, and the old key keeps working only until the grace period ends
+     * (expires_at). Rotation is audited on both keys.
+     *
+     * @return array{id: int, key: string, display: string, replaces_api_key_id: int, old_key_expires_at: string}
+     */
+    public function rotate(int $id, int $graceMinutes, int $actorId): array
+    {
+        $old = App::db()->first('SELECT * FROM api_keys WHERE id = ? AND status = "active"', [$id]);
+        if ($old === null) {
+            abort_json('ADMIN_NOT_FOUND', 'Active API key not found', 404);
+        }
+        $actor = App::context()->adminUser();
+        if ($actor !== null && !(new PermissionService())->canManage($actor, (int) $old['department_id'])) {
+            abort_json('ADMIN_PERMISSION_DENIED', 'API key is outside admin scope', 403);
+        }
+        $graceMinutes = max(0, min(10080, $graceMinutes));
+        $graceEnds = gmdate('Y-m-d H:i:s', time() + $graceMinutes * 60);
+        if (!empty($old['expires_at']) && strtotime((string) $old['expires_at']) < strtotime($graceEnds . ' UTC')) {
+            $graceEnds = (string) $old['expires_at'];
+        }
+
+        $plain = Crypto::token('tkh_');
+        $prefix = substr($plain, 0, 8);
+        $suffix = substr($plain, -4);
+        $newId = App::db()->transaction(function () use ($old, $plain, $prefix, $suffix, $actorId, $graceEnds, $id): int {
+            App::db()->execute(
+                'INSERT INTO api_keys (user_id, department_id, name, key_prefix, key_suffix, key_hash, allowed_ip_cidrs, expires_at, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                [$old['user_id'], $old['department_id'], $old['name'], $prefix, $suffix, Crypto::hashKey($plain), $old['allowed_ip_cidrs'] ?? '[]', $old['expires_at'] ?? null, $actorId]
+            );
+            $newId = (int) App::db()->pdo()->lastInsertId();
+            App::db()->execute('INSERT INTO api_key_model_permissions (api_key_id, model_id) SELECT ?, model_id FROM api_key_model_permissions WHERE api_key_id = ?', [$newId, $id]);
+            App::db()->execute('INSERT INTO api_key_model_quotas (api_key_id, model_id, period, request_limit, input_token_limit, output_token_limit, total_token_limit, status) SELECT ?, model_id, period, request_limit, input_token_limit, output_token_limit, total_token_limit, status FROM api_key_model_quotas WHERE api_key_id = ?', [$newId, $id]);
+            App::db()->execute('INSERT INTO rag_knowledge_base_bindings (kb_id, subject_type, subject_id, permission, is_default) SELECT kb_id, subject_type, ?, permission, is_default FROM rag_knowledge_base_bindings WHERE subject_type = "api_key" AND subject_id = ?', [$newId, $id]);
+            App::db()->execute('INSERT INTO rag_dataset_bindings (dataset_id, subject_type, subject_id, permission, is_default, priority) SELECT dataset_id, subject_type, ?, permission, is_default, priority FROM rag_dataset_bindings WHERE subject_type = "api_key" AND subject_id = ?', [$newId, $id]);
+            App::db()->execute('UPDATE api_keys SET expires_at = ? WHERE id = ?', [$graceEnds, $id]);
+            // Keep the management delegation tree intact: the new key takes the
+            // old key's place under its parent, and keys the old key delegated
+            // to now hang off the new key (otherwise a rotated child would lose
+            // the "parent disabled => scopes revoked" guarantee, and the old
+            // key's children would keep working after it expires).
+            App::db()->execute('INSERT INTO api_key_management_scopes (api_key_id, scope) SELECT ?, scope FROM api_key_management_scopes WHERE api_key_id = ?', [$newId, $id]);
+            App::db()->execute('INSERT INTO api_key_management_delegations (child_api_key_id, parent_api_key_id) SELECT ?, parent_api_key_id FROM api_key_management_delegations WHERE child_api_key_id = ?', [$newId, $id]);
+            App::db()->execute('UPDATE api_key_management_delegations SET parent_api_key_id = ? WHERE parent_api_key_id = ?', [$newId, $id]);
+
+            return $newId;
+        });
+        App::redis()->delete($this->missCacheKey(Crypto::hashKey($plain)));
+        $this->invalidateById($id);
+        (new AuditService())->write('api_key.rotate', 'api_keys', $id, ['replacement_id' => $newId, 'old_key_expires_at' => $graceEnds]);
+        (new AuditService())->write('api_key.create', 'api_keys', $newId, ['key' => $prefix . '****' . $suffix, 'rotated_from' => $id]);
+
+        return ['id' => $newId, 'key' => $plain, 'display' => $prefix . '****' . $suffix, 'replaces_api_key_id' => $id, 'old_key_expires_at' => $graceEnds];
+    }
+
+    private static function disabledByValue(string $actorType): string
+    {
+        return $actorType === 'management' ? 'management' : 'admin';
     }
 
     public function softDelete(int $id): array
@@ -174,7 +293,9 @@ final class ApiKeyService
             default => 'deleted',
         };
         $matchedPlaceholders = implode(', ', array_fill(0, count($foundIds), '?'));
-        $updated = App::db()->execute("UPDATE api_keys SET status = ? WHERE id IN ({$matchedPlaceholders})", [$status, ...$foundIds]);
+        $updated = SchemaInspector::hasColumn('api_keys', 'disabled_by')
+            ? App::db()->execute("UPDATE api_keys SET status = ?, disabled_by = ? WHERE id IN ({$matchedPlaceholders})", [$status, $status === 'disabled' ? 'admin' : null, ...$foundIds])
+            : App::db()->execute("UPDATE api_keys SET status = ? WHERE id IN ({$matchedPlaceholders})", [$status, ...$foundIds]);
 
         foreach ($rows as $row) {
             if (isset($row['key_hash'])) {
@@ -207,18 +328,33 @@ final class ApiKeyService
         ];
     }
 
-    public function authenticate(string $plain, string $clientIp, ?string $modelName): array
+    public function authenticate(string $plain, string $clientIp, ?string $modelName, bool $allowLookup = true): array
     {
         $hash = Crypto::hashKey($plain);
         $row = App::redis()->get($this->cacheKey($hash));
         if (!is_array($row)) {
+            // Unknown keys are remembered briefly so repeated garbage keys do
+            // not hit MySQL on every request.
+            if (App::redis()->get($this->missCacheKey($hash)) !== null) {
+                return ['ok' => false, 'code' => 'API_KEY_INVALID', 'message' => 'Invalid API key', 'status' => 401];
+            }
+            if (!$allowLookup) {
+                return ['ok' => false, 'code' => 'RATE_LIMITED', 'message' => 'Too many requests', 'status' => 429];
+            }
             $row = App::db()->first(
                 'SELECT k.*, u.status AS user_status, d.status AS department_status FROM api_keys k JOIN users u ON u.id = k.user_id JOIN departments d ON d.id = k.department_id WHERE k.key_hash = ?',
                 [$hash]
             );
+            if (!$row) {
+                $row = $this->findByRotatedHash($plain, $hash);
+            }
             if ($row) {
                 $row['allowed_model_names'] = $this->allowedModelNames((int) $row['id']);
+                // Channel-level grants: the router only considers these model rows.
+                $row['allowed_model_ids'] = $this->activeModelIds((int) $row['id']);
                 App::redis()->set($this->cacheKey($hash), $row, self::CACHE_TTL_SECONDS);
+            } else {
+                App::redis()->set($this->missCacheKey($hash), '1', self::MISS_CACHE_TTL_SECONDS);
             }
         }
         if (!$row || $row['status'] !== 'active' || $row['user_status'] !== 'active' || $row['department_status'] !== 'active') {
@@ -287,12 +423,19 @@ final class ApiKeyService
             $userNames = array_column(App::db()->select("SELECT id, username FROM users WHERE id IN ({$placeholders})", $userIds), 'username', 'id');
         }
 
-        return array_map(static function (array $row) use ($usageByKey, $modelIdsByKey, $departmentNames, $userNames): array {
+        $scopesByKey = [];
+        $placeholders = implode(', ', array_fill(0, count($ids), '?'));
+        foreach (App::db()->select("SELECT api_key_id, scope FROM api_key_management_scopes WHERE api_key_id IN ({$placeholders})", $ids) as $scopeRow) {
+            $scopesByKey[(int) $scopeRow['api_key_id']][] = (string) $scopeRow['scope'];
+        }
+
+        return array_map(static function (array $row) use ($usageByKey, $modelIdsByKey, $departmentNames, $userNames, $scopesByKey): array {
             $apiKeyId = (int) ($row['id'] ?? 0);
             $summary = $usageByKey[$apiKeyId] ?? [];
             return [
                 ...$row,
                 'model_ids' => $modelIdsByKey[$apiKeyId] ?? [],
+                'management_scopes' => $scopesByKey[$apiKeyId] ?? [],
                 'department_name' => $departmentNames[(int) ($row['department_id'] ?? 0)] ?? null,
                 'user_name' => $userNames[(int) ($row['user_id'] ?? 0)] ?? null,
                 'request_count' => (int) ($summary['request_count'] ?? 0),
@@ -340,7 +483,68 @@ final class ApiKeyService
 
     public function cacheKey(string $keyHash): string
     {
-        return 'api_key:' . $keyHash;
+        return 'api_key:' . $keyHash . ConfigVersion::cacheSuffix();
+    }
+
+    public function missCacheKey(string $keyHash): string
+    {
+        return 'api_key:miss:' . $keyHash . ConfigVersion::cacheSuffix();
+    }
+
+    /**
+     * Model ids (channels) this key may route to, or null when the key row
+     * predates channel grants and only name-level checks apply.
+     *
+     * @param array<string, mixed> $apiKey
+     * @return list<int>|null
+     */
+    public function routableModelIds(array $apiKey): ?array
+    {
+        if (isset($apiKey['allowed_model_ids']) && is_array($apiKey['allowed_model_ids'])) {
+            return array_values(array_map('intval', $apiKey['allowed_model_ids']));
+        }
+        if (!isset($apiKey['id']) || (int) $apiKey['id'] <= 0) {
+            return null;
+        }
+
+        return $this->activeModelIds((int) $apiKey['id']);
+    }
+
+    /**
+     * @return list<int>
+     */
+    private function activeModelIds(int $apiKeyId): array
+    {
+        return array_map(
+            static fn (array $row): int => (int) $row['model_id'],
+            App::db()->select('SELECT p.model_id FROM api_key_model_permissions p JOIN models m ON m.id = p.model_id WHERE p.api_key_id = ? AND m.status = "active"', [$apiKeyId])
+        );
+    }
+
+    /**
+     * During an APP_KEY rotation stored hashes may still use a previous key.
+     * A hit is re-hashed with the current key so the fallback is needed once.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function findByRotatedHash(string $plain, string $currentHash): ?array
+    {
+        foreach (Crypto::hashKeyCandidates($plain) as $candidate) {
+            if ($candidate === $currentHash) {
+                continue;
+            }
+            $row = App::db()->first(
+                'SELECT k.*, u.status AS user_status, d.status AS department_status FROM api_keys k JOIN users u ON u.id = k.user_id JOIN departments d ON d.id = k.department_id WHERE k.key_hash = ?',
+                [$candidate]
+            );
+            if ($row) {
+                App::db()->execute('UPDATE api_keys SET key_hash = ? WHERE id = ? AND key_hash = ?', [$currentHash, (int) $row['id'], $candidate]);
+                $row['key_hash'] = $currentHash;
+                return $row;
+            }
+        }
+
+        return null;
     }
 
     public function lastUsedCacheKey(int $apiKeyId): string

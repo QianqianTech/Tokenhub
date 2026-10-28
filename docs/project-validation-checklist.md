@@ -7,7 +7,7 @@
 - [ ] PHP 8.2+ 原生后端、路由、中间件、服务层和控制器。
 - [ ] MySQL 9.7 数据库迁移和核心业务表。
 - [ ] Redis 队列、限额、会话和异步任务。
-- [ ] Caddy 静态资源、反向代理、安全响应头、WAF 和日志过滤。
+- [ ] Caddy 静态资源、反向代理、安全响应头和日志过滤。
 - [ ] Admin 管理后台、Screen 大屏、下载入口和 `/health` 健康检查。
 - [ ] OpenAI/Anthropic 兼容网关，包括非流式、SSE 流式和多模态入口。
 - [ ] 安全、权限、脱敏、审计、日志留存、备份恢复和生产部署。
@@ -103,8 +103,6 @@ bash -n scripts/security-smoke.sh
 bash -n scripts/pressure-smoke.sh
 bash -n scripts/backup-tokenhub.sh
 bash -n scripts/restore-drill-check.sh
-bash -n scripts/caddy-publish.sh
-bash -n scripts/caddy-rollback.sh
 ```
 
 通过标准：
@@ -313,7 +311,7 @@ BASE_URL=http://localhost:8080 API_KEY='tkh_xxx' MODEL='model-id' REQUESTS=20 CO
 - [ ] 合法分享访问只看到授权范围内数据。
 - [ ] 大屏接口在压测阈值内完成，或有明确瓶颈说明。
 
-## 13. 安全、WAF 和脱敏验证
+## 13. 安全和脱敏验证
 
 ### 13.1 Caddy 安全配置
 
@@ -321,7 +319,6 @@ BASE_URL=http://localhost:8080 API_KEY='tkh_xxx' MODEL='model-id' REQUESTS=20 CO
 - [ ] HTTPS 环境启用 HSTS。
 - [ ] 响应头包含 CSP、X-Frame-Options、X-Content-Type-Options、Referrer-Policy、Permissions-Policy。
 - [ ] `.env`、`.git`、备份文件、debug 路径、vendor 路径被拒绝。
-- [ ] WAF fragment 可发布和回滚。
 - [ ] Caddy 日志过滤 Authorization、Cookie、API key 和敏感 query。
 
 推荐命令：
@@ -329,8 +326,6 @@ BASE_URL=http://localhost:8080 API_KEY='tkh_xxx' MODEL='model-id' REQUESTS=20 CO
 ```bash
 TOKENHUB_DOMAIN=your-domain.example caddy validate --config Caddyfile.example
 BASE_URL=https://your-domain.example bash scripts/security-smoke.sh
-SOURCE_FRAGMENT=storage/caddy/waf-current.caddy ACTIVE_FRAGMENT=/var/lib/tokenhub/caddy/waf-current.caddy bash scripts/caddy-publish.sh
-bash scripts/caddy-rollback.sh
 ```
 
 通过标准：
@@ -338,7 +333,6 @@ bash scripts/caddy-rollback.sh
 - [ ] Caddy 配置验证通过。
 - [ ] 安全响应头存在。
 - [ ] 敏感路径无法访问。
-- [ ] WAF 变更可回滚。
 
 ### 13.2 Admin 与接口安全
 
@@ -367,7 +361,7 @@ BASE_URL=https://your-domain.example ADMIN_PASSWORD='admin-password' API_KEY='tk
 - [ ] 登录、登出、权限变更、provider 变更、key 变更、导出、下载、分享访问写入审计。
 - [ ] 日志留存策略可配置。
 - [ ] 日志查询和导出受权限控制。
-- [ ] 队列积压、WAF 命中异常、日志写入失败有可观测入口。
+- [ ] 队列积压、日志写入失败有可观测入口。
 
 推荐命令：
 

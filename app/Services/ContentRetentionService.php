@@ -125,6 +125,9 @@ final class ContentRetentionService
     public function prepareContent(string $mode, array $input, array $output): array
     {
         $mode = $this->validMode($mode);
+        // Same size bound for streaming and non-streaming content.
+        $input = $this->bounded($input);
+        $output = $this->bounded($output);
         $summary = $mode === 'none' ? null : $this->summary($input, $output);
 
         $prepared = [
@@ -147,6 +150,25 @@ final class ContentRetentionService
         }
 
         return $prepared;
+    }
+
+    /**
+     * @param array<string, mixed> $content
+     * @return array<string, mixed>
+     */
+    private function bounded(array $content): array
+    {
+        $max = max(1024, (int) env_value('CONTENT_RETAIN_MAX_BYTES', 262144));
+        $encoded = $this->encode($content);
+        if (strlen($encoded) <= $max) {
+            return $content;
+        }
+
+        return [
+            'truncated' => true,
+            'original_bytes' => strlen($encoded),
+            'preview' => mb_strcut($encoded, 0, $max),
+        ];
     }
 
     /**

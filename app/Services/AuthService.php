@@ -13,11 +13,9 @@ final class AuthService
     {
         $user = App::db()->first('SELECT * FROM users WHERE username = ? AND status = "active" AND role IN ("admin", "super_admin")', [$username]);
         if (!$user || !password_verify($password, $user['password_hash'])) {
-            (new LoginIpBanService())->recordFailure($clientIp, 'admin_login_bad_password');
             return null;
         }
 
-        (new LoginIpBanService())->reset($clientIp);
         $session = Crypto::token('adm_');
         $csrf = Crypto::token('csrf_');
         $ttlMinutes = (int) App::config()->get('app.admin_session_ttl_minutes', 120);

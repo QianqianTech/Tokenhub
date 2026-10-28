@@ -63,7 +63,19 @@ final class ExternalController
             abort_json('OPENAPI_NOT_FOUND', 'OpenAPI document not found', 404);
         }
 
-        return Response::raw((string) file_get_contents($path), 200, ['Content-Type' => 'application/json; charset=utf-8']);
+        // Decode to objects so empty schemas ({}) stay objects on re-encode.
+        $document = json_decode((string) file_get_contents($path));
+        if (!$document instanceof \stdClass || !isset($document->info) || !$document->info instanceof \stdClass) {
+            abort_json('OPENAPI_INVALID', 'OpenAPI document is not valid JSON', 500);
+        }
+        // info.version is the API contract version; also say which TokenHub
+        // release is serving it so SDK users can report both.
+        $release = trim((string) @file_get_contents(base_path('VERSION')));
+        if ($release !== '') {
+            $document->info->{'x-tokenhub-release'} = $release;
+        }
+
+        return Response::raw((string) json_encode($document, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRESERVE_ZERO_FRACTION), 200, ['Content-Type' => 'application/json; charset=utf-8']);
     }
 
     public function events(Request $request): Response

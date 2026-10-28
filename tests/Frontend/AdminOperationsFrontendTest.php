@@ -7,7 +7,7 @@ require __DIR__ . '/../bootstrap.php';
 $tableSource = file_get_contents(__DIR__ . '/../../public/admin/assets/js/table.js') ?: '';
 $cssSource = file_get_contents(__DIR__ . '/../../public/admin/assets/css/app.css') ?: '';
 $rendererStart = strpos($tableSource, 'async function renderOperationsStatusPage');
-$rendererEnd = strpos($tableSource, 'async function renderWafRulesPage');
+$rendererEnd = strpos($tableSource, 'function renderFilters(', (int) $rendererStart);
 
 assert_true($rendererStart !== false && $rendererEnd !== false, 'Operations status renderer should be inspectable.');
 $operationsRenderer = substr($tableSource, (int) $rendererStart, (int) $rendererEnd - (int) $rendererStart);

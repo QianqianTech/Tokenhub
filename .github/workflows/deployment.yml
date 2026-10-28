@@ -1,0 +1,96 @@
+name: deployment
+
+# Verifies both delivery modes from a clean checkout:
+#   - Docker: build the release images, install with deploy/docker/install.sh, check /health and /ready,
+#     upgrade, backup and restore.
+#   - Source install: deploy/linux/install.sh on a clean Ubuntu runner.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  static:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: pdo_mysql, redis, gd, zip, mbstring, intl
+          tools: composer
+      - run: composer install --no-interaction --prefer-dist
+      - name: PHP syntax
+        run: find app bin scripts config public -name '*.php' -print0 | xargs -0 -n1 php -l >/dev/null
+      - name: Shell syntax and shellcheck
+        run: |
+          for f in deploy/docker/*.sh deploy/linux/*.sh scripts/*.sh scripts/release/*.sh docker/php/*.sh docker/release/*/*.sh; do bash -n "$f"; done
+          shellcheck -S error deploy/docker/*.sh deploy/linux/*.sh scripts/release/*.sh scripts/package-offline-release.sh
+      - name: Compose files
+        run: |
+          cp .env.example .env
+          docker compose -f docker-compose.yml config -q
+          cp .env.example deploy/docker/.env
+          docker compose -f deploy/docker/compose.yml -f deploy/docker/compose.build.yml config -q
+      - name: Installer unit tests
+        run: |
+          for t in tests/Console/InstallerTest.php tests/Console/DeploymentModesTest.php tests/Console/OfflineDockerReleaseTest.php tests/Console/QdrantDeploymentConfigTest.php tests/Console/MigrationFilesTest.php; do php "$t"; done
+
+  docker-install:
+    runs-on: ubuntu-24.04
+    needs: static
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install with the Docker installer (build from source)
+        run: deploy/docker/install.sh --build --site :80 --http-port 8080 --https-port 8443 -y
+      - name: Health and readiness
+        run: |
+          curl -fsS http://127.0.0.1:8080/health
+          for i in $(seq 1 30); do curl -fsS http://127.0.0.1:8080/ready && break; sleep 5; done
+          curl -fsS http://127.0.0.1:8080/ready
+          curl -fsS -o /dev/null http://127.0.0.1:8080/admin/
+      - name: Acceptance script
+        run: deploy/docker/verify.sh
+      - name: Re-run is idempotent
+        run: deploy/docker/install.sh --build -y
+      - name: Backup, restore and upgrade
+        run: |
+          deploy/docker/backup.sh
+          CONFIRM_RESTORE=1 deploy/docker/restore.sh "$(ls -1d deploy/docker/backups/20* | tail -n1)"
+          deploy/docker/upgrade.sh --build --skip-backup
+          deploy/docker/verify.sh
+      - name: Logs on failure
+        if: failure()
+        run: docker compose --project-directory deploy/docker -f deploy/docker/compose.yml logs --no-color --tail=200
+
+  dev-stack-tests:
+    runs-on: ubuntu-24.04
+    needs: static
+    # The full suite also contains admin front-end assertions maintained separately; report, do not block.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - run: cp .env.example .env && sed -i 's/^APP_ENV=.*/APP_ENV=local/' .env
+      - run: docker compose up -d --build
+      - run: |
+          for i in $(seq 1 60); do docker compose exec -T php test -f vendor/autoload.php && break; sleep 5; done
+          docker compose exec -T php php bin/install.php run --non-interactive --admin-password=ci-admin-password-123
+          docker compose exec -T php php bin/run-tests.php
+
+  linux-install:
+    runs-on: ubuntu-24.04
+    needs: static
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare the runner's MySQL as an external database
+        run: |
+          sudo systemctl start mysql
+          mysql -uroot -proot -e "CREATE DATABASE tokenhub CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci; CREATE USER 'tokenhub'@'127.0.0.1' IDENTIFIED BY 'ci-db-password-123'; GRANT ALL ON tokenhub.* TO 'tokenhub'@'127.0.0.1';"
+      - name: Source install
+        run: sudo deploy/linux/install.sh -y --site :80 --db-host 127.0.0.1 --db-password ci-db-password-123
+      - name: Health
+        run: |
+          curl -fsS http://127.0.0.1/health
+          for i in $(seq 1 20); do curl -fsS http://127.0.0.1/ready && break; sleep 3; done
+          sudo -u tokenhub php /var/www/tokenhub/bin/doctor.php

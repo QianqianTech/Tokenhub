@@ -1,0 +1,23 @@
+[Unit]
+Description=TokenHub RAG worker (embeddings, OCR, Qdrant indexing)
+After=network-online.target mysql.service mysqld.service redis-server.service redis.service qdrant.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=@APP_USER@
+Group=@APP_USER@
+WorkingDirectory=@RAG_DIR@
+EnvironmentFile=/etc/tokenhub/tokenhub.env
+Environment=RAG_WORKER_STORAGE_ROOT=@APP_DIR@/storage
+Environment=PYTHONUNBUFFERED=1
+ExecStart=@RAG_DIR@/venv/bin/python -m tokenhub_rag_worker
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ReadWritePaths=/var/lib/tokenhub @APP_DIR@/storage
+
+[Install]
+WantedBy=multi-user.target

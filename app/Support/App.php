@@ -17,6 +17,8 @@ final class App
         $_SERVER['TOKENHUB_BASE_PATH'] = $basePath;
         self::$config = new Config($basePath);
         self::$context = RequestContext::fromHeaders($_SERVER);
+        // Fail fast instead of encrypting provider secrets with a public default key.
+        Crypto::assertProductionReady();
         self::ensureStorage();
     }
 

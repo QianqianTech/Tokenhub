@@ -1,0 +1,27 @@
+# Build the TokenHub images from this source tree instead of pulling them:
+#   docker compose -f compose.yml -f compose.build.yml build
+# install.sh / install.ps1 use this file with --build.
+services:
+  init:
+    build:
+      context: ../..
+      dockerfile: docker/release/php/Dockerfile
+      args:
+        PHP_VERSION: ${PHP_VERSION:-8.4}
+        TOKENHUB_VERSION: ${TOKENHUB_IMAGE_TAG:-local}
+  caddy:
+    build:
+      context: ../..
+      dockerfile: docker/release/caddy/Dockerfile
+  rag-worker:
+    build:
+      context: ../..
+      dockerfile: docker/release/rag-worker/Dockerfile
+  realtime-gateway:
+    build:
+      context: ../..
+      dockerfile: docker/release/realtime-gateway/Dockerfile
+  worker-autoscaler:
+    build:
+      context: ../..
+      dockerfile: docker/release/worker-autoscaler/Dockerfile

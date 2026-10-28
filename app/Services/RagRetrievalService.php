@@ -6,6 +6,7 @@ namespace TokenHub\Services;
 
 use Throwable;
 use TokenHub\Support\App;
+use TokenHub\Support\HttpAbortException;
 
 final class RagRetrievalService
 {
@@ -44,6 +45,7 @@ final class RagRetrievalService
                 'read'
             );
         } catch (Throwable $throwable) {
+            HttpAbortException::rethrowIfAbort($throwable);
             if ($required) {
                 abort_json('RAG_RETRIEVAL_FAILED', 'RAG retrieval failed', 502);
             }
@@ -82,6 +84,7 @@ final class RagRetrievalService
                 'fallback_used' => false,
             ];
         } catch (Throwable $throwable) {
+            HttpAbortException::rethrowIfAbort($throwable);
             if ($required) {
                 abort_json('RAG_RETRIEVAL_FAILED', 'RAG retrieval failed', 502);
             }
@@ -151,6 +154,45 @@ final class RagRetrievalService
             $source['source_id'] = 'src_' . ($index + 1);
             return $source;
         }, $sources, array_keys($sources)));
+    }
+
+    /**
+     * Direct retrieval for tool-style callers such as the MCP server: no chat
+     * payload and no prompt injection, but the same dataset permissions,
+     * ranking pipeline and rag_retrieval_logs record as gateway retrievals.
+     *
+     * @param array<string, mixed> $apiKey
+     * @param array{knowledge_base_ids?: list<string>, dataset_ids?: list<string>, top_k?: int} $options
+     * @return array{retrieval_id: string|null, dataset_count: int, sources: list<array<string, mixed>>}
+     */
+    public function search(array $apiKey, string $query, array $options = []): array
+    {
+        $query = trim($query);
+        if ($query === '') {
+            abort_json('RAG_QUERY_REQUIRED', 'query is required', 422);
+        }
+        $started = microtime(true);
+        $topK = $this->normalizeTopK($options['top_k'] ?? 5);
+        $datasets = (new RagPermissionService())->resolveDatasets(
+            $apiKey,
+            $this->stringList($options['dataset_ids'] ?? []),
+            [],
+            $this->stringList($options['knowledge_base_ids'] ?? []),
+            'read'
+        );
+        if ($datasets === []) {
+            return ['retrieval_id' => null, 'dataset_count' => 0, 'sources' => []];
+        }
+
+        $sources = $this->searchSourcesForDatasets($datasets, $query, $topK, 'text');
+        try {
+            $retrievalId = $this->record($apiKey, $query, $datasets, $sources, $topK, (int) ((microtime(true) - $started) * 1000), $sources === [], 'text');
+        } catch (Throwable $throwable) {
+            App::logger()->error('rag', 'rag retrieval log failed', ['error' => $throwable->getMessage()]);
+            $retrievalId = null;
+        }
+
+        return ['retrieval_id' => $retrievalId, 'dataset_count' => count($datasets), 'sources' => $sources];
     }
 
     public function findRetrieval(string $retrievalId, array $apiKey): array

@@ -46,6 +46,17 @@ final class Router
         $this->add('DELETE', $path, $handler, $middleware);
     }
 
+    /**
+     * Registered routes in registration order (method and path pattern only),
+     * for contract tests that compare the router with the published OpenAPI.
+     *
+     * @return list<array{method: string, path: string}>
+     */
+    public function routes(): array
+    {
+        return array_map(static fn (array $route): array => ['method' => $route['method'], 'path' => $route['pattern']], $this->routes);
+    }
+
     public function dispatch(string $method, string $path): mixed
     {
         $method = strtoupper($method);
@@ -65,7 +76,8 @@ final class Router
 
             foreach ($matches as $key => $value) {
                 if (is_string($key)) {
-                    $params[$key] = $value;
+                    // Path parameters arrive percent-encoded ("openai%2Fgpt-4o").
+                    $params[$key] = rawurldecode($value);
                 }
             }
 
@@ -90,6 +102,11 @@ final class Router
         $path = '/' . trim($path, '/');
         $path = $path === '/' ? '/' : rtrim($path, '/');
         $segments = array_map(static function (string $segment): string {
+            if (preg_match('/^\{([A-Za-z_][A-Za-z0-9_]*)\+\}$/', $segment, $matches) === 1) {
+                // Greedy parameter: may contain "/" (namespaced model ids such as
+                // "openai/gpt-4o" from OpenRouter). Must be the last segment.
+                return '(?P<' . $matches[1] . '>.+)';
+            }
             if (preg_match('/^\{([A-Za-z_][A-Za-z0-9_]*)\}$/', $segment, $matches) === 1) {
                 return '(?P<' . $matches[1] . '>[^/]+)';
             }

@@ -10,7 +10,7 @@ $envExample = file_get_contents($root . '/.env.example') ?: '';
 
 foreach ([
     'qdrant:',
-    'image: qdrant/qdrant',
+    'qdrant/qdrant:v',
     'container_name: tokenhub-qdrant',
     '${QDRANT_FORWARD_PORT:-63330}:6333',
     'qdrant_data:/qdrant/storage',

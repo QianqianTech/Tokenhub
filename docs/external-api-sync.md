@@ -23,6 +23,9 @@ https://your-tokenhub.example.com
 - `POST /v1/webhook-deliveries/{delivery_id}:retry` retries a failed or dead delivery.
 - `GET /v1/rag/knowledge-bases` lists authorized RAG knowledge bases.
 - `GET /v1/rag/knowledge-bases/{kb_id}/datasets` lists authorized datasets for a knowledge base.
+- `POST /v1/rag/search` searches the key's knowledge bases directly (no model call); see `external-api-complete.md` §11.
+- `POST /v1/completions`, `POST /v1/rerank` and `POST /v1/moderations` proxy legacy completions, rerank models and moderation models.
+- `/v1/management/*` (agent management: department, users, API keys incl. PATCH and `:rotate`, quota, usage, RAG) is documented in `agent-management-api.md` and in `public/openapi.json` under the `Agent Management` tag.
 
 本地开发地址：
 
@@ -527,9 +530,11 @@ TokenHub routes external model calls by model `capability`. Clients should call 
 
 | Capability | Input | Output | Endpoint |
 | --- | --- | --- | --- |
-| `text_generation` | text | text | `POST /v1/chat/completions` |
+| `text_generation` | text | text | `POST /v1/chat/completions` (legacy prompt format: `POST /v1/completions`) |
 | `vision_understanding` | text, image | text | `POST /v1/chat/completions` or `POST /v1/messages` |
 | `embedding` | text | embedding | `POST /v1/embeddings` |
+| `rerank` | text (query + documents) | relevance scores | `POST /v1/rerank` |
+| `moderation` | text, image | classification | `POST /v1/moderations` |
 | `asr` | audio | text | `POST /v1/audio/transcriptions` |
 | `tts` | text | audio | `POST /v1/audio/speech` |
 | `image_generation` | text | image | `POST /v1/images/generations` |

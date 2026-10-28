@@ -1,0 +1,71 @@
+name: tests
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  unit:
+    # Behaviour tests without MySQL: SSE parsing, usage normalisation, quota
+    # lifecycle, queue atomicity, outbound policy, routing policy, credentials.
+    runs-on: ubuntu-latest
+    services:
+      redis:
+        image: redis:7.4
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping" --health-interval 5s --health-timeout 3s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.3"
+          extensions: redis, pdo_mysql, mbstring, openssl
+      - name: Lint
+        run: find app bin scripts tests -name '*.php' -print0 | xargs -0 -n1 php -l > /dev/null
+      - name: Unit behaviour tests
+        env:
+          REDIS_HOST: 127.0.0.1
+        run: php bin/run-unit-tests.php
+
+  integration:
+    # Full suite (MySQL + Redis). Not yet verified in CI: run manually until
+    # the DB-backed tests are green on a clean database. Qdrant-dependent RAG
+    # E2E tests need the compose stack and are not run here.
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_DATABASE: tokenhub
+          MYSQL_USER: tokenhub
+          MYSQL_PASSWORD: tokenhub_secret
+          MYSQL_ROOT_PASSWORD: root_secret
+        ports: ["3306:3306"]
+        options: >-
+          --health-cmd "mysqladmin ping -h 127.0.0.1 -uroot -proot_secret" --health-interval 10s --health-timeout 5s --health-retries 10
+      redis:
+        image: redis:7.4
+        ports: ["6379:6379"]
+    env:
+      APP_ENV: testing
+      APP_KEY: ci-only-key-0123456789abcdef0123456789
+      DB_HOST: 127.0.0.1
+      DB_DATABASE: tokenhub
+      DB_USERNAME: tokenhub
+      DB_PASSWORD: tokenhub_secret
+      REDIS_HOST: 127.0.0.1
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.3"
+          extensions: redis, pdo_mysql, mbstring, openssl
+      - name: Schema
+        run: |
+          mysql -h 127.0.0.1 -utokenhub -ptokenhub_secret tokenhub < database/migrations/0001_create_tokenhub_schema.sql
+          php bin/migrate.php
+      - name: Full test suite
+        run: php tests/run.php

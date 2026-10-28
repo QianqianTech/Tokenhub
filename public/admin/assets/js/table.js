@@ -1,6 +1,6 @@
-import { adminErrorMessage, api, streamApi } from "./api.js?v=20260710-csrf-shared-v1";
+import { adminErrorMessage, api, streamApi } from "./api.js?v=20261028-admin-ops-v1";
 import { button, clear, el, field, readFields, setText, showModal, statusMessage } from "./dom.js?v=20260722-modal-close-label-v1";
-import { adminPermissionOptions, columnLabel, filterFields, formatResourceValue, resources, valueLabel } from "./resources.js?v=20260710-admin-users-localization-v1";
+import { adminPermissionOptions, columnLabel, filterFields, formatResourceValue, resources, valueLabel } from "./resources.js?v=20261028-admin-ops-v1";
 
 const MODEL_PRICE_CATEGORIES = [
   { key: "text", label: "文字", fields: ["input_token_price", "output_token_price"] },
@@ -14,11 +14,15 @@ const MODEL_PRICE_CATEGORIES = [
 const MODEL_CAPABILITY_CATEGORY_LABELS = {
   text_generation: "文字",
   vision_understanding: "图片",
+  video_understanding: "视频",
+  audio_understanding: "音频",
   embedding: "文字",
   asr: "ASR",
   tts: "TTS",
   image_generation: "图片",
-  video_generation: "视频"
+  video_generation: "视频",
+  rerank: "文字",
+  moderation: "审核"
 };
 
 const SETTINGS_SECTION_PAGES = {
@@ -57,36 +61,6 @@ const SETTINGS_SECTION_PAGES = {
       { name: "masked_query_fields", label: "脱敏查询参数字段，每行一个", type: "textarea", optional: true, rows: 3 }
     ]
   },
-  "settings-firewall": {
-    title: "WAF 防火墙",
-    section: "firewall_settings",
-    fields: [
-      { name: "enabled", label: "启用防火墙", type: "select", options: [["true", "启用"], ["false", "停用"]] },
-      { name: "auto_publish", label: "保存后自动发布", type: "select", options: [["false", "否"], ["true", "是"]] },
-      { name: "auto_allow_local_private_ips", label: "自动允许本机内网 IP（推荐）", type: "select", options: [["true", "启用"], ["false", "停用"]] },
-      { name: "admin_allowed_cidrs", label: "管理端允许网段，每行一个（留空不限制）", type: "textarea", optional: true, rows: 3 },
-      { name: "api_allowed_cidrs", label: "接口入口允许网段，每行一个（留空不限制）", type: "textarea", optional: true, rows: 3 },
-      { name: "manual_blocked_cidrs", label: "手动封禁 IP 网段，每行一个", type: "textarea", optional: true, rows: 3 },
-      { name: "allowed_methods", label: "允许请求方法，每行一个", type: "textarea", optional: true, rows: 4 },
-      { name: "blocked_paths", label: "阻断路径前缀，每行一个", type: "textarea", optional: true, rows: 4 },
-      { name: "sensitive_query_keys", label: "敏感查询参数，每行一个", type: "textarea", optional: true, rows: 3 },
-      { name: "max_body_bytes", label: "最大请求体字节数", type: "number" },
-      { name: "login_failure_threshold", label: "登录失败封禁阈值", type: "number" }
-    ]
-  },
-  "settings-waf-detection": {
-    title: "WAF 核心检测",
-    section: "waf_detection_settings",
-    fields: [
-      { name: "enabled", label: "启用语义检测", type: "select", options: [["true", "启用"], ["false", "停用"]] },
-      { name: "mode", label: "处置模式", type: "select", options: [["observe", "观察：仅记录"], ["block", "拦截：达到阈值拒绝"]] },
-      { name: "block_threshold", label: "阻断风险阈值", type: "number" },
-      { name: "max_inspect_bytes", label: "最大检测字节数", type: "number" },
-      { name: "max_field_count", label: "最大检测字段数", type: "number" },
-      { name: "max_field_bytes", label: "单字段最大字节数", type: "number" },
-      { name: "excluded_paths", label: "跳过检测的路径，每行一个", type: "textarea", optional: true, rows: 3 }
-    ]
-  },
   "settings-retention-export": {
     title: "留存与导出",
     section: "retention_export",
@@ -101,8 +75,6 @@ const SETTINGS_SECTION_PAGES = {
     title: "告警设置",
     section: "alert_thresholds",
     fields: [
-      { name: "waf_spike_count", label: "WAF 突增告警次数", type: "number" },
-      { name: "waf_spike_window_minutes", label: "WAF 突增统计窗口分钟", type: "number" },
       { name: "provider_error_rate", label: "厂商错误率阈值" },
       { name: "provider_error_window_minutes", label: "厂商错误统计窗口分钟", type: "number" },
       { name: "provider_min_requests", label: "厂商错误最小请求数", type: "number" },
@@ -156,8 +128,6 @@ const SETTINGS_SECTION_PAGE_ORDER = [
   "settings-brand-identity",
   "settings-tls-certificates",
   "settings-entry-security",
-  "settings-firewall",
-  "settings-waf-detection",
   "settings-retention-export",
   "settings-alert-thresholds",
   "settings-rag-upload-review",
@@ -168,7 +138,7 @@ const SETTINGS_SECTION_PAGE_ORDER = [
 
 const SETTINGS_SECTION_CATEGORIES = [
   { key: "base-entry", label: "基础入口", sections: ["settings-brand-identity", "settings-tls-certificates"] },
-  { key: "security", label: "安全防护", sections: ["settings-entry-security", "settings-firewall", "settings-waf-detection"] },
+  { key: "security", label: "安全防护", sections: ["settings-entry-security"] },
   { key: "governance", label: "治理告警", sections: ["settings-retention-export", "settings-alert-thresholds"] },
   { key: "rag", label: "RAG 设置", sections: ["settings-rag-upload-review", "settings-rag-package-upload", "settings-rag-ai-image-processing", "settings-rag-vectorization-monitoring"] }
 ];
@@ -255,7 +225,23 @@ const providerBaseUrlPresets = {
   "openrouter": "https://openrouter.ai/api/v1",
   "groq": "https://api.groq.com/openai/v1",
   "mistral": "https://api.mistral.ai/v1",
-  "ollama": "http://localhost:11434/v1"
+  "ollama": "http://localhost:11434/v1",
+  "minimax": "https://api.minimaxi.com",
+  "bailian": "https://dashscope.aliyuncs.com",
+  "gemini_native": "https://generativelanguage.googleapis.com",
+  "xai": "https://api.x.ai/v1",
+  "kling": "https://api-singapore.klingai.com",
+  "vidu": "https://api.vidu.com",
+  "bfl": "https://api.bfl.ai",
+  "fal": "https://queue.fal.run",
+  "replicate": "https://api.replicate.com/v1",
+  "elevenlabs": "https://api.elevenlabs.io",
+  "runway": "https://api.dev.runwayml.com",
+  "luma": "https://agents.lumalabs.ai/v1",
+  "deepgram": "https://api.deepgram.com",
+  "ideogram": "https://api.ideogram.ai",
+  "stability": "https://api.stability.ai",
+  "hunyuan_image": "https://hunyuan.tencentcloudapi.com"
 };
 
 const providerAnthropicBaseUrlPresets = {
@@ -304,6 +290,30 @@ const providerNameAliases = [
   ["hunyuan", "tencent"],
   ["\u6df7\u5143", "tencent"],
   ["openrouter", "openrouter"],
+  ["minimax", "minimax"],
+  ["海螺", "minimax"],
+  ["百炼原生", "bailian"],
+  ["万相", "bailian"],
+  ["cosyvoice", "bailian"],
+  ["gemini 原生", "gemini_native"],
+  ["gemini native", "gemini_native"],
+  ["xai", "xai"],
+  ["grok", "xai"],
+  ["可灵", "kling"],
+  ["kling", "kling"],
+  ["vidu", "vidu"],
+  ["生数", "vidu"],
+  ["flux", "bfl"],
+  ["black forest", "bfl"],
+  ["fal", "fal"],
+  ["replicate", "replicate"],
+  ["elevenlabs", "elevenlabs"],
+  ["runway", "runway"],
+  ["luma", "luma"],
+  ["deepgram", "deepgram"],
+  ["ideogram", "ideogram"],
+  ["stability", "stability"],
+  ["混元生图", "hunyuan_image"],
   ["groq", "groq"],
   ["mistral", "mistral"],
   ["ollama", "ollama"]
@@ -316,6 +326,16 @@ const providerDisplayNamePresets = [
   { name: "\u817e\u8baf\u4e91", protocol: "openai", baseUrl: providerBaseUrlPresets.tencent },
   { name: "Kimi API / Moonshot", protocol: "openai", baseUrl: providerBaseUrlPresets.moonshot },
   { name: "Kimi Code", protocol: "openai", baseUrl: providerBaseUrlPresets.kimi_code },
+  { name: "MiniMax（海螺视频/生图/语音）", protocol: "openai", baseUrl: providerBaseUrlPresets.minimax },
+  { name: "阿里云百炼原生（万相/CosyVoice）", protocol: "openai", baseUrl: providerBaseUrlPresets.bailian },
+  { name: "Google Gemini 原生", protocol: "gemini", baseUrl: providerBaseUrlPresets.gemini_native },
+  { name: "可灵 Kling", protocol: "openai", baseUrl: providerBaseUrlPresets.kling },
+  { name: "生数 Vidu", protocol: "openai", baseUrl: providerBaseUrlPresets.vidu },
+  { name: "xAI Grok", protocol: "openai", baseUrl: providerBaseUrlPresets.xai },
+  { name: "OpenRouter", protocol: "openai", baseUrl: providerBaseUrlPresets.openrouter },
+  { name: "FLUX（Black Forest Labs）", protocol: "openai", baseUrl: providerBaseUrlPresets.bfl },
+  { name: "fal.ai", protocol: "openai", baseUrl: providerBaseUrlPresets.fal },
+  { name: "ElevenLabs", protocol: "openai", baseUrl: providerBaseUrlPresets.elevenlabs },
   { name: "\u517c\u5bb9 OpenAI", protocol: "openai", baseUrl: providerBaseUrlPresets.openai }
 ];
 
@@ -387,22 +407,6 @@ const RAG_CATEGORY_TABS = {
   ]
 };
 export async function renderResourcePage(content, resourceKey, initialFilters = {}) {
-  if (resourceKey === "waf-overview") {
-    await renderWafOverviewPage(content);
-    return;
-  }
-  if (resourceKey === "waf-ip-bans") {
-    await renderWafIpBansPage(content);
-    return;
-  }
-  if (resourceKey === "waf-rule-versions") {
-    await renderWafVersionsPage(content);
-    return;
-  }
-  if (resourceKey === "waf-alerts") {
-    await renderWafAlertsPage(content);
-    return;
-  }
   if (resourceKey === "alert-events") {
     await renderAlertEventsPage(content);
     return;
@@ -441,14 +445,6 @@ export async function renderResourcePage(content, resourceKey, initialFilters = 
   }
   if (resources[resourceKey]?.settingsSection) {
     await renderSettingsSectionPage(content, resourceKey);
-    return;
-  }
-  if (resourceKey === "waf-rules") {
-    await renderWafRulesPage(content, initialFilters);
-    return;
-  }
-  if (resourceKey === "waf-events") {
-    await renderWafEventsPage(content, initialFilters);
     return;
   }
   if (resourceKey === "api-keys") {
@@ -762,6 +758,28 @@ function renderApiKeyTable(rows, config, onRefresh, context = {}) {
       ragButton.title = "配置此密钥可调用的知识库和数据集";
       actions.append(ragButton);
     }
+    if (row.id) {
+      const quotaButton = button("", () => showApiKeyQuota(row), "secondary api-key-icon-button api-key-quota-button");
+      quotaButton.title = "额度：查看当前用量（含进行中请求的预占）";
+      quotaButton.ariaLabel = "额度";
+      quotaButton.append(apiKeyActionIcon([
+        "M12 14l4-4",
+        "M3.34 19a10 10 0 1 1 17.32 0"
+      ]));
+      actions.append(quotaButton);
+    }
+    if (row.id && row.status === "active") {
+      const rotateButton = button("", () => showApiKeyRotate(row, onRefresh), "secondary api-key-icon-button api-key-rotate-button");
+      rotateButton.title = "轮换：生成新密钥并在宽限期后停用旧密钥";
+      rotateButton.ariaLabel = "轮换";
+      rotateButton.append(apiKeyActionIcon([
+        "M21 12a9 9 0 0 1-15.5 6.2L3 16",
+        "M3 21v-5h5",
+        "M3 12a9 9 0 0 1 15.5-6.2L21 8",
+        "M21 3v5h-5"
+      ]));
+      actions.append(rotateButton);
+    }
     if (row.id && row.status !== "disabled" && row.status !== "deleted") {
       const deleteButton = button("", async () => {
         if (!window.confirm(`确认删除 API 密钥 ${row.name || row.id}？`)) {
@@ -788,11 +806,12 @@ function renderApiKeyTable(rows, config, onRefresh, context = {}) {
       el("td", { className: "table-cell table-cell--select" }, [checkbox]),
       ...apiKeyPageColumns.map(([column]) => {
         const cellText = apiKeyCellText(column, row, context);
+        const scopeBadge = column === "name" ? apiKeyManagementBadge(row) : null;
         return el("td", {
           className: `table-cell table-cell--${column}`,
-          text: cellText,
+          text: scopeBadge ? undefined : cellText,
           title: cellText
-        });
+        }, scopeBadge ? [scopeBadge, document.createTextNode(cellText)] : []);
       }),
       actions
     ]);
@@ -840,7 +859,7 @@ function apiKeyCellText(column, row, context = {}) {
     return apiKeyDisplay(row);
   }
   if (column === "status") {
-    return apiKeyStatusText(row.status);
+    return apiKeyStatusText(row.status, row.disabled_by);
   }
   if (column === "user_name") {
     return row.user_name || apiKeyUserLabel(row.user_id, context);
@@ -870,35 +889,107 @@ function apiKeyDisplay(row = {}) {
   return "";
 }
 
-function apiKeyStatusText(status) {
+// disabled_by: "admin" (console) | "management" (agent management API) |
+// null (not recorded; the management API treats it as admin).
+const API_KEY_DISABLED_BY_LABELS = { admin: "管理员", management: "智能体" };
+
+function apiKeyStatusText(status, disabledBy = null) {
   const labels = {
     active: "生效中",
     disabled: "已停用",
     deleted: "已删除",
     expired: "已过期"
   };
-  return labels[status] || formatResourceValue("status", status);
+  const text = labels[status] || formatResourceValue("status", status);
+  if (status === "disabled" && API_KEY_DISABLED_BY_LABELS[disabledBy]) {
+    return `${text}（${API_KEY_DISABLED_BY_LABELS[disabledBy]}）`;
+  }
+  return text;
 }
 
 async function renderAdminChatSessionPage(content) {
   clear(content);
   const state = { messages: [], stickToBottom: true };
-  const modelResult = await api("/admin-api/chat-session/models").catch((error) => ({ error, data: [] }));
+  const [modelResult, chatApiKeys] = await Promise.all([
+    api("/admin-api/chat-session/models").catch((error) => ({ error, data: [] })),
+    lookupRows("api-keys")
+  ]);
   const models = Array.isArray(modelResult.data) ? modelResult.data : [];
   const modelOptions = models.map((row) => {
     const suffix = row.provider_name ? ` / ${row.provider_name}` : "";
     return [row.name, `${row.name}${suffix}`];
   });
+  const activeApiKeys = chatApiKeys.filter((key) => key.id && key.status === "active");
+  const apiKeyOptions = [
+    ["", "不使用（直连诊断）"],
+    ...activeApiKeys.map((key) => [String(key.id), `${key.name || `API 密钥 #${key.id}`} / ${apiKeyDisplay(key) || `#${key.id}`}`])
+  ];
+  let gatewayModels = null;
 
   const fields = [
     { name: "model", label: "模型", type: "select", options: modelOptions },
-    { name: "prompt", label: "消息", type: "textarea", rows: 3 }
+    { name: "prompt", label: "消息", type: "textarea", rows: 3 },
+    { name: "api_key_id", label: "使用 API Key", type: "select", options: apiKeyOptions }
   ];
   const form = el("form", { className: "admin-chat-composer", onSubmit: (event) => event.preventDefault() });
   const output = el("p", { className: "notice", hidden: true });
+  const trialMeta = el("div", { className: "admin-chat-trial-meta", hidden: true });
   const modelField = field(fields[0], "");
   modelField.classList.add("admin-chat-model-field");
   const promptField = field(fields[1], "");
+  const apiKeyField = field(fields[2], "");
+  apiKeyField.classList.add("admin-chat-api-key-field");
+  const apiKeySelect = apiKeyField.querySelector('select[name="api_key_id"]');
+  const modelSelect = modelField.querySelector('select[name="model"]');
+  const modeHint = el("p", { className: "admin-chat-mode-hint" });
+  const setModelOptions = (options) => {
+    const previous = modelSelect.value;
+    modelSelect.replaceChildren(...options.map(([value, label]) => el("option", { value, text: label })));
+    if (options.some(([value]) => value === previous)) {
+      modelSelect.value = previous;
+    }
+  };
+  const updateChatMode = async () => {
+    const apiKeyId = apiKeySelect.value;
+    trialMeta.hidden = true;
+    if (!apiKeyId) {
+      modeHint.className = "admin-chat-mode-hint notice";
+      setText(modeHint, "直连诊断模式：直接调用上游，绕过额度、脱敏、RAG 与计费，不产生用量记录，仅用于连通性检查。");
+      setModelOptions(modelOptions);
+      send.disabled = modelOptions.length === 0;
+      return;
+    }
+    modeHint.className = "admin-chat-mode-hint notice secret-output";
+    setText(modeHint, "API Key 试用模式：请求经过真实网关（鉴权、额度、脱敏、RAG、路由与故障转移），按所选密钥计费并产生用量记录。模型使用该密钥已授权的逻辑模型名。");
+    gatewayModels ??= await lookupRows("models");
+    const apiKey = activeApiKeys.find((key) => String(key.id) === apiKeyId) || {};
+    const grantedIds = new Set(normalizeIdList(apiKey.model_ids));
+    const grantedNames = [...new Set(gatewayModels
+      .filter((model) => grantedIds.has(Number(model.id)) && modelIsGatewaySupported(model) && (!model.status || model.status === "active") && ["text_generation", "vision_understanding"].includes(model.capability))
+      .map((model) => model.name)
+      .filter(Boolean))];
+    if (gatewayModels.length === 0) {
+      setModelOptions(modelOptions);
+      setText(modeHint, `${modeHint.textContent}（无法读取模型目录，下列模型可能未授权给该密钥。）`);
+    } else {
+      setModelOptions(grantedNames.map((name) => [name, name]));
+      if (grantedNames.length === 0) {
+        setText(modeHint, "所选 API 密钥没有已授权的文本模型，请先在 API 密钥中授权模型。");
+      }
+    }
+    send.disabled = modelSelect.options.length === 0;
+  };
+  const showTrialMeta = (requestId, apiKeyId) => {
+    if (!apiKeyId || !requestId) {
+      trialMeta.hidden = true;
+      return;
+    }
+    trialMeta.replaceChildren(
+      el("span", { text: `请求 ID：${requestId}` }),
+      button("诊断此请求", () => showRequestDiagnostics(requestId), "secondary")
+    );
+    trialMeta.hidden = false;
+  };
 
   const transcript = el("section", { className: "admin-chat-transcript" });
   const scrollToBottom = () => {
@@ -928,6 +1019,7 @@ async function renderAdminChatSessionPage(content) {
   const send = button("发送", async () => {
     const model = form.querySelector('[name="model"]')?.value || "";
     const prompt = form.querySelector('[name="prompt"]')?.value.trim() || "";
+    const apiKeyId = Number(apiKeySelect.value) || 0;
     if (!model || !prompt) {
       output.hidden = false;
       output.className = "notice error";
@@ -948,12 +1040,14 @@ async function renderAdminChatSessionPage(content) {
     form.querySelector('[name="prompt"]').value = "";
     renderTranscript();
     let reasoningSeen = false;
+    trialMeta.hidden = true;
     try {
-      await streamApi("/admin-api/chat-session/stream", {
+      const streamed = await streamApi("/admin-api/chat-session/stream", {
         method: "POST",
         body: JSON.stringify({
           model,
-          messages
+          messages,
+          ...(apiKeyId > 0 ? { api_key_id: apiKeyId } : {})
         })
       }, (data) => {
         if (data === "[DONE]") {
@@ -983,7 +1077,8 @@ async function renderAdminChatSessionPage(content) {
       }
       state.messages = state.messages.slice(-20);
       output.className = "notice";
-      setText(output, `完成：${model}`);
+      setText(output, apiKeyId > 0 ? `完成：${model}（API Key 试用，已按所选密钥计费）` : `完成：${model}`);
+      showTrialMeta(streamed?.requestId, apiKeyId);
       renderTranscript();
     } catch (error) {
       if (!assistant.content) {
@@ -991,6 +1086,7 @@ async function renderAdminChatSessionPage(content) {
       }
       output.className = "notice error";
       setText(output, adminErrorMessage(error, "会话请求失败"));
+      showTrialMeta(error.requestId, apiKeyId);
       renderTranscript();
     } finally {
       send.disabled = false;
@@ -1007,11 +1103,18 @@ async function renderAdminChatSessionPage(content) {
       promptField,
       el("div", { className: "admin-chat-input-footer" }, [
         modelField,
+        apiKeyField,
         el("div", { className: "toolbar-actions" }, [send, reset])
       ])
     ]),
-    output
+    modeHint,
+    output,
+    trialMeta
   );
+  apiKeySelect.addEventListener("change", () => {
+    void updateChatMode();
+  });
+  await updateChatMode();
   if (modelOptions.length === 0) {
     send.disabled = true;
     form.prepend(statusMessage(modelResult.error ? adminErrorMessage(modelResult.error, "模型加载失败") : "暂无可用文本模型", modelResult.error ? "error" : ""));
@@ -1067,308 +1170,14 @@ async function renderGenericResourcePage(content, resourceKey, initialFilters = 
     }
   }
   toolbar.append(actions);
+  if (resourceKey === "usage-records" || resourceKey === "logs") {
+    toolbar.append(renderRequestDiagnosticsLookup());
+  }
   content.append(toolbar, tablePanel);
   await refreshRows();
   if (openCreate && config.form) {
     await showCreateModal(resourceKey, config, refreshRows);
   }
-}
-
-async function renderWafOverviewPage(content) {
-  clear(content);
-  const cockpit = el("section", { className: "waf-overview-cockpit stack" });
-  content.append(cockpit);
-  const load = async () => {
-    clear(cockpit);
-    try {
-      const result = await api("/admin-api/waf/overview");
-      document.getElementById("request-id").textContent = result.requestId || "";
-      cockpit.append(renderWafOverviewCockpit(result.data || {}));
-    } catch (error) {
-      cockpit.append(statusMessage(adminErrorMessage(error, "WAF 总览加载失败"), "error"));
-      cockpit.append(button("重新加载 WAF 总览", load, "secondary"));
-    }
-  };
-  await load();
-}
-
-function renderWafOverviewCockpit(data) {
-  const publication = data.publication || {};
-  const summary = data.summary || {};
-  const publicationCopy = wafPublicationCopy(publication.status);
-  const topRules = Array.isArray(data.top_rules) ? data.top_rules.slice(0, 5) : [];
-  const recentEvents = Array.isArray(data.recent_events) ? data.recent_events.slice(0, 5) : [];
-  const unhandledBlocks = recentEvents.filter((event) => event.action === "block" && (!event.disposition_status || event.disposition_status === "open")).length;
-  const maxRuleHits = Math.max(1, ...topRules.map((row) => Number(row.event_count) || 0));
-
-  return el("div", { className: "waf-cockpit-content" }, [
-    el("header", { className: `panel waf-cockpit-hero ${publicationCopy.tone}` }, [
-      el("div", { className: "waf-cockpit-hero-copy" }, [
-        el("span", { className: "waf-cockpit-kicker", text: "WAF 防护态势" }),
-        el("h2", { text: publicationCopy.label }),
-        el("p", { text: publicationCopy.description }),
-        el("small", { text: publication.version_code ? `当前版本：${publication.version_code}` : "当前尚无已发布版本" })
-      ]),
-      el("div", { className: "waf-cockpit-actions" }, [
-        button("查看规则", () => ragNavigate("waf-rules")),
-        button("查看攻击记录", () => ragNavigate("waf-events"), "secondary"),
-        button("管理 IP 封禁", () => ragNavigate("waf-ip-bans"), "secondary"),
-        button("版本管理", () => ragNavigate("waf-rule-versions"), "secondary")
-      ])
-    ]),
-    el("section", { className: "waf-cockpit-metrics" }, [
-      wafMetricCard("启用规则", summary.active_rule_count || 0, "当前正在参与边缘防护匹配的规则"),
-      wafMetricCard("活跃封禁 IP", summary.active_ban_count || 0, "已被系统拒绝访问的异常来源"),
-      wafMetricCard("攻击事件", summary.total_events || 0, "统计窗口内被 WAF 识别的风险请求"),
-      wafMetricCard("已拦截", summary.blocked_events || 0, "已在防护链路中阻断的风险请求")
-    ]),
-    el("section", { className: "waf-cockpit-capabilities panel" }, [
-      el("div", { className: "waf-cockpit-section-heading" }, [
-        el("div", {}, [el("span", { className: "waf-cockpit-kicker", text: "防护范围" }), el("h3", { text: "防护能力" })]),
-        el("p", { text: "WAF 在请求进入业务服务前后提供规则拦截、来源控制和可追溯的安全处置链路。" })
-      ]),
-      el("div", { className: "waf-capability-grid" }, [
-        wafCapability("规则匹配拦截", "识别命中规则的恶意或异常请求并按策略处理。"),
-        wafCapability("敏感路径保护", "拦截高风险路径、方法和敏感查询参数访问。"),
-        wafCapability("异常来源 IP 封禁", "对重复攻击或人工确认的来源执行系统级拒绝。"),
-        wafCapability("攻击留痕与审计", "记录规则、来源、路径和处置状态，支持后续复核。")
-      ])
-    ]),
-    (summary.active_ban_count || unhandledBlocks) ? el("section", { className: "notice warning waf-cockpit-follow-up" }, [
-      el("strong", { text: "需要关注的安全处置" }),
-      el("span", { text: `${summary.active_ban_count || 0} 个活跃封禁 IP，${unhandledBlocks} 条近期阻断事件尚未处置。` }),
-      wafNavigateButton("进入攻击记录处理", "waf-events", "secondary")
-    ]) : null,
-    el("section", { className: "waf-cockpit-grid" }, [
-      el("article", { className: "panel waf-cockpit-panel" }, [
-        el("div", { className: "waf-cockpit-section-heading" }, [
-          el("div", {}, [el("span", { className: "waf-cockpit-kicker", text: "攻击分析" }), el("h3", { text: "威胁热点" })]),
-          el("small", { text: "按规则命中次数排序" })
-        ]),
-        topRules.length ? el("div", { className: "waf-threat-list" }, topRules.map((row) => el("div", { className: "waf-threat-item" }, [
-          el("div", { className: "waf-threat-label" }, [
-            el("strong", { text: row.rule_code || "未命名规则" }),
-            el("span", { text: `${row.event_count || 0} 次命中` })
-          ]),
-          el("div", { className: "waf-threat-bar", ariaLabel: `${row.rule_code || "未命名规则"} 命中占比` }, [
-            el("div", { className: "waf-threat-bar-fill", style: `width: ${Math.round(((Number(row.event_count) || 0) / maxRuleHits) * 100)}%` })
-          ])
-        ]))) : statusMessage("当前统计窗口内未发现攻击命中", "success")
-      ]),
-      el("article", { className: "panel waf-cockpit-panel waf-cockpit-events" }, [
-        el("div", { className: "waf-cockpit-section-heading" }, [
-          el("div", {}, [el("span", { className: "waf-cockpit-kicker", text: "实时事件" }), el("h3", { text: "近期攻击" })]),
-          wafNavigateButton("查看全部攻击记录", "waf-events", "secondary")
-        ]),
-        recentEvents.length ? el("div", { className: "waf-recent-event-list" }, recentEvents.map(wafRecentEvent)) : statusMessage("暂无近期攻击记录，当前防护态势平稳。", "success")
-      ])
-    ])
-  ]);
-}
-
-function wafPublicationCopy(status) {
-  if (status === "published") return { label: "边缘防护已发布", description: "当前规则版本已同步至边缘防护层，风险请求可在入口处被拦截。", tone: "is-published" };
-  if (status === "unpublished") return { label: "边缘防护待发布", description: "规则变更尚未同步至边缘防护层，请在规则页面完成确认发布。", tone: "is-pending" };
-  return { label: "边缘防护状态异常", description: "未能确认边缘规则的发布状态，请检查版本与发布记录。", tone: "is-problem" };
-}
-
-function wafMetricCard(label, value, description) {
-  return el("article", { className: "waf-cockpit-metric" }, [el("span", { text: label }), el("strong", { text: value }), el("small", { text: description })]);
-}
-
-function wafCapability(title, description) {
-  return el("article", { className: "waf-capability-item" }, [el("strong", { text: title }), el("span", { text: description })]);
-}
-
-function wafNavigateButton(label, page, variant = "") {
-  return button(label, () => ragNavigate(page), variant);
-}
-
-function wafRecentEvent(event) {
-  const action = event.action === "block" ? "已拦截" : event.action === "log" ? "观察中" : "已记录";
-  const disposition = event.disposition_status || "待处置";
-  return el("article", { className: "waf-recent-event" }, [
-    el("div", { className: "waf-recent-event-main" }, [
-      el("strong", { text: event.rule_code || "未命名规则" }),
-      el("span", { text: `${event.client_ip || "未知来源"} · ${event.path || "/"}` }),
-      el("small", { text: event.created_at || "时间未知" })
-    ]),
-    el("div", { className: "waf-recent-event-status" }, [el("span", { className: `waf-event-action ${event.action === "block" ? "is-blocked" : ""}`, text: action }), el("small", { text: disposition })])
-  ]);
-}
-
-async function renderWafVersionsPage(content) {
-  clear(content);
-  const host = el("section", { className: "waf-version-page stack" });
-  content.append(host);
-
-  const load = async () => {
-    clear(host);
-    try {
-      const result = await api("/admin-api/waf/versions");
-      document.getElementById("request-id").textContent = result.requestId || "";
-      const versions = Array.isArray(result.data) ? result.data : [];
-      const currentVersion = versions.find((version) => version.status === "published") || null;
-      const actions = el("div", { className: "toolbar-actions" }, [
-        button("Dry Run 发布", () => publishWafFromVersions({ dry_run: true, reload: false }, load), "secondary"),
-        button("发布当前规则", () => {
-          if (!window.confirm("确认发布当前启用的 WAF 规则？高危规则可能影响管理端或 API 入口。")) return;
-          publishWafFromVersions({ confirm_high_risk: true, reload: true }, load);
-        }, "danger")
-      ]);
-      host.append(el("header", { className: "panel waf-version-header" }, [
-        el("div", {}, [
-          el("span", { className: "waf-cockpit-kicker", text: "发布控制" }),
-          el("h2", { text: "WAF 发布版本" }),
-          el("p", { text: currentVersion ? `当前生效版本：${currentVersion.version_code}` : "当前没有已发布版本" })
-        ]),
-        actions
-      ]));
-      if (versions.length === 0) {
-        host.append(statusMessage("暂无 WAF 发布版本，请先在规则页完成预检与发布。"));
-        return;
-      }
-      host.append(el("div", { className: "waf-version-list" }, versions.map((version) => renderWafVersionCard(version, currentVersion, load))));
-    } catch (error) {
-      host.append(statusMessage(adminErrorMessage(error, "WAF 发布版本加载失败"), "error"));
-      host.append(button("重新加载版本", load, "secondary"));
-    }
-  };
-
-  await load();
-}
-
-function renderWafVersionCard(version, currentVersion, onRefresh) {
-  const isCurrent = version.status === "published";
-  const actionButtons = [button("查看差异", () => showWafVersionDiff(version.version_code), "secondary")];
-  if (!isCurrent) {
-    actionButtons.push(button("回滚到此版本", () => confirmWafRollback(version, currentVersion, onRefresh), "danger"));
-  }
-  return el("article", { className: `panel waf-version-card ${isCurrent ? "is-current" : ""}` }, [
-    el("div", { className: "waf-version-main" }, [
-      el("div", { className: "waf-version-title" }, [
-        el("strong", { text: version.version_code || "未知版本" }),
-        el("span", { className: `waf-version-status is-${version.status || "unknown"}`, text: wafVersionStatusLabel(version.status) })
-      ]),
-      el("small", { text: `发布人：${version.published_by || "系统"} · ${version.created_at || "时间未知"}` })
-    ]),
-    el("div", { className: "toolbar-actions" }, actionButtons)
-  ]);
-}
-
-function wafVersionStatusLabel(status) {
-  return ({ published: "当前生效", rolled_back: "已回退", failed: "发布失败", draft: "草稿" })[status] || "未知状态";
-}
-
-async function showWafVersionDiff(versionCode) {
-  try {
-    const result = await api(`/admin-api/waf/versions/${encodeURIComponent(versionCode)}/diff`, { query: { base: "previous" } });
-    document.getElementById("request-id").textContent = result.requestId || "";
-    showModal(`版本差异 · ${versionCode}`, renderWafVersionDiff(result.data || {}));
-  } catch (error) {
-    showModal("WAF 版本差异", statusMessage(adminErrorMessage(error, "版本差异加载失败"), "error"));
-  }
-}
-
-function renderWafVersionDiff(data) {
-  return el("div", { className: "waf-diff-view stack" }, [
-    statusMessage(`对比版本：${data.base_version_code || "初始版本"} → ${data.version_code || "当前版本"}`),
-    wafDiffSection("规则快照差异", data.rules || []),
-    wafDiffSection("Caddy 片段差异", data.caddyfile_fragment || [])
-  ]);
-}
-
-function wafDiffSection(title, lines) {
-  return el("section", { className: "waf-diff-section" }, [
-    el("h3", { text: title }),
-    Array.isArray(lines) && lines.length ? el("pre", { className: "waf-diff-lines" }, lines.map(wafDiffLine)) : statusMessage("该部分没有差异", "success")
-  ]);
-}
-
-function wafDiffLine(line) {
-  const text = String(line || "");
-  const tone = text.startsWith("+ ") ? "is-added" : text.startsWith("- ") ? "is-removed" : "is-context";
-  return el("code", { className: `waf-diff-line ${tone}`, text });
-}
-
-function confirmWafRollback(version, currentVersion, onRefresh) {
-  const body = el("div", { className: "waf-rollback-dialog stack" }, [
-    statusMessage("回滚会替换当前 Caddy WAF 片段并触发配置验证与重载。", "warning"),
-    el("div", { className: "data-detail-list" }, [
-      ["当前版本", currentVersion?.version_code || "无"],
-      ["目标版本", version.version_code || "未知"]
-    ].map(([label, value]) => el("div", { className: "data-detail-row" }, [el("span", { text: label }), el("strong", { text: value })]))),
-    button("确认回滚", async () => {
-      if (!window.confirm(`确认将 WAF 回滚到 ${version.version_code}？`)) return;
-      try {
-        const result = await api("/admin-api/waf/rollback", {
-          method: "POST",
-          body: JSON.stringify({ version_code: version.version_code, reload: true })
-        });
-        showModal("WAF 回滚结果", renderWafOperationResult(result.data || {}));
-        await onRefresh();
-      } catch (error) {
-        showModal("WAF 回滚失败", statusMessage(adminErrorMessage(error, "WAF 回滚失败"), "error"));
-      }
-    }, "danger")
-  ]);
-  showModal("回滚 WAF 版本", body);
-}
-
-async function publishWafFromVersions(payload, onRefresh) {
-  try {
-    const result = await api("/admin-api/waf/publish", { method: "POST", body: JSON.stringify(payload) });
-    document.getElementById("request-id").textContent = result.requestId || "";
-    showModal(payload.dry_run ? "WAF Dry Run 结果" : "WAF 发布结果", payload.dry_run ? renderWafPreviewResult(result.data || {}) : renderWafOperationResult(result.data || {}));
-    await onRefresh();
-  } catch (error) {
-    showModal("WAF 发布失败", statusMessage(adminErrorMessage(error, "WAF 发布失败"), "error"));
-  }
-}
-
-function renderWafOperationResult(data) {
-  return el("div", { className: "data-detail-list" }, [
-    ["状态", data.status || "unknown"],
-    ["版本", data.version_code || "-"],
-    ["配置验证", data.validated === false ? "失败" : "通过"],
-    ["Caddy 重载", data.reloaded ? "已重载" : "未重载"],
-    ["错误", data.error || "无"]
-  ].map(([label, value]) => el("div", { className: "data-detail-row" }, [el("span", { text: label }), el("strong", { text: value })])));
-}
-
-async function renderWafIpBansPage(content) {
-  clear(content);
-  const form = resourceForm([{ name: "client_ip", label: "IP 地址" }, { name: "reason", label: "封禁原因" }]);
-  const feedback = el("div", { className: "stack" });
-  const tablePanel = el("section", { className: "panel table-panel" });
-  const load = async () => {
-    const result = await api("/admin-api/waf/ip-bans");
-    clear(tablePanel);
-    const rows = result.data?.records || [];
-    const list = el("div", { className: "stack" });
-    for (const row of rows) {
-      list.append(el("article", { className: "panel" }, [
-        renderDataDetails(row),
-        button("解封", async () => { await api(`/admin-api/waf/ip-bans/${encodeURIComponent(row.client_ip)}`, { method: "DELETE" }); await load(); }, "secondary")
-      ]));
-    }
-    tablePanel.append(el("h2", { text: "系统 IP 封禁" }), rows.length ? list : statusMessage("暂无封禁 IP"));
-  };
-  form.append(button("封禁 IP", async () => {
-    await api("/admin-api/waf/ip-bans", { method: "POST", body: JSON.stringify(readFields(form, [{ name: "client_ip" }, { name: "reason" }])) });
-    const overview = await api("/admin-api/waf/overview");
-    const publicationStatus = overview.data?.publication?.status;
-    const edgeMessage = publicationStatus === "published" ? "边缘 WAF 已发布" : "边缘 WAF 等待发布";
-    clear(feedback);
-    feedback.append(statusMessage(`应用层封禁已生效；${edgeMessage}`, "success"));
-    await load();
-  }));
-  content.append(el("section", { className: "panel" }, [el("h2", { text: "新增封禁" }), form, feedback]), tablePanel);
-  await load();
-}
-
-async function renderWafAlertsPage(content) {
-  await renderAlertEventsPage(content, { event_type: "waf_hit_spike" }, "WAF 告警");
 }
 
 async function renderAlertEventsPage(content, query = {}, title = "告警中心") {
@@ -1380,15 +1189,15 @@ async function renderAlertEventsPage(content, query = {}, title = "告警中心"
     list.append(el("article", { className: "panel" }, [
       renderDataDetails(row),
       el("div", { className: "toolbar-actions" }, [
-        button("确认", async () => updateWafAlertStatus(row, "acknowledged"), "secondary"),
-        button("关闭", async () => updateWafAlertStatus(row, "resolved"), "secondary")
+        button("确认", async () => updateAlertStatus(row, "acknowledged"), "secondary"),
+        button("关闭", async () => updateAlertStatus(row, "resolved"), "secondary")
       ])
     ]));
   }
   content.append(el("section", { className: "panel" }, [el("h2", { text: title }), rows.length ? list : statusMessage(`暂无${title}`) ]));
 }
 
-async function updateWafAlertStatus(row, status) {
+async function updateAlertStatus(row, status) {
   const note = window.prompt("填写处置说明");
   if (!note) return;
   await api(`/admin-api/alerts/${row.id}/status`, { method: "POST", body: JSON.stringify({ status, note }) });
@@ -1457,102 +1266,6 @@ function formatOperationsTimestamp(value) {
   return Number.isNaN(parsed.getTime()) ? "时间未知" : parsed.toLocaleString("zh-CN", { hour12: false });
 }
 
-async function renderWafRulesPage(content, initialFilters = {}) {
-  const resourceKey = "waf-rules";
-  const config = resources[resourceKey];
-  clear(content);
-  const state = { filters: { limit: 50, ...initialFilters } };
-  const tablePanel = el("section", { className: "panel table-panel" });
-  const toolbar = renderFilters(resourceKey, state, async () => renderRows(tablePanel, resourceKey, config, state));
-  const actions = el("div", { className: "toolbar-actions" });
-  actions.append(button("新增", () => showWafRuleEditor(null, async () => renderRows(tablePanel, resourceKey, config, state))));
-  actions.append(button("规则模板", () => showWafTemplates(async () => renderRows(tablePanel, resourceKey, config, state)), "secondary"));
-  actions.append(button("预览片段", () => showWafPreview(), "secondary"));
-  actions.append(button("Dry Run 发布", () => publishWafRules({ dry_run: true, reload: false }, tablePanel, config, state), "secondary"));
-  actions.append(button("确认高危并发布", () => {
-    if (!window.confirm("确认发布当前 WAF 规则？高危规则可能影响管理端或 API 入口访问。")) {
-      return;
-    }
-    publishWafRules({ confirm_high_risk: true, reload: true }, tablePanel, config, state);
-  }, "secondary"));
-  toolbar.append(actions);
-  content.append(toolbar, tablePanel);
-  await renderRows(tablePanel, resourceKey, config, state);
-}
-
-async function showWafTemplates(onSaved = async () => {}) {
-  try {
-    const result = await api("/admin-api/waf/templates");
-    document.getElementById("request-id").textContent = result.requestId || "";
-    const templates = Array.isArray(result.data) ? result.data : [];
-    const list = el("div", { className: "stack" });
-    for (const template of templates) {
-      list.append(el("article", { className: "panel" }, [
-        renderDataDetails(template),
-        button("预填规则", () => showWafTemplatePrefill(template, onSaved), "secondary")
-      ]));
-    }
-    showModal("WAF 规则模板", templates.length ? list : statusMessage("暂无可用模板"));
-  } catch (error) {
-    showModal("WAF 规则模板", statusMessage(adminErrorMessage(error, "规则模板加载失败"), "error"));
-  }
-}
-
-async function showWafPreview() {
-  try {
-    const result = await api("/admin-api/waf/preview", {
-      method: "POST",
-      body: JSON.stringify({})
-    });
-    document.getElementById("request-id").textContent = result.requestId || "";
-    showModal("WAF 片段预览", renderWafPreviewResult(result.data || {}));
-  } catch (error) {
-    showModal("WAF 片段预览", statusMessage(adminErrorMessage(error, "WAF 片段预览失败"), "error"));
-  }
-}
-
-async function publishWafRules(payload, tablePanel, config, state) {
-  try {
-    const result = await api("/admin-api/waf/publish", {
-      method: "POST",
-      body: JSON.stringify(payload)
-    });
-    document.getElementById("request-id").textContent = result.requestId || "";
-    showModal("WAF 发布结果", renderWafPreviewResult(result.data || {}));
-    await renderRows(tablePanel, "waf-rules", config, state);
-  } catch (error) {
-    showModal("WAF 发布结果", statusMessage(adminErrorMessage(error, "WAF 发布失败"), "error"));
-  }
-}
-
-function renderWafPreviewResult(data) {
-  const summary = [
-    ["状态", data.status || "-"],
-    ["规则数", Array.isArray(data.rules) ? data.rules.length : 0],
-    ["错误数", Array.isArray(data.findings?.errors) ? data.findings.errors.length : 0],
-    ["高危项", Array.isArray(data.high_risk) ? data.high_risk.length : 0]
-  ];
-  const children = [
-    el("div", { className: "data-detail-list" }, summary.map(([label, value]) => el("div", { className: "data-detail-row" }, [
-      el("span", { text: label }),
-      el("strong", { text: value })
-    ])))
-  ];
-  if (Array.isArray(data.findings?.errors) && data.findings.errors.length > 0) {
-    children.push(el("h3", { text: "校验错误" }));
-    children.push(renderDataDetails(data.findings.errors));
-  }
-  if (Array.isArray(data.high_risk) && data.high_risk.length > 0) {
-    children.push(el("h3", { text: "高危变更" }));
-    children.push(renderDataDetails(data.high_risk));
-  }
-  if (data.fragment) {
-    children.push(el("h3", { text: "Caddy 片段" }));
-    children.push(el("textarea", { className: "waf-fragment-preview", readOnly: true, rows: 16, value: data.fragment }));
-  }
-  return el("div", { className: "waf-preview-result" }, children);
-}
-
 function renderFilters(resourceKey, state, onApply) {
   const fields = filterFields(resourceKey);
   const form = el("form", { className: "filters", onSubmit: (event) => {
@@ -1607,8 +1320,35 @@ async function renderContext(resourceKey) {
 }
 
 async function lookupRows(resourceKey) {
-  const result = await api(lookupResourcePaths[resourceKey] || `/admin-api/${resourceKey}`, { query: { limit: 500 } }).catch(() => ({ data: [] }));
+  // Models: fetch all (support=all) so labels of existing references resolve;
+  // pickers filter with modelIsGatewaySupported().
+  const query = resourceKey === "models" ? { limit: 500, support: "all" } : { limit: 500 };
+  const result = await api(lookupResourcePaths[resourceKey] || `/admin-api/${resourceKey}`, { query }).catch(() => ({ data: [] }));
   return Array.isArray(result.data) ? result.data : (Array.isArray(result.data?.items) ? result.data.items : []);
+}
+
+// Rows from /admin-api/models carry gateway_supported (ModelSupportPolicy).
+// Older payloads without the flag count as supported.
+function modelIsGatewaySupported(model) {
+  return model?.gateway_supported !== false;
+}
+
+// GET /admin-api/providers/{id}/models -> { models, hidden_count, hidden_reasons }
+// (an older server returned a bare array).
+function providerCatalogModels(data) {
+  if (Array.isArray(data)) {
+    return { models: data, hiddenNotice: null };
+  }
+  const models = Array.isArray(data?.models) ? data.models : [];
+  const hiddenCount = Number(data?.hidden_count || 0);
+  if (hiddenCount <= 0) {
+    return { models, hiddenNotice: null };
+  }
+  const reasons = Object.values(data?.hidden_reasons || {})
+    .map((reason) => `${reason.message}（${reason.count} 个${Array.isArray(reason.examples) && reason.examples.length ? `，如 ${reason.examples.slice(0, 3).join("、")}` : ""}）`);
+  const notice = el("p", { className: "notice provider-model-import-hidden", text: `已隐藏 ${hiddenCount} 个 TokenHub 无法调用的模型。` });
+  notice.title = reasons.join("\n");
+  return { models, hiddenNotice: notice };
 }
 
 function rowsById(rows) {
@@ -1783,7 +1523,11 @@ function modelQuotaApiKeyOptions(context) {
 }
 
 function modelQuotaModelOptions(context) {
-  return (context.models || []).map((model) => [String(model.id), modelQuotaModelLabel(model.id, context)]);
+  // Pickers offer only models the gateway can serve (ModelSupportPolicy);
+  // labels of existing references still resolve through modelsById.
+  return (context.models || [])
+    .filter(modelIsGatewaySupported)
+    .map((model) => [String(model.id), modelQuotaModelLabel(model.id, context)]);
 }
 
 function userOptions(context) {
@@ -1931,6 +1675,9 @@ function renderTable(rows, config, resourceKey, onRefresh, context = {}) {
     if (resourceKey === "usage-records") {
       ops.append(button("内容", () => showUsageContent(row), "secondary"));
     }
+    if ((resourceKey === "usage-records" || resourceKey === "logs") && row.request_id) {
+      ops.append(button("诊断", () => showRequestDiagnostics(row.request_id), "secondary request-diagnostics-button"));
+    }
     if (resourceKey === "export-tasks" && row.status === "succeeded" && row.export_id) {
       ops.append(button("下载", () => openAdminDownload(`/admin-api/exports/${encodeURIComponent(row.export_id)}/download-url`), "secondary"));
     }
@@ -1946,9 +1693,6 @@ function renderTable(rows, config, resourceKey, onRefresh, context = {}) {
       }, "secondary"));
       ops.append(button("大屏2", () => {
         window.open(`/screen/${encodeURIComponent(row.share_code)}/operations`, "_blank", "noopener");
-      }, "secondary"));
-      ops.append(button("大屏3", () => {
-        window.open(`/screen/${encodeURIComponent(row.share_code)}/firewall`, "_blank", "noopener");
       }, "secondary"));
       ops.append(button("重置密码", async () => {
         const result = await api(`/admin-api/dashboard-share-links/${row.id}/reset-password`, { method: "POST" });
@@ -1979,9 +1723,10 @@ function renderTable(rows, config, resourceKey, onRefresh, context = {}) {
     if (resourceKey === "providers" && row.id) {
       ops.append(button("拉取模型", () => showProviderModelImport(row, onRefresh), "secondary"));
     }
-    if (resourceKey === "waf-rules" && row.id) {
-      ops.append(button("编辑", () => showWafRuleEditor(row, onRefresh), "secondary"));
-    } else if (config.form && row.id) {
+    if (resourceKey === "providers" && row.id && adminViewerCanSyncCatalog()) {
+      ops.append(button("目录同步", () => showProviderCatalogSync(row, onRefresh), "secondary catalog-sync-button"));
+    }
+    if (config.form && row.id) {
       ops.append(button("编辑", () => showEditModal(resourceKey, config, row, onRefresh), "secondary"));
     }
     for (const action of config.actions || []) {
@@ -2091,210 +1836,6 @@ async function openAdminDownload(path, method = "GET") {
   window.open(url, "_blank", "noopener");
 }
 
-function templateRuleValues(template) {
-  return {
-    rule_code: `template_${template.key || "rule"}`,
-    scope: "global",
-    matcher: template.matcher || {},
-    action: template.action || "block",
-    priority: template.priority || 100,
-    description: template.description || template.label || ""
-  };
-}
-
-function showWafTemplatePrefill(template, onSaved) {
-  showWafRuleEditor(templateRuleValues(template), onSaved);
-}
-
-function showWafRuleEditor(rule, onSaved) {
-  const existing = rule || {};
-  const matcherValues = wafMatcherEditorValues(existing);
-  const basicFields = [
-    { name: "rule_code", label: "规则编码" },
-    { name: "scope", label: "作用范围" },
-    { name: "action", label: "执行动作", type: "select", options: [["block", "拦截"], ["redact", "脱敏"], ["remove_header", "移除请求头"], ["allow", "放行"]] },
-    { name: "priority", label: "优先级", type: "number" },
-    { name: "status", label: "规则状态", type: "select", options: [["active", "启用"], ["disabled", "停用"]] },
-    { name: "description", label: "规则说明", optional: true }
-  ];
-  const values = {
-    rule_code: existing.rule_code || "",
-    scope: existing.scope || "global",
-    action: existing.action || "block",
-    priority: existing.priority ?? 100,
-    status: existing.status || "active",
-    description: existing.description || ""
-  };
-  const form = el("form", { className: "edit-form waf-rule-editor", onSubmit: (event) => event.preventDefault() });
-  for (const config of basicFields) form.append(field(config, values[config.name]));
-
-  const matcherType = field({
-    name: "matcher_type",
-    label: "Matcher 类型",
-    type: "select",
-    options: [
-      ["ip", "IP 与网段"], ["path", "访问路径"], ["method", "HTTP 方法"], ["query", "查询参数"],
-      ["header", "请求头"], ["body_size", "请求体大小"], ["security_headers", "安全响应头"]
-    ]
-  }, matcherValues.type);
-  const matcherHost = el("section", { className: "waf-matcher-fields" });
-  const matcherPreview = el("textarea", { className: "waf-matcher-preview", readOnly: true, rows: 9, ariaLabel: "Matcher JSON 预览" });
-  const preflightPanel = el("section", { className: "waf-rule-preflight" }, [statusMessage("保存前必须完成候选规则预检。")]);
-  const output = el("p", { className: "notice", hidden: true });
-  let preflightPassed = false;
-
-  const refreshPreview = () => {
-    matcherPreview.value = JSON.stringify(wafMatcherFromEditor(form), null, 2);
-  };
-  const invalidatePreflight = () => {
-    preflightPassed = false;
-    preflightPanel.replaceChildren(statusMessage("规则已修改，请重新预检。", "warning"));
-    refreshPreview();
-  };
-  const renderMatcherFields = () => {
-    const type = form.querySelector('[name="matcher_type"]')?.value || "path";
-    clear(matcherHost);
-    for (const config of wafMatcherFieldConfigs(type)) {
-      matcherHost.append(field(config, matcherValues[config.name] ?? ""));
-    }
-    matcherHost.querySelectorAll("input,select,textarea").forEach((control) => control.addEventListener("input", invalidatePreflight));
-    refreshPreview();
-  };
-
-  form.append(matcherType, matcherHost, el("label", { className: "field waf-matcher-json" }, [
-    el("span", { text: "高级 JSON 预览" }), matcherPreview
-  ]), preflightPanel);
-  matcherType.querySelector("select")?.addEventListener("change", () => {
-    matcherValues.type = form.querySelector('[name="matcher_type"]')?.value || "path";
-    renderMatcherFields();
-    invalidatePreflight();
-  });
-  form.querySelectorAll("input,select,textarea").forEach((control) => {
-    if (control.name !== "matcher_type" && !control.readOnly) control.addEventListener("input", invalidatePreflight);
-  });
-  renderMatcherFields();
-
-  const actions = el("div", { className: "toolbar-actions" }, [
-    button("预检当前规则", async () => {
-      try {
-        const candidate = wafRulePayloadFromEditor(form, basicFields);
-        const result = await api("/admin-api/waf/preview", {
-          method: "POST",
-          body: JSON.stringify({ rules: [candidate] })
-        });
-        document.getElementById("request-id").textContent = result.requestId || "";
-        preflightPassed = result.data?.status === "valid";
-        preflightPanel.replaceChildren(renderWafPreviewResult(result.data || {}));
-      } catch (error) {
-        preflightPassed = false;
-        preflightPanel.replaceChildren(statusMessage(adminErrorMessage(error, "规则预检失败"), "error"));
-      }
-    }, "secondary"),
-    button(existing.id ? "保存规则" : "创建规则", async () => {
-      if (!preflightPassed) {
-        setText(output, "请先完成规则预检，并确保校验通过");
-        output.className = "notice error";
-        output.hidden = false;
-        return;
-      }
-      try {
-        const payload = wafRulePayloadFromEditor(form, basicFields);
-        const result = await api(existing.id ? `/admin-api/waf-rules/${existing.id}` : "/admin-api/waf-rules", {
-          method: existing.id ? "PUT" : "POST",
-          body: JSON.stringify(payload)
-        });
-        setOperationOutput(output, result.data, existing.id ? "规则已保存" : "规则已创建");
-        await onSaved();
-      } catch (error) {
-        setErrorOutput(output, adminErrorMessage(error, "WAF 规则保存失败"));
-      }
-    })
-  ]);
-  form.append(actions, output);
-  showModal(existing.id ? `编辑 WAF 规则 · ${existing.rule_code}` : "新增 WAF 规则", form);
-}
-
-function wafMatcherEditorValues(rule) {
-  let matcher = rule?.matcher || {};
-  if (typeof matcher === "string") {
-    try { matcher = JSON.parse(matcher); } catch { matcher = {}; }
-  }
-  const headers = matcher.headers || {};
-  return {
-    type: matcher.type || "path",
-    matcher_paths: wafListText(matcher.paths),
-    matcher_allow: wafListText(matcher.allow),
-    matcher_deny: wafListText(matcher.deny),
-    matcher_values: wafListText(matcher.values),
-    matcher_keys: wafListText(matcher.keys),
-    matcher_patterns: wafListText(matcher.patterns),
-    matcher_headers: wafHeaderText(headers),
-    matcher_max_bytes: matcher.max_bytes || 10485760
-  };
-}
-
-function wafMatcherFieldConfigs(type) {
-  return {
-    ip: [
-      { name: "matcher_paths", label: "生效路径，每行一个", type: "textarea", optional: true, rows: 3 },
-      { name: "matcher_allow", label: "允许 IP 网段，每行一个", type: "textarea", optional: true, rows: 3 },
-      { name: "matcher_deny", label: "拒绝 IP 网段，每行一个", type: "textarea", optional: true, rows: 3 }
-    ],
-    path: [{ name: "matcher_values", label: "路径或通配模式，每行一个", type: "textarea", rows: 5 }],
-    method: [{ name: "matcher_deny", label: "拒绝的 HTTP 方法，每行一个", type: "textarea", rows: 4 }],
-    query: [
-      { name: "matcher_keys", label: "敏感参数名，每行一个", type: "textarea", optional: true, rows: 3 },
-      { name: "matcher_patterns", label: "匹配表达式，每行一个", type: "textarea", optional: true, rows: 4 }
-    ],
-    header: [{ name: "matcher_headers", label: "请求头规则，每行“名称: 值”或仅名称", type: "textarea", rows: 5 }],
-    body_size: [{ name: "matcher_max_bytes", label: "最大请求体字节数", type: "number" }],
-    security_headers: [{ name: "matcher_headers", label: "响应头规则，每行“名称: 值”", type: "textarea", rows: 5 }]
-  }[type] || [];
-}
-
-function wafMatcherFromEditor(form) {
-  const type = form.querySelector('[name="matcher_type"]')?.value || "path";
-  const lines = (name) => wafTextLines(form.querySelector(`[name="${name}"]`)?.value || "");
-  if (type === "ip") return { type, paths: lines("matcher_paths"), allow: lines("matcher_allow"), deny: lines("matcher_deny") };
-  if (type === "path") return { type, values: lines("matcher_values") };
-  if (type === "method") return { type, deny: lines("matcher_deny").map((value) => value.toUpperCase()) };
-  if (type === "query") return { type, keys: lines("matcher_keys"), patterns: lines("matcher_patterns") };
-  if (type === "header") {
-    const action = form.querySelector('[name="action"]')?.value || "block";
-    return { type, headers: action === "remove_header" ? lines("matcher_headers").map((value) => value.split(":")[0].trim()) : wafHeaderMap(lines("matcher_headers")) };
-  }
-  if (type === "body_size") return { type, max_bytes: Number(form.querySelector('[name="matcher_max_bytes"]')?.value || 0) };
-  return { type: "security_headers", headers: wafHeaderMap(lines("matcher_headers")) };
-}
-
-function wafRulePayloadFromEditor(form, basicFields) {
-  return { ...readFields(form, basicFields), matcher: wafMatcherFromEditor(form) };
-}
-
-function wafTextLines(value) {
-  return String(value || "").split(/\r?\n/).map((item) => item.trim()).filter(Boolean);
-}
-
-function wafListText(value) {
-  return Array.isArray(value) ? value.join("\n") : "";
-}
-
-function wafHeaderText(headers) {
-  if (Array.isArray(headers)) return headers.join("\n");
-  if (!headers || typeof headers !== "object") return "";
-  return Object.entries(headers).map(([name, value]) => `${name}: ${value}`).join("\n");
-}
-
-function wafHeaderMap(lines) {
-  const headers = {};
-  for (const line of lines) {
-    const separator = line.indexOf(":");
-    if (separator < 1) headers[line] = "*";
-    else headers[line.slice(0, separator).trim()] = line.slice(separator + 1).trim();
-  }
-  return headers;
-}
-
 function renderTableCell(resourceKey, column, row, context) {
   if (resourceKey === "admin-users" && column === "department_id") {
     return apiKeyDepartmentLabel(row[column], context);
@@ -2325,6 +1866,9 @@ function renderTableCell(resourceKey, column, row, context) {
   }
   if (resourceKey === "api-key-model-quotas" && column === "model_id") {
     return modelQuotaModelLabel(row[column], context);
+  }
+  if (resourceKey === "models" && column === "gateway_support") {
+    return row.gateway_supported === false ? `不支持：${row.unsupported_message || row.unsupported_reason || ""}` : "支持";
   }
   if (resourceKey === "models" && column === "provider_name") {
     return row.provider_name || formatResourceValue("provider_id", row.provider_id);
@@ -2512,10 +2056,13 @@ async function showProviderModelImportLegacy(row, onRefresh) {
 
   try {
     const result = await api(`/admin-api/providers/${row.id}/models`);
-    const models = Array.isArray(result.data) ? result.data : [];
+    const { models, hiddenNotice } = providerCatalogModels(result.data);
     clear(list);
+    if (hiddenNotice) {
+      list.append(hiddenNotice);
+    }
     if (models.length === 0) {
-      list.append(statusMessage("未拉取到模型"));
+      list.append(statusMessage(hiddenNotice ? "该厂商没有 TokenHub 可以调用的模型" : "未拉取到模型"));
       return;
     }
     for (const model of models) {
@@ -2551,11 +2098,19 @@ async function showCreateModal(resourceKey, config, onSaved, initialValues = {})
   const form = resourceForm(formFields, initialValues, resourceKey);
   const output = el("p", { className: `notice ${config.oneTimeSecret ? "secret-output" : ""}`.trim(), hidden: true });
   appendVectorConfigProbe(resourceKey, form, formFields, output);
+  const scopeEditor = resourceKey === "api-keys" ? createApiKeyManagementScopeEditor([]) : null;
+  if (scopeEditor) {
+    form.append(scopeEditor.node);
+  }
   form.append(button(config.oneTimeSecret ? "创建并显示一次明文" : "保存", async () => {
     try {
+      const payload = resourcePayload(resourceKey, readFields(form, formFields));
+      if (scopeEditor && scopeEditor.selected().length > 0) {
+        payload.management_scopes = scopeEditor.selected();
+      }
       const result = await api(`/admin-api/${resourceKey}`, {
         method: "POST",
-        body: JSON.stringify(resourcePayload(resourceKey, readFields(form, formFields)))
+        body: JSON.stringify(payload)
       });
       if (config.oneTimeSecret) {
         setText(output, oneTimeSecretText(result.data));
@@ -2577,13 +2132,30 @@ async function showEditModal(resourceKey, config, row, onSaved) {
   const form = resourceForm(formFields, row, resourceKey);
   const output = el("p", { className: "notice", hidden: true });
   appendVectorConfigProbe(resourceKey, form, formFields, output);
+  const capabilityEditor = resourceKey === "models" ? createModelCapabilityEditor(row) : null;
+  if (capabilityEditor) {
+    form.append(capabilityEditor.node);
+  }
+  const scopeEditor = resourceKey === "api-keys" ? createApiKeyManagementScopeEditor(row.management_scopes, { editing: true }) : null;
+  if (scopeEditor) {
+    form.append(scopeEditor.node);
+  }
   form.append(button("保存", async () => {
     try {
       const values = readFields(form, formFields);
+      const payload = resourcePayload(resourceKey, values);
+      if (capabilityEditor) {
+        Object.assign(payload, capabilityEditor.payload());
+      }
+      if (scopeEditor?.changed()) {
+        payload.management_scopes = scopeEditor.selected();
+      }
       const result = await api(`/admin-api/${resourceKey}/${row.id}`, {
         method: "PUT",
-        body: JSON.stringify(resourcePayload(resourceKey, values))
+        body: JSON.stringify(payload)
       });
+      capabilityEditor?.commit(result.data || {});
+      scopeEditor?.commit(Array.isArray(result.data?.management_scopes) ? result.data.management_scopes : scopeEditor.selected());
       if (resourceKey === "api-keys") {
         const modelIds = Array.isArray(values.model_ids)
           ? values.model_ids.map(Number).filter((id) => Number.isFinite(id) && id > 0)
@@ -2596,7 +2168,7 @@ async function showEditModal(resourceKey, config, row, onSaved) {
       setOperationOutput(output, result.data, "\u4fdd\u5b58\u6210\u529f");
       await onSaved();
     } catch (error) {
-      setErrorOutput(output, adminErrorMessage(error, "保存失败，请检查输入内容"));
+      setErrorOutput(output, error.userMessage || adminErrorMessage(error, "保存失败，请检查输入内容"));
     }
   }));
   form.append(output);
@@ -2687,9 +2259,9 @@ async function showProviderModelImport(row, onSaved) {
 
   try {
     const result = await api(`/admin-api/providers/${row.id}/models`);
-    const models = Array.isArray(result.data) ? result.data : [];
+    const { models, hiddenNotice } = providerCatalogModels(result.data);
     if (models.length === 0) {
-      body.replaceChildren(statusMessage("未从该厂商拉取到模型", "error"));
+      body.replaceChildren(...[hiddenNotice, statusMessage(hiddenNotice ? "该厂商没有 TokenHub 可以调用的模型" : "未从该厂商拉取到模型", "error")].filter(Boolean));
       return;
     }
 
@@ -2708,6 +2280,7 @@ async function showProviderModelImport(row, onSaved) {
         el("strong", { text: "选择模型" }),
         el("span", { text: `${models.length} 个可导入模型` })
       ]),
+      ...(hiddenNotice ? [hiddenNotice] : []),
       list,
       el("div", { className: "toolbar-actions" }, [
         button("全选", () => {
@@ -2914,7 +2487,8 @@ function renderProviderPresetPicker(form) {
         baseUrlInput.value = "";
       }
       nameInput?.dispatchEvent(new Event("input", { bubbles: true }));
-      if (baseUrlInput && baseUrlInput.value === "") {
+      // The picked preset wins over the name-alias guess (e.g. Gemini native vs OpenAI-compatible).
+      if (baseUrlInput && preset.baseUrl) {
         baseUrlInput.value = preset.baseUrl;
       }
     }, "secondary provider-preset-button"));
@@ -3232,262 +2806,11 @@ export async function renderContentArchivePage(content, initialFilters = {}) {
   }
 }
 
-export async function renderWafEventsPage(content, initialFilters = {}) {
-  clear(content);
-  const filters = [
-    { name: "from", label: "开始时间", optional: true },
-    { name: "to", label: "结束时间", optional: true },
-    { name: "rule_code", label: "规则编码", optional: true },
-    { name: "client_ip", label: "来源 IP", optional: true },
-    { name: "action", label: "动作", type: "select", optional: true, options: [["", "全部"], ...["block", "log", "allow", "redact", "remove_header"].map((value) => [value, valueLabel("action", value)])] },
-    { name: "method", label: "方法", optional: true },
-    { name: "path", label: "路径关键字", optional: true },
-    { name: "bucket", label: "趋势粒度", type: "select", options: [["hour", "小时"], ["day", "天"]] }
-  ];
-  const form = el("form", { className: "filters", onSubmit: (event) => {
-    event.preventDefault();
-    load();
-  } });
-  for (const config of filters) {
-    form.append(field(config, initialFilters[config.name] || (config.name === "bucket" ? "hour" : "")));
-  }
-  const statisticsPanel = el("section", { className: "waf-overview stack" });
-  const recordsPanel = el("section", { className: "panel table-panel waf-attack-list" });
-  form.append(button("筛选", () => load()));
-  form.append(button("重置", () => {
-    for (const control of form.querySelectorAll("input,select,textarea")) {
-      control.value = control.name === "bucket" ? "hour" : "";
-    }
-    load();
-  }, "secondary"));
-  form.append(button("自动处置", () => showWafAutoDispositionDialog(load), "secondary"));
-  content.append(form, statisticsPanel, recordsPanel);
-  await load();
-
-  async function load() {
-    clear(statisticsPanel);
-    clear(recordsPanel);
-    const query = readFields(form, filters);
-    query.limit = 50;
-    const [statisticsResult, eventsResult] = await Promise.all([
-      api("/admin-api/waf/statistics", { query }),
-      api("/admin-api/waf/events", { query })
-    ]).catch((error) => {
-      statisticsPanel.append(statusMessage(adminErrorMessage(error, "防火墙统计加载失败"), "error"));
-      return [null, null];
-    });
-    if (!statisticsResult || !eventsResult) {
-      return;
-    }
-    document.getElementById("request-id").textContent = eventsResult.requestId || statisticsResult.requestId || "";
-    renderWafStatistics(statisticsPanel, statisticsResult.data || {});
-    renderWafRecords(recordsPanel, eventsResult.data || {}, load);
-  }
-}
-
-function renderWafStatistics(parent, data) {
-  const summary = data.summary || {};
-  parent.append(el("h2", { text: "WAF 概述" }));
-  parent.append(el("section", { className: "metric-grid" }, [
-    metric("攻击事件", summary.total_events || 0),
-    metric("拦截事件", summary.blocked_events || 0),
-    metric("来源 IP", summary.unique_ips || 0),
-    metric("命中规则", summary.unique_rules || 0)
-  ]));
-  parent.append(el("div", { className: "waf-statistics-grid" }, [
-    wafStatsPanel("趋势", data.trends || [], ["bucket_at", "event_count", "blocked_count"]),
-    wafStatsPanel("规则排行", data.top_rules || [], ["rule_code", "event_count", "blocked_count", "last_seen_at"]),
-    wafStatsPanel("来源 IP 排行", data.top_ips || [], ["client_ip", "event_count", "blocked_count", "last_seen_at"]),
-    wafStatsPanel("路径排行", data.top_paths || [], ["path", "event_count", "blocked_count", "last_seen_at"])
-  ]));
-}
-
-function renderWafRecords(parent, data, onRefresh) {
-  const rows = data.records || [];
-  const pagination = data.pagination || {};
-  parent.append(el("h2", { text: `攻击列表 (${pagination.total || rows.length})` }));
-  if (rows.length === 0) {
-    parent.append(statusMessage("暂无防火墙攻击记录"));
-    return;
-  }
-  parent.append(wafRecordsTable(rows, [
-    "created_at",
-    "rule_code",
-    "client_ip",
-    "method",
-    "path",
-    "action",
-    "disposition_status",
-    "false_positive",
-    "risk_score",
-    "request_id",
-    "summary"
-  ], onRefresh));
-}
-
-function wafRecordsTable(rows, columns, onRefresh) {
-  const table = el("table");
-  const headRow = el("tr");
-  for (const label of [...columns.map(columnLabel), "操作"]) {
-    headRow.append(el("th", { text: label }));
-  }
-  const body = el("tbody");
-  for (const row of rows) {
-    const tr = el("tr");
-    for (const column of columns) {
-      tr.append(el("td", { text: formatResourceValue(column, row[column]) }));
-    }
-    tr.append(el("td", { className: "row-actions" }, [
-      button("已复核", () => showWafDispositionDialog(row, "review", onRefresh), "secondary"),
-      button("误报", () => showWafDispositionDialog(row, "false_positive", onRefresh), "secondary"),
-      button("封禁 IP", () => showWafDispositionDialog(row, "ban_ip", onRefresh), "danger"),
-      button("解封 IP", () => showWafDispositionDialog(row, "unban_ip", onRefresh), "secondary")
-    ]));
-    body.append(tr);
-  }
-  table.append(el("thead", {}, [headRow]), body);
-  return table;
-}
-
-async function showWafAutoDispositionDialog(onRefresh) {
-  let threshold = 10;
-  let windowMinutes = 5;
-  try {
-    const settings = await api("/admin-api/system/settings-center");
-    const alertThresholds = settings.data?.sections?.alert_thresholds || {};
-    threshold = Number(alertThresholds.waf_spike_count) || threshold;
-    windowMinutes = Number(alertThresholds.waf_spike_window_minutes) || windowMinutes;
-  } catch {
-    // Keep safe defaults when settings cannot be loaded.
-  }
-
-  const form = el("form", { className: "edit-form waf-auto-disposition-dialog", onSubmit: (event) => event.preventDefault() });
-  form.append(
-    statusMessage("将扫描指定窗口内重复触发拦截的来源，并对达到阈值的 IP 执行系统级封禁。", "warning"),
-    field({ name: "threshold", label: "触发封禁次数", type: "number" }, threshold),
-    field({ name: "window_minutes", label: "统计窗口（分钟）", type: "number" }, windowMinutes)
-  );
-  const output = el("p", { className: "notice", hidden: true });
-  form.append(button("确认执行自动处置", async () => {
-    const nextThreshold = Number(form.querySelector('[name="threshold"]')?.value || 0);
-    const nextWindow = Number(form.querySelector('[name="window_minutes"]')?.value || 0);
-    if (nextThreshold <= 0 || nextWindow <= 0) {
-      setText(output, "封禁次数和统计窗口必须大于 0");
-      output.className = "notice error";
-      output.hidden = false;
-      return;
-    }
-    if (!window.confirm(`确认扫描最近 ${nextWindow} 分钟，并封禁命中至少 ${nextThreshold} 次的来源 IP？`)) {
-      return;
-    }
-    try {
-      const result = await api("/admin-api/waf/auto-disposition", {
-        method: "POST",
-        body: JSON.stringify({ threshold: nextThreshold, window_minutes: nextWindow })
-      });
-      showModal("WAF 自动处置结果", renderWafAutoDispositionResult(result.data || {}));
-      await onRefresh();
-    } catch (error) {
-      setText(output, adminErrorMessage(error, "WAF 自动处置失败"));
-      output.className = "notice error";
-      output.hidden = false;
-    }
-  }, "danger"), output);
-  showModal("WAF 自动处置", form);
-}
-
-function renderWafAutoDispositionResult(data) {
-  const banned = Array.isArray(data.banned) ? data.banned : [];
-  return el("div", { className: "waf-auto-disposition-result stack" }, [
-    el("div", { className: "data-detail-list" }, [
-      ["检测阈值", data.threshold || 0],
-      ["统计窗口", `${data.window_minutes || 0} 分钟`],
-      ["封禁数量", data.banned_count || 0]
-    ].map(([label, value]) => el("div", { className: "data-detail-row" }, [el("span", { text: label }), el("strong", { text: value })]))),
-    banned.length ? el("div", { className: "stack" }, banned.map((row) => el("article", { className: "panel" }, [
-      el("strong", { text: row.client_ip || "未知 IP" }),
-      el("span", { text: `${row.hit_count || 0} 次命中` })
-    ]))) : statusMessage("没有来源达到自动封禁阈值", "success")
-  ]);
-}
-
-function showWafDispositionDialog(row, action, onRefresh) {
-  const labels = {
-    review: ["人工复核", "确认事件已完成安全复核。"],
-    false_positive: ["标记误报", "将事件标记为误报并把风险分归零。"],
-    ban_ip: ["封禁来源 IP", "来源 IP 将被系统级拒绝访问。"],
-    unban_ip: ["解封来源 IP", "来源 IP 将恢复访问权限。"]
-  };
-  const [title, description] = labels[action] || ["处置 WAF 事件", "记录本次安全处置。"];
-  const form = el("form", { className: "edit-form waf-disposition-dialog", onSubmit: (event) => event.preventDefault() });
-  form.append(
-    el("div", { className: "waf-disposition-summary" }, [
-      el("strong", { text: row.rule_code || "未命名规则" }),
-      el("span", { text: `${row.client_ip || "未知来源"} · ${row.path || "/"}` }),
-      el("small", { text: description })
-    ]),
-    field({ name: "note", label: "处置说明", type: "textarea", rows: 4 }, row.disposition_note || "")
-  );
-  const output = el("p", { className: "notice", hidden: true });
-  form.append(button(`确认${title}`, async () => {
-    const note = form.querySelector('[name="note"]')?.value.trim() || "";
-    if (!note) {
-      setText(output, "请填写处置说明");
-      output.className = "notice error";
-      output.hidden = false;
-      return;
-    }
-    if (["ban_ip", "unban_ip"].includes(action) && !window.confirm(`${description} 确认继续？`)) {
-      return;
-    }
-    try {
-      await api(`/admin-api/waf/events/${row.id}/handle`, {
-        method: "POST",
-        body: JSON.stringify({ action, note })
-      });
-      setText(output, `${title}已完成`);
-      output.className = "notice success";
-      output.hidden = false;
-      await onRefresh();
-    } catch (error) {
-      setText(output, adminErrorMessage(error, "WAF 事件处置失败"));
-      output.className = "notice error";
-      output.hidden = false;
-    }
-  }, action === "ban_ip" ? "danger" : "secondary"), output);
-  showModal(title, form);
-}
-
 function metric(name, value) {
   return el("article", { className: "metric" }, [
     el("span", { text: name }),
     el("strong", { text: value })
   ]);
-}
-
-function wafStatsPanel(title, rows, columns) {
-  return el("section", { className: "panel dashboard-panel waf-statistics-panel" }, [
-    el("h3", { text: title }),
-    rows.length ? wafSimpleTable(rows, columns) : statusMessage("暂无数据")
-  ]);
-}
-
-function wafSimpleTable(rows, columns) {
-  const table = el("table");
-  const headRow = el("tr");
-  for (const label of columns.map(columnLabel)) {
-    headRow.append(el("th", { text: label }));
-  }
-  const body = el("tbody");
-  for (const row of rows) {
-    const tr = el("tr");
-    for (const column of columns) {
-      tr.append(el("td", { text: formatResourceValue(column, row[column]) }));
-    }
-    body.append(tr);
-  }
-  table.append(el("thead", {}, [headRow]), body);
-  return table;
 }
 
 export async function renderContentRetentionPolicyPage(content) {
@@ -3936,9 +3259,7 @@ export async function renderSettingsCenterPage(content) {
       });
       const rendered = page.section === "tls_certificates"
         ? createCertificateSettingsPage(page, values)
-        : page.section === "firewall_settings"
-          ? createFirewallSettingsPage(page, values)
-          : { element: settingsFormPanel(page.title, page.section, page.fields, values), statusPanel: null };
+        : { element: settingsFormPanel(page.title, page.section, page.fields, values), statusPanel: null };
       const sectionPanel = el("div", {
         className: sectionActive ? "settings-section-panel active" : "settings-section-panel",
         hidden: !sectionActive,
@@ -3981,10 +3302,6 @@ export async function renderSettingsSectionPage(content, resourceKey) {
     await renderCertificateSettingsPage(content, page, settingsFormValues(sections[page.section] || {}));
     return;
   }
-  if (page.section === "firewall_settings") {
-    content.append(createFirewallSettingsPage(page, settingsFormValues(sections[page.section] || {})).element);
-    return;
-  }
   content.append(settingsFormPanel(page.title, page.section, page.fields, settingsFormValues(sections[page.section] || {})));
 }
 
@@ -4000,43 +3317,6 @@ function settingsFormValues(values) {
     }
   }
   return out;
-}
-
-function createFirewallSettingsPage(page, values) {
-  const panel = settingsFormPanel(page.title, page.section, page.fields, values);
-  panel.classList.add("waf-firewall-settings");
-  const localIpStatus = el("section", { className: "waf-local-access-summary" }, [
-    el("strong", { text: "本机访问保护" }),
-    el("p", { className: "notice", text: "正在检测本机内网 IP…" })
-  ]);
-  panel.querySelector("h2")?.after(localIpStatus);
-  void renderFirewallLocalIpStatus(localIpStatus);
-  return { element: panel, statusPanel: null };
-}
-
-async function renderFirewallLocalIpStatus(container) {
-  try {
-    const result = await api("/admin-api/system/network-interface-ips");
-    const ips = Array.isArray(result.data?.local_access_ips)
-      ? result.data.local_access_ips
-      : Array.isArray(result.data?.ips) ? result.data.ips : [];
-    const entries = ips.map((ip) => `${ip}/32`);
-    container.replaceChildren(
-      el("div", { className: "waf-local-access-heading" }, [
-        el("strong", { text: "本机访问保护" }),
-        el("span", { text: entries.length > 0 ? `已检测 ${entries.length} 个地址` : "未检测到地址" })
-      ]),
-      el("p", { className: "notice", text: "自动允许仅在对应允许网段非空时生效；每个本机地址按精确 /32 放行，不会扩大到整个内网。" }),
-      entries.length > 0
-        ? el("div", { className: "waf-local-ip-list" }, entries.map((cidr) => el("code", { className: "waf-local-ip-chip", text: cidr })))
-        : el("p", { className: "notice", text: "未发现本机访问地址。启用允许网段前，请先确认手动允许网段能覆盖本机。" })
-    );
-  } catch (error) {
-    container.replaceChildren(
-      el("strong", { text: "本机访问保护" }),
-      statusMessage(adminErrorMessage(error, "本机内网 IP 检测失败，请确认手动允许网段"), "error")
-    );
-  }
 }
 
 async function renderCertificateSettingsPage(content, page, values) {
@@ -4338,9 +3618,6 @@ function certificateSettingsForm(section, fields, values) {
     button("保存", async () => {
       try {
         const payload = readFields(form, fields);
-        if (section === "waf_detection_settings" && payload.mode === "block" && !window.confirm("确认启用 WAF 拦截模式？达到风险阈值的请求将被拒绝。")) {
-          return;
-        }
         await api(`/admin-api/system/settings-center/${section}`, {
           method: "PUT",
           body: JSON.stringify(payload)
@@ -5593,4 +4870,982 @@ function showDepartmentEdit(row, onSaved) {
   }));
   form.append(output);
   showModal("编辑部门", form);
+}
+
+// ---------------------------------------------------------------------------
+// Operations tools: provider catalog sync, quota status/adjustment, request
+// diagnostics, API key rotation and model capability contract editing.
+// ---------------------------------------------------------------------------
+
+let adminViewer = null;
+
+export function setAdminViewer(user) {
+  adminViewer = user || null;
+}
+
+function adminViewerIsSuperAdmin() {
+  return adminViewer?.role === "super_admin";
+}
+
+// Server-side authority is route capability + data scope, not a role gate.
+function adminViewerCan(capability) {
+  return Array.isArray(adminViewer?.permissions) && adminViewer.permissions.includes(capability);
+}
+
+// Mirrors PermissionService::usesGlobalScope (catalog sync, operations).
+function adminViewerHasGlobalScope() {
+  return adminViewerIsSuperAdmin() || (adminViewer?.role === "admin" && adminViewer?.admin_scope === "global");
+}
+
+function adminViewerCanSyncCatalog() {
+  return adminViewerHasGlobalScope() && adminViewerCan("api_catalog.manage");
+}
+
+function opsText(value, fallback = "-") {
+  if (value === null || value === undefined || value === "") {
+    return fallback;
+  }
+  return String(value);
+}
+
+function opsNumber(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) {
+    return opsText(value);
+  }
+  return Number.isInteger(number) ? number.toLocaleString("zh-CN") : number.toLocaleString("zh-CN", { maximumFractionDigits: 6 });
+}
+
+function opsUtcTime(value) {
+  if (!value) {
+    return "-";
+  }
+  const raw = String(value);
+  const iso = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(raw) ? `${raw.replace(" ", "T")}Z` : raw;
+  const parsed = new Date(iso);
+  return Number.isNaN(parsed.getTime()) ? raw : parsed.toLocaleString("zh-CN", { hour12: false });
+}
+
+function opsDetailGrid(pairs) {
+  return el("div", { className: "ops-detail-grid" }, pairs.map(([label, value]) => el("div", { className: "ops-detail-row" }, [
+    el("span", { text: label }),
+    el("strong", { text: opsText(value) })
+  ])));
+}
+
+function opsSection(title, children, className = "") {
+  return el("section", { className: `ops-section ${className}`.trim() }, [
+    el("h3", { text: title }),
+    ...[].concat(children)
+  ]);
+}
+
+async function copyTextToClipboard(text, feedback, sourceNode = null) {
+  try {
+    await navigator.clipboard.writeText(text);
+    setText(feedback, "已复制到剪贴板");
+  } catch {
+    if (sourceNode && window.getSelection) {
+      const range = document.createRange();
+      range.selectNodeContents(sourceNode);
+      const selection = window.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
+    }
+    setText(feedback, "浏览器未允许自动复制，已选中密钥，请按 Ctrl+C 手动复制");
+  }
+  feedback.hidden = false;
+}
+
+// --- 1. Provider catalog sync ----------------------------------------------
+
+const CATALOG_SYNC_UPSTREAM_LABELS = {
+  input_modalities: "输入模态",
+  output_modalities: "输出模态",
+  features: "功能",
+  context_length: "上下文长度",
+  max_output_tokens: "最大输出",
+  pricing: "上游价格"
+};
+
+function catalogSyncChangedFields(change) {
+  const parts = [];
+  const before = change.before || {};
+  const after = change.after || {};
+  if (JSON.stringify(before.context_length ?? null) !== JSON.stringify(after.context_length ?? null)) {
+    parts.push(`上下文长度 ${opsText(before.context_length, "未知")} → ${opsText(after.context_length, "未知")}`);
+  }
+  const beforeUpstream = before.upstream && typeof before.upstream === "object" ? before.upstream : {};
+  const afterUpstream = after.upstream && typeof after.upstream === "object" ? after.upstream : {};
+  const keys = [...new Set([...Object.keys(beforeUpstream), ...Object.keys(afterUpstream)])]
+    .filter((key) => JSON.stringify(beforeUpstream[key] ?? null) !== JSON.stringify(afterUpstream[key] ?? null));
+  if (keys.length > 0) {
+    parts.push(`上游能力变化：${keys.map((key) => CATALOG_SYNC_UPSTREAM_LABELS[key] || key).join("、")}`);
+  }
+  return parts.length > 0 ? parts.join("；") : "上游能力层有变化";
+}
+
+function catalogSyncList(title, items, describe, emptyText, tone = "") {
+  const shown = items.slice(0, 200);
+  return el("section", { className: `catalog-sync-group ${tone}`.trim() }, [
+    el("header", {}, [el("strong", { text: title }), el("span", { text: `${items.length} 个` })]),
+    items.length === 0
+      ? el("p", { className: "muted", text: emptyText })
+      : el("ul", { className: "catalog-sync-list" }, [
+        ...shown.map((item) => {
+          const [name, detail] = describe(item);
+          return el("li", {}, [el("strong", { text: name }), el("small", { text: detail })]);
+        }),
+        items.length > shown.length ? el("li", { className: "muted", text: `另有 ${items.length - shown.length} 个未显示` }) : null
+      ].filter(Boolean))
+  ]);
+}
+
+function renderCatalogSyncResult(data, applied) {
+  const added = Array.isArray(data.added) ? data.added : [];
+  const changed = Array.isArray(data.changed) ? data.changed : [];
+  const missing = Array.isArray(data.missing) ? data.missing : [];
+  const unchanged = Number(data.unchanged) || 0;
+  return [
+    el("div", { className: "catalog-sync-summary" }, [
+      ["新增", added.length],
+      ["变更", changed.length],
+      ["上游已下线", missing.length],
+      ["无变化", unchanged]
+    ].map(([label, value]) => el("article", { className: "catalog-sync-count" }, [el("span", { text: label }), el("strong", { text: String(value) })]))),
+    statusMessage(applied
+      ? "已应用：变更模型的上下文长度与上游能力层已更新，上游缺失的模型已标记缺失时间（不会自动停用）。"
+      : "预览不会修改模型。应用后将更新“变更”模型的上下文长度与上游能力层，并为“上游已下线”模型标记缺失时间；“新增”模型不会自动导入，请使用“拉取模型”导入。"),
+    ...(Number(data.hidden_unsupported) > 0 ? [statusMessage(`另有 ${Number(data.hidden_unsupported)} 个上游新模型 TokenHub 无法调用，未列出。`)] : []),
+    catalogSyncList("新增（上游有，本地未配置）", added, (model) => [
+      opsText(model.external_name || model.name),
+      [valueLabel("capability", model.capability || "text_generation"), model.context_length ? `上下文 ${opsNumber(model.context_length)}` : ""].filter(Boolean).join(" / ")
+    ], "无新增模型", "catalog-sync-group--added"),
+    catalogSyncList("变更", changed, (change) => [
+      `${opsText(change.external_name)}${change.model_id ? ` #${change.model_id}` : ""}`,
+      catalogSyncChangedFields(change)
+    ], "无变更模型", "catalog-sync-group--changed"),
+    catalogSyncList("上游已下线（本地有，上游目录缺失）", missing, (model) => [
+      `${opsText(model.external_name)}${model.model_id ? ` #${model.model_id}` : ""}`,
+      `本地状态：${valueLabel("status", model.status || "") || "-"}`
+    ], "无下线模型", "catalog-sync-group--missing")
+  ];
+}
+
+async function showProviderCatalogSync(row, onSaved) {
+  const body = el("div", { className: "catalog-sync" }, [statusMessage("正在对比上游模型目录...")]);
+  showModal(`目录同步预览 - ${row.name || row.id}`, body);
+  let preview;
+  try {
+    const result = await api(`/admin-api/providers/${row.id}/catalog-sync`, {
+      method: "POST",
+      body: JSON.stringify({ apply: false })
+    });
+    preview = result.data || {};
+  } catch (error) {
+    body.replaceChildren(statusMessage(adminErrorMessage(error, "目录同步预览失败，请检查厂商基础地址和密钥"), "error"));
+    return;
+  }
+  const output = el("p", { className: "notice", hidden: true });
+  const changedCount = (preview.changed || []).length;
+  const missingCount = (preview.missing || []).length;
+  const applyButton = button("应用", async () => {
+    if (!window.confirm(`确认应用目录同步？将更新 ${changedCount} 个模型，标记 ${missingCount} 个上游缺失模型。`)) {
+      return;
+    }
+    applyButton.disabled = true;
+    try {
+      const result = await api(`/admin-api/providers/${row.id}/catalog-sync`, {
+        method: "POST",
+        body: JSON.stringify({ apply: true })
+      });
+      const heading = body.closest(".modal-dialog")?.querySelector(".modal-header h2");
+      if (heading) {
+        setText(heading, `目录同步已应用 - ${row.name || row.id}`);
+      }
+      body.replaceChildren(...renderCatalogSyncResult(result.data || {}, true));
+      await onSaved();
+    } catch (error) {
+      applyButton.disabled = false;
+      setErrorOutput(output, adminErrorMessage(error, "应用目录同步失败"));
+    }
+  }, "catalog-sync-apply");
+  body.replaceChildren(
+    ...renderCatalogSyncResult(preview, false),
+    el("div", { className: "toolbar-actions" }, [applyButton]),
+    output
+  );
+}
+
+// --- 2. Quota status & adjustment ------------------------------------------
+
+const QUOTA_METRICS = [
+  ["request_count", "requests", "请求次数"],
+  ["input_tokens", "input_tokens", "输入 Token"],
+  ["output_tokens", "output_tokens", "输出 Token"],
+  ["total_tokens", "total_tokens", "总 Token"],
+  ["audio_seconds", "audio_seconds", "音频秒数"],
+  ["tts_chars", "tts_chars", "TTS 字符"],
+  ["image_count", "image_count", "图片数"],
+  ["video_seconds", "video_seconds", "视频秒数"],
+  ["cost_amount", "cost_amount", "成本"]
+];
+
+const QUOTA_TARGET_LABELS = { api_key: "API 密钥", user: "用户", department: "部门" };
+
+function quotaTargetText(targetType, targetId) {
+  return `${QUOTA_TARGET_LABELS[targetType] || targetType || "-"} #${opsText(targetId)}`;
+}
+
+function quotaMetricTable(item) {
+  const limits = item.limits || {};
+  const usage = item.usage || {};
+  const reserved = usage.reserved_in_flight && typeof usage.reserved_in_flight === "object" ? usage.reserved_in_flight : {};
+  const remaining = item.remaining || {};
+  const rows = QUOTA_METRICS.filter(([name]) => name in limits || name in usage)
+    .filter(([name]) => limits[name] !== null && limits[name] !== undefined || Number(usage[name]) > 0 || Number(reserved[name]) > 0);
+  if (rows.length === 0) {
+    return el("p", { className: "muted", text: "未设置限额，当前窗口暂无用量" });
+  }
+  const table = el("table", { className: "resource-table quota-status-table" });
+  table.append(el("thead", {}, [el("tr", {}, ["指标", "限额", "已用（含预占）", "进行中预占", "剩余", "使用率"].map((label) => el("th", { text: label })))]));
+  table.append(el("tbody", {}, rows.map(([name, , label]) => {
+    const limit = limits[name];
+    const used = Number(usage[name]) || 0;
+    const hasLimit = limit !== null && limit !== undefined;
+    const percent = hasLimit && Number(limit) > 0 ? Math.min(100, Math.round(used / Number(limit) * 100)) : null;
+    const meter = el("div", { className: `quota-meter ${percent !== null && percent >= 90 ? "quota-meter--high" : ""}`.trim(), title: percent === null ? "不限" : `${percent}%` }, [
+      el("span", { style: `width:${percent ?? 0}%` })
+    ]);
+    return el("tr", {}, [
+      el("td", { text: label }),
+      el("td", { text: hasLimit ? opsNumber(limit) : "不限" }),
+      el("td", { text: opsNumber(used) }),
+      el("td", { text: reserved[name] ? opsNumber(reserved[name]) : "0" }),
+      el("td", { text: hasLimit ? opsNumber(remaining[name]) : "不限" }),
+      el("td", {}, [meter, el("small", { text: percent === null ? "不限" : `${percent}%` })])
+    ]);
+  })));
+  return el("div", { className: "quota-status-table-wrap" }, [table]);
+}
+
+function quotaPolicyCard(policy) {
+  return el("article", { className: "quota-status-card" }, [
+    el("header", {}, [
+      el("strong", { text: policy.name || `策略 #${policy.policy_id}` }),
+      el("span", { text: `${quotaTargetText(policy.target_type, policy.target_id)} · 周期 ${valueLabel("period", policy.period || "")} · 重置于 ${opsUtcTime(policy.reset_at)}` })
+    ]),
+    quotaMetricTable(policy)
+  ]);
+}
+
+function quotaModelCard(quota) {
+  return el("article", { className: "quota-status-card" }, [
+    el("header", {}, [
+      el("strong", { text: quota.model_name || `模型 #${quota.model_id}` }),
+      el("span", { text: `模型限额 #${opsText(quota.quota_id)} · 周期 ${valueLabel("period", quota.period || "")} · 重置于 ${opsUtcTime(quota.reset_at)}` })
+    ]),
+    quotaMetricTable(quota)
+  ]);
+}
+
+function quotaAdjustmentForm(policies, onAdjusted) {
+  const fields = [
+    {
+      name: "policy_ref",
+      label: "额度策略",
+      type: "select",
+      options: policies.map((policy) => [
+        `${policy.policy_id}:${policy.target_type}:${policy.target_id}`,
+        `${policy.name || `策略 #${policy.policy_id}`} / ${quotaTargetText(policy.target_type, policy.target_id)}`
+      ])
+    },
+    { name: "metric", label: "指标", type: "select", options: QUOTA_METRICS.map(([, metric, label]) => [metric, label]) },
+    { name: "amount", label: "调整量（正数增加已用量，负数返还额度）", type: "number" },
+    { name: "reason", label: "原因（必填，写入审计日志）", type: "textarea", rows: 2 }
+  ];
+  const form = resourceForm(fields, { metric: "total_tokens", policy_ref: fields[0].options[0]?.[0] || "" });
+  form.classList.add("quota-adjust-form");
+  const amountInput = form.querySelector('[name="amount"]');
+  amountInput.step = "any";
+  const output = el("p", { className: "notice", hidden: true });
+  const submit = button("提交调整", async () => {
+    const values = readFields(form, fields);
+    const [policyId, targetType, targetId] = String(values.policy_ref || "").split(":");
+    const amount = Number(values.amount);
+    const reason = String(values.reason || "").trim();
+    if (!policyId || !targetType || !targetId) {
+      setErrorOutput(output, "请选择额度策略");
+      return;
+    }
+    if (!Number.isFinite(amount) || amount === 0) {
+      setErrorOutput(output, "调整量需为非零数字");
+      return;
+    }
+    if (reason === "") {
+      setErrorOutput(output, "请填写调整原因");
+      return;
+    }
+    submit.disabled = true;
+    try {
+      const result = await api("/admin-api/quota-adjustments", {
+        method: "POST",
+        body: JSON.stringify({
+          policy_id: Number(policyId),
+          target_type: targetType,
+          target_id: Number(targetId),
+          metric: values.metric,
+          amount,
+          reason
+        })
+      });
+      const data = result.data || {};
+      const metricLabel = QUOTA_METRICS.find(([, metric]) => metric === data.metric)?.[2] || data.metric;
+      await onAdjusted(`已调整 ${metricLabel}：${opsNumber(data.before)} → ${opsNumber(data.after)}（窗口 ${opsText(data.window)}）`);
+    } catch (error) {
+      submit.disabled = false;
+      setErrorOutput(output, adminErrorMessage(error, "额度调整失败"));
+    }
+  });
+  form.append(submit, output);
+  return opsSection("额度调整", [
+    el("p", { className: "muted", text: "仅修正当前窗口计数（例如上游故障后返还额度），不会修改历史用量记录。" }),
+    form
+  ], "quota-adjust");
+}
+
+function renderQuotaStatus(body, data, reload, flash = "") {
+  const policies = Array.isArray(data.policies) ? data.policies : [];
+  const perModel = Array.isArray(data.per_model) ? data.per_model : [];
+  const children = [];
+  if (flash) {
+    children.push(statusMessage(flash));
+  }
+  children.push(el("p", { className: "muted", text: "已用量包含进行中请求的预占额度；请求结束后预占会按实际用量结算。" }));
+  if (policies.length === 0 && perModel.length === 0) {
+    children.push(statusMessage("该密钥未绑定生效中的额度策略或模型限额"));
+  }
+  if (policies.length > 0) {
+    children.push(opsSection("额度策略", policies.map(quotaPolicyCard)));
+  }
+  if (perModel.length > 0) {
+    children.push(opsSection("模型限额", perModel.map(quotaModelCard)));
+  }
+  children.push(el("div", { className: "toolbar-actions" }, [button("刷新", () => reload(), "secondary")]));
+  if (adminViewerCan("quotas.manage") && policies.length > 0) {
+    children.push(quotaAdjustmentForm(policies, (message) => reload(message)));
+  }
+  body.replaceChildren(...children);
+}
+
+async function showApiKeyQuota(row) {
+  const body = el("div", { className: "quota-status-modal" }, [statusMessage("正在加载额度...")]);
+  showModal(`额度 · ${row.name || row.id}`, body);
+  const load = async (flash = "") => {
+    try {
+      const result = await api("/admin-api/quota-status", { query: { api_key_id: row.id } });
+      renderQuotaStatus(body, result.data || {}, load, flash);
+    } catch (error) {
+      body.replaceChildren(statusMessage(adminErrorMessage(error, "额度加载失败"), "error"));
+    }
+  };
+  await load();
+}
+
+// --- 3. Request diagnostics -------------------------------------------------
+
+const DIAGNOSTIC_CATEGORY_LABELS = {
+  permission: "权限",
+  configuration: "配置",
+  quota: "额度",
+  policy: "策略",
+  client: "客户端",
+  upstream: "上游",
+  rag: "RAG",
+  unknown: "未知"
+};
+
+const DIAGNOSTIC_CAUSES_ZH = {
+  MODEL_FORBIDDEN: ["该 API 密钥没有此模型或通道的授权。", "在 API 密钥中授权该模型，或调用已授权的模型。"],
+  MODEL_NOT_FOUND: ["未配置该名称的模型。", "检查模型名称，或从厂商目录导入该模型。"],
+  MODEL_UNAVAILABLE: ["该模型的所有通道均已停用或下线。", "启用一个通道，或让密钥改用其他模型。"],
+  MODEL_CAPABILITY_UNSUPPORTED: ["没有启用的通道支持该接口或请求的功能（工具、JSON Schema、推理、图片）。", "改用能力契约包含该功能的模型，或在验证后更新能力契约。"],
+  CAPABILITY_UNAVAILABLE: ["该能力只有 native 通道，且没有执行后端。", "为该能力配置 OpenAI/Anthropic 兼容通道（如火山方舟）。"],
+  QUOTA_EXCEEDED: ["绑定到密钥、用户或部门的额度策略在当前窗口已用尽（进行中请求的预占也计入）。", "等待窗口重置、提高限额，或执行可审计的额度调整。"],
+  MODEL_QUOTA_EXCEEDED: ["该密钥的模型限额已用尽。", "提高该密钥的模型限额，或等待重置。"],
+  CONCURRENCY_EXCEEDED: ["绑定策略的并发请求过多。", "降低并发，或提高并发限制。"],
+  PRICE_UNKNOWN: ["存在成本限额，但模型未配置价格，且未知价格策略为拒绝。", "为模型添加价格，或放宽未知价格策略。"],
+  DESENSITIZATION_BLOCKED: ["出站内容（包括注入的 RAG 上下文）命中了阻断型脱敏规则。", "按该请求 ID 查看脱敏事件。"],
+  ROUTING_PARAMETER_FORBIDDEN: ["请求试图修改超出通道策略的聚合路由参数（provider/plugins/models）。", "移除该参数，或在厂商上配置客户端路由策略。"],
+  ROUTING_AUTO_ROUTER_FORBIDDEN: ["自动路由会选择 TokenHub 授权范围外的模型。", "使用明确的模型，或在厂商上允许自动路由。"],
+  TOOL_CALL_MISMATCH: ["工具结果引用了会话中从未发出的工具调用 ID。", "先发送带 tool_calls 的助手消息，再发送对应的工具结果。"],
+  TOOL_CHOICE_UNKNOWN: ["tool_choice 指定了未声明的工具。", "在 tools 中声明该工具，或修改 tool_choice。"],
+  OUTBOUND_BLOCKED: ["通道地址解析到私有、回环或元数据地址。", "私有推理服务需在厂商上允许私有网络，或配置出站私网白名单。"],
+  PROVIDER_ENDPOINT_UNSUPPORTED: ["通道的接口映射标记该接口不受支持。", "将请求路由到支持该接口的通道。"],
+  PROVIDER_TIMEOUT: ["上游在超时时间内未响应（或流式输出中断）。", "检查上游状态；长生成任务可提高超时毫秒数。"],
+  PROVIDER_RATE_LIMITED: ["所有尝试的通道均返回 429 限流。", "遵循 Retry-After、增加通道或提高上游账号限额。"],
+  PROVIDER_REJECTED: ["上游拒绝了请求（4xx）：参数、鉴权或账户状态问题。", "检查厂商密钥、账户余额和请求参数。"],
+  PROVIDER_ERROR: ["每次尝试上游都返回 5xx。", "检查上游状态；熔断器会绕开故障通道。"],
+  PROVIDER_STREAM_ERROR: ["流式输出开始后上游发送了错误事件。", "查看留存输出中的上游错误，通常是过载或内容策略。"],
+  PROVIDER_STREAM_INCOMPLETE: ["流式输出未收到结束事件就中断了。", "按截断处理输出，检查上游与网络稳定性。"],
+  CLIENT_CANCELLED: ["客户端断开连接，已按断开前的用量计费。", "若非预期，请检查客户端超时设置。"],
+  RAG_REQUIRED_NO_CONTEXT: ["要求使用 RAG，但没有数据集或上下文达到阈值。", "为密钥绑定数据集，或降低检索阈值。"],
+  RAG_RETRIEVAL_FAILED: ["必需的检索失败（向量库或向量化服务）。", "检查 Qdrant 与向量化通道的健康状态。"],
+  API_KEY_INVALID: ["密钥不存在、已停用或已删除，或其员工/部门已停用。", "签发或重新启用密钥。"],
+  API_KEY_EXPIRED: ["密钥已超过过期时间（包括轮换宽限期结束后）。", "让客户端切换到轮换后的新密钥。"]
+};
+
+function renderRequestDiagnostics(data) {
+  if (!data.found) {
+    return [
+      statusMessage("尚未找到该请求的用量记录", "error"),
+      el("p", { className: "muted", text: "请求可能仍在排队写入（可在“运行状态”查看队列积压），或请求 ID 有误。" }),
+      data.hint ? el("p", { className: "ops-original-text", text: data.hint }) : null
+    ].filter(Boolean);
+  }
+  const children = [
+    opsDetailGrid([
+      ["状态", valueLabel("status", data.status || "") || data.status],
+      ["HTTP 状态", data.http_status],
+      ["错误码", data.error_code || "无"],
+      ["耗时（毫秒）", data.latency_ms],
+      ["创建时间", data.created_at],
+      ["请求 ID", data.request_id]
+    ])
+  ];
+  const explanation = data.explanation;
+  if (data.error_code && explanation) {
+    const translated = DIAGNOSTIC_CAUSES_ZH[data.error_code];
+    children.push(el("section", { className: `request-diagnostics-explanation request-diagnostics-explanation--${explanation.category || "unknown"}` }, [
+      el("header", {}, [
+        el("strong", { text: "原因与处理建议" }),
+        el("span", { className: "status-badge", text: DIAGNOSTIC_CATEGORY_LABELS[explanation.category] || explanation.category || "未知" })
+      ]),
+      el("p", {}, [el("b", { text: "原因：" }), document.createTextNode(translated?.[0] || explanation.cause || "-")]),
+      el("p", {}, [el("b", { text: "处理建议：" }), document.createTextNode(translated?.[1] || explanation.action || "-")]),
+      translated ? el("p", { className: "ops-original-text", text: `${explanation.cause || ""} ${explanation.action || ""}`.trim() }) : null
+    ].filter(Boolean)));
+  } else if (!data.error_code) {
+    children.push(statusMessage("该请求没有记录错误码。"));
+  }
+  const channel = data.channel;
+  if (channel) {
+    children.push(opsSection("通道", opsDetailGrid([
+      ["模型", `${opsText(channel.name)} #${opsText(channel.id)}`],
+      ["上游模型名", channel.external_name],
+      ["模型状态", valueLabel("status", channel.status || "") || channel.status],
+      ["厂商", `${opsText(channel.provider_name)} #${opsText(channel.provider_id)}`],
+      ["厂商状态", valueLabel("status", channel.provider_status || "") || channel.provider_status]
+    ])));
+  }
+  if (Array.isArray(data.attempts) && data.attempts.length > 0) {
+    children.push(opsSection("通道尝试", renderDataDetails(data.attempts)));
+  }
+  const usage = data.usage || {};
+  children.push(opsSection("用量与计费", opsDetailGrid([
+    ["用量来源", usage.source],
+    ["输入 Token", usage.input_tokens],
+    ["输出 Token", usage.output_tokens],
+    ["缓存读取 Token", usage.cache_read_tokens],
+    ["推理 Token", usage.reasoning_tokens],
+    ["成本", usage.cost_amount === null || usage.cost_amount === undefined ? null : `${usage.cost_amount} ${usage.cost_currency || ""}`.trim()],
+    ["上游成本", usage.upstream_cost],
+    ["对账时间", usage.reconciled_at]
+  ])));
+  const stream = data.stream || {};
+  const upstream = data.upstream || {};
+  children.push(opsSection("流式与上游", opsDetailGrid([
+    ["流式结果", stream.outcome],
+    ["首字节耗时（毫秒）", stream.first_byte_ms],
+    ["上游请求 ID", upstream.request_id],
+    ["上游模型", upstream.model],
+    ["上游厂商", upstream.provider],
+    ["聚合时间", data.persistence?.aggregated_at],
+    ["事件发送时间", data.persistence?.events_emitted_at]
+  ])));
+  return children;
+}
+
+async function showRequestDiagnostics(requestId) {
+  const id = String(requestId || "").trim();
+  if (id === "") {
+    showModal("请求诊断", statusMessage("请输入请求 ID", "error"));
+    return;
+  }
+  const body = el("div", { className: "request-diagnostics" }, [statusMessage("正在诊断请求...")]);
+  showModal(`请求诊断 · ${id}`, body);
+  try {
+    const result = await api(`/admin-api/diagnostics/requests/${encodeURIComponent(id)}`);
+    body.replaceChildren(...renderRequestDiagnostics(result.data || {}));
+  } catch (error) {
+    body.replaceChildren(statusMessage(adminErrorMessage(error, "请求诊断失败"), "error"));
+  }
+}
+
+function renderRequestDiagnosticsLookup() {
+  const input = el("input", {
+    type: "search",
+    name: "diagnose_request_id",
+    className: "request-diagnostics-input",
+    placeholder: "按请求 ID 诊断",
+    ariaLabel: "按请求 ID 诊断"
+  });
+  const run = () => showRequestDiagnostics(input.value);
+  input.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      event.stopPropagation();
+      void run();
+    }
+  });
+  return el("div", { className: "request-diagnostics-lookup" }, [input, button("诊断", run, "secondary")]);
+}
+
+// --- 4. API key rotation ----------------------------------------------------
+
+function showApiKeyRotate(row, onRefresh) {
+  const fields = [{ name: "grace_minutes", label: "旧密钥宽限期（分钟，0–10080）", type: "number" }];
+  const form = resourceForm(fields, { grace_minutes: 60 });
+  form.classList.add("api-key-rotate-form");
+  const graceInput = form.querySelector('[name="grace_minutes"]');
+  graceInput.min = "0";
+  graceInput.max = "10080";
+  graceInput.step = "1";
+  const output = el("p", { className: "notice", hidden: true });
+  form.prepend(statusMessage(`将为 API 密钥 ${row.name || row.id} 生成新的明文密钥，并复制原密钥的模型授权、模型限额与知识库绑定。旧密钥在宽限期结束后失效，0 表示立即失效。`));
+  const submit = button("确认轮换", async () => {
+    const raw = graceInput.value.trim();
+    const graceMinutes = raw === "" ? Number.NaN : Number(raw);
+    if (!Number.isInteger(graceMinutes) || graceMinutes < 0 || graceMinutes > 10080) {
+      setErrorOutput(output, "宽限期需为 0 到 10080 之间的整数分钟");
+      return;
+    }
+    submit.disabled = true;
+    try {
+      const result = await api(`/admin-api/api-keys/${row.id}/rotate`, {
+        method: "POST",
+        body: JSON.stringify({ grace_minutes: graceMinutes })
+      });
+      showApiKeyRotationResult(row, result.data || {}, graceMinutes);
+      await onRefresh();
+    } catch (error) {
+      submit.disabled = false;
+      setErrorOutput(output, adminErrorMessage(error, "轮换失败，请确认密钥状态和权限"));
+    }
+  }, "danger");
+  form.append(submit, output);
+  showModal(`轮换 API 密钥 #${row.id}`, form);
+}
+
+function showApiKeyRotationResult(row, data, graceMinutes) {
+  const secret = el("p", { className: "notice secret-output api-key-rotate-secret", text: oneTimeSecretText(data) });
+  const feedback = el("p", { className: "notice", hidden: true });
+  const copyButton = button("复制新密钥", () => copyTextToClipboard(data.key || "", feedback, secret), "secondary");
+  copyButton.disabled = !data.key;
+  const expiry = graceMinutes === 0
+    ? `旧密钥 #${opsText(data.replaces_api_key_id, row.id)} 已立即失效。`
+    : `旧密钥 #${opsText(data.replaces_api_key_id, row.id)} 将于 ${opsUtcTime(data.old_key_expires_at)}（UTC ${opsText(data.old_key_expires_at)}）失效，请在此之前把客户端切换到新密钥。`;
+  showModal("API 密钥已轮换", el("div", { className: "api-key-rotate-result" }, [
+    statusMessage("新密钥明文只显示这一次，关闭后无法再次查看，请立即复制保存。", "error"),
+    secret,
+    el("div", { className: "toolbar-actions" }, [copyButton]),
+    feedback,
+    opsDetailGrid([
+      ["新密钥 ID", data.id],
+      ["新密钥显示", data.display],
+      ["替换的旧密钥", data.replaces_api_key_id],
+      ["旧密钥失效时间", data.old_key_expires_at ? `${opsUtcTime(data.old_key_expires_at)}` : null]
+    ]),
+    statusMessage(expiry)
+  ]));
+}
+
+// --- 5. Model capability contract editor -----------------------------------
+
+const MODEL_CAPABILITY_FEATURES = [
+  ["tools", "工具调用"],
+  ["parallel_tool_calls", "并行工具调用"],
+  ["json_object", "JSON 对象输出"],
+  ["json_schema", "JSON Schema 结构化输出"],
+  ["reasoning", "推理"],
+  ["streaming", "流式输出"]
+];
+
+const MODEL_CAPABILITY_MODALITIES = {
+  input_modalities: { label: "输入模态", options: [["text", "文本"], ["image", "图片"], ["audio", "音频"], ["file", "文件"]] },
+  output_modalities: { label: "输出模态", options: [["text", "文本"], ["image", "图片"], ["audio", "音频"], ["embedding", "向量"]] }
+};
+
+const MODEL_CAPABILITY_LIMITS = [
+  ["context_length", "上下文长度"],
+  ["max_output_tokens", "最大输出 Token"]
+];
+
+const MODEL_CAPABILITY_TAGS = ["text_generation", "vision_understanding", "embedding", "asr", "tts", "image_generation", "video_generation", "rerank", "moderation"];
+
+function parseJsonValue(value) {
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (trimmed === "") {
+      return null;
+    }
+    try {
+      return JSON.parse(trimmed);
+    } catch {
+      return null;
+    }
+  }
+  return value ?? null;
+}
+
+function plainObject(value) {
+  return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+}
+
+function capabilityFeatureText(value) {
+  if (value === true) return "支持";
+  if (value === false) return "不支持";
+  return "未声明";
+}
+
+function capabilityListText(value, options) {
+  if (!Array.isArray(value)) {
+    return "未声明";
+  }
+  const labels = new Map(options);
+  return value.length === 0 ? "无" : value.map((item) => labels.get(item) || item).join("、");
+}
+
+function stableJson(value) {
+  if (Array.isArray(value)) {
+    return `[${value.map(stableJson).join(",")}]`;
+  }
+  if (value && typeof value === "object") {
+    return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${stableJson(value[key])}`).join(",")}}`;
+  }
+  return JSON.stringify(value ?? null);
+}
+
+function createModelCapabilityEditor(row) {
+  const hasLayers = Object.prototype.hasOwnProperty.call(row, "capabilities");
+  const hasTags = Object.prototype.hasOwnProperty.call(row, "capability_tags");
+  if (!hasLayers && !hasTags) {
+    return null;
+  }
+  const baseline = { layers: plainObject(parseJsonValue(row.capabilities)), tags: parseJsonValue(row.capability_tags), updatedAt: row.updated_at || "" };
+  const node = el("fieldset", { className: "model-capability-editor" }, [el("legend", { text: "能力契约" })]);
+  const controls = { features: {}, modalities: {}, limits: {} };
+  let tagInputs = [];
+  let legacyWarning = null;
+
+  const currentLayers = () => baseline.layers;
+  const lowerValue = (key) => {
+    const verified = plainObject(currentLayers().verified);
+    const upstream = plainObject(currentLayers().upstream);
+    return verified[key] !== undefined ? verified[key] : upstream[key];
+  };
+  const lowerFeature = (feature) => {
+    const verified = plainObject(plainObject(currentLayers().verified).features);
+    const upstream = plainObject(plainObject(currentLayers().upstream).features);
+    if (feature in verified) return verified[feature];
+    if (feature in upstream) return upstream[feature];
+    return undefined;
+  };
+
+  if (hasLayers) {
+    const layers = currentLayers();
+    const upstream = plainObject(layers.upstream);
+    const verified = plainObject(layers.verified);
+    const admin = plainObject(layers.admin);
+    const upstreamFeatures = plainObject(upstream.features);
+    const verifiedFeatures = plainObject(verified.features);
+    const adminFeatures = plainObject(admin.features);
+    node.append(el("p", { className: "muted", text: "生效值 = 管理员覆盖 > 已验证 > 上游目录。上游与已验证层由目录同步和验收测试维护，此处只读；这里只修改管理员覆盖层。" }));
+    legacyWarning = el("p", { className: "notice error", hidden: true, text: "该模型目前没有能力契约（旧版模型，仅按“能力”字段路由）。保存管理员覆盖后将启用能力契约：未声明为“支持”的功能（包括流式输出）将被视为不支持。" });
+    node.append(legacyWarning);
+
+    const featureTable = el("table", { className: "resource-table model-capability-table" });
+    featureTable.append(el("thead", {}, [el("tr", {}, ["功能", "上游", "已验证", "管理员覆盖", "生效"].map((label) => el("th", { text: label })))]));
+    const featureBody = el("tbody");
+    for (const [feature, label] of MODEL_CAPABILITY_FEATURES) {
+      const select = el("select", { name: `capability_feature_${feature}`, className: "model-capability-override", dataset: { feature } }, [
+        el("option", { value: "", text: "继承" }),
+        el("option", { value: "true", text: "支持" }),
+        el("option", { value: "false", text: "不支持" })
+      ]);
+      select.value = feature in adminFeatures ? String(Boolean(adminFeatures[feature])) : "";
+      const effective = el("td", { className: "model-capability-effective" });
+      controls.features[feature] = { select, effective };
+      featureBody.append(el("tr", {}, [
+        el("td", { text: label }),
+        el("td", { text: capabilityFeatureText(upstreamFeatures[feature]) }),
+        el("td", { text: capabilityFeatureText(verifiedFeatures[feature]) }),
+        el("td", {}, [select]),
+        effective
+      ]));
+    }
+    featureTable.append(featureBody);
+    node.append(el("div", { className: "model-capability-table-wrap" }, [featureTable]));
+
+    for (const [key, config] of Object.entries(MODEL_CAPABILITY_MODALITIES)) {
+      const override = el("input", { type: "checkbox", name: `capability_override_${key}`, checked: Array.isArray(admin[key]) });
+      const initial = Array.isArray(admin[key]) ? admin[key] : (Array.isArray(lowerValue(key)) ? lowerValue(key) : ["text"]);
+      const checkboxes = config.options.map(([value, label]) => {
+        const checkbox = el("input", { type: "checkbox", name: `capability_${key}`, value, checked: initial.includes(value) });
+        return { checkbox, wrapper: el("label", { className: "multiselect-item" }, [checkbox, el("span", { text: label })]) };
+      });
+      const effective = el("small", { className: "model-capability-effective" });
+      controls.modalities[key] = { override, checkboxes, effective };
+      node.append(el("div", { className: "model-capability-modality" }, [
+        el("div", { className: "model-capability-modality-head" }, [
+          el("strong", { text: config.label }),
+          el("span", { className: "muted", text: `上游：${capabilityListText(upstream[key], config.options)}；已验证：${capabilityListText(verified[key], config.options)}` })
+        ]),
+        el("label", { className: "model-capability-override-toggle" }, [override, el("span", { text: "管理员覆盖（整组替换）" })]),
+        el("div", { className: "model-capability-choices" }, checkboxes.map((item) => item.wrapper)),
+        effective
+      ]));
+    }
+
+    const limitRow = el("div", { className: "model-capability-limits" });
+    for (const [key, label] of MODEL_CAPABILITY_LIMITS) {
+      const lower = lowerValue(key);
+      const input = el("input", {
+        type: "number",
+        name: `capability_${key}`,
+        min: "1",
+        step: "1",
+        placeholder: lower ? `继承：${lower}` : "继承（未声明）",
+        value: admin[key] !== undefined && admin[key] !== null ? String(admin[key]) : ""
+      });
+      controls.limits[key] = input;
+      limitRow.append(el("label", { className: "field" }, [el("span", { text: `${label}覆盖（留空继承）` }), input]));
+    }
+    node.append(limitRow);
+  }
+
+  if (hasTags) {
+    const currentTags = new Set(Array.isArray(baseline.tags) ? baseline.tags.map(String) : []);
+    tagInputs = MODEL_CAPABILITY_TAGS.map((tag) => el("input", { type: "checkbox", name: "capability_tags", value: tag, checked: currentTags.has(tag) }));
+    node.append(el("div", { className: "model-capability-tags" }, [
+      el("strong", { text: "附加能力标签（路由匹配）" }),
+      el("span", { className: "muted", text: "模型也会响应这些能力的请求。注意：应用厂商目录同步时会按上游重置该标签。" }),
+      el("div", { className: "model-capability-choices" }, tagInputs.map((input) => el("label", { className: "multiselect-item" }, [input, el("span", { text: valueLabel("capability", input.value) })])))
+    ]));
+  }
+
+  const nextAdminLayer = () => {
+    const admin = { ...plainObject(currentLayers().admin) };
+    const features = { ...plainObject(admin.features) };
+    for (const [feature, control] of Object.entries(controls.features)) {
+      if (control.select.value === "") {
+        delete features[feature];
+      } else {
+        features[feature] = control.select.value === "true";
+      }
+    }
+    if (Object.keys(features).length > 0) {
+      admin.features = features;
+    } else {
+      delete admin.features;
+    }
+    for (const [key, control] of Object.entries(controls.modalities)) {
+      if (control.override.checked) {
+        admin[key] = control.checkboxes.filter((item) => item.checkbox.checked).map((item) => item.checkbox.value);
+      } else {
+        delete admin[key];
+      }
+    }
+    for (const [key, input] of Object.entries(controls.limits)) {
+      const raw = input.value.trim();
+      if (raw === "") {
+        delete admin[key];
+        continue;
+      }
+      const number = Number(raw);
+      if (!Number.isInteger(number) || number <= 0) {
+        const error = new Error("invalid capability limit");
+        error.userMessage = `${MODEL_CAPABILITY_LIMITS.find(([name]) => name === key)?.[1] || key}覆盖需为正整数`;
+        throw error;
+      }
+      admin[key] = number;
+    }
+    return admin;
+  };
+
+  const refreshEffective = () => {
+    if (!hasLayers) {
+      return;
+    }
+    let admin = {};
+    try {
+      admin = nextAdminLayer();
+    } catch {
+      admin = plainObject(currentLayers().admin);
+    }
+    const adminFeatures = plainObject(admin.features);
+    for (const [feature, control] of Object.entries(controls.features)) {
+      const value = feature in adminFeatures ? adminFeatures[feature] : lowerFeature(feature);
+      setText(control.effective, capabilityFeatureText(value));
+      control.effective.className = `model-capability-effective ${value === true ? "is-supported" : value === false ? "is-unsupported" : "is-unknown"}`;
+    }
+    for (const [key, control] of Object.entries(controls.modalities)) {
+      for (const item of control.checkboxes) {
+        item.checkbox.disabled = !control.override.checked;
+      }
+      const value = Array.isArray(admin[key]) ? admin[key] : lowerValue(key);
+      setText(control.effective, `生效：${capabilityListText(value, MODEL_CAPABILITY_MODALITIES[key].options)}`);
+    }
+    const isLegacy = Object.keys(currentLayers()).filter((layer) => Object.keys(plainObject(currentLayers()[layer])).length > 0).length === 0;
+    if (legacyWarning) {
+      legacyWarning.hidden = !(isLegacy && Object.keys(admin).length > 0);
+    }
+  };
+  node.addEventListener("change", refreshEffective);
+  node.addEventListener("input", refreshEffective);
+  refreshEffective();
+
+  return {
+    node,
+    payload() {
+      const payload = {};
+      if (hasLayers) {
+        const before = plainObject(currentLayers().admin);
+        const admin = nextAdminLayer();
+        if (stableJson(admin) !== stableJson(before)) {
+          const layers = { ...currentLayers() };
+          if (Object.keys(admin).length > 0) {
+            layers.admin = admin;
+          } else {
+            delete layers.admin;
+          }
+          payload.capabilities = Object.keys(layers).length > 0 ? layers : null;
+        }
+      }
+      if (hasTags) {
+        const selected = tagInputs.filter((input) => input.checked).map((input) => input.value);
+        const before = Array.isArray(baseline.tags) ? baseline.tags.map(String) : [];
+        if (stableJson([...selected].sort()) !== stableJson([...before].sort())) {
+          payload.capability_tags = selected;
+        }
+      }
+      if (Object.keys(payload).length > 0 && baseline.updatedAt) {
+        payload.expected_updated_at = baseline.updatedAt;
+      }
+      return payload;
+    },
+    commit(savedRow = {}) {
+      if (Object.prototype.hasOwnProperty.call(savedRow, "capabilities")) {
+        baseline.layers = plainObject(parseJsonValue(savedRow.capabilities));
+      }
+      if (Object.prototype.hasOwnProperty.call(savedRow, "capability_tags")) {
+        baseline.tags = parseJsonValue(savedRow.capability_tags);
+      }
+      if (savedRow.updated_at) {
+        baseline.updatedAt = savedRow.updated_at;
+      }
+      refreshEffective();
+    }
+  };
+}
+
+// --- Agent management scopes on API keys -----------------------------------
+
+const API_KEY_MANAGEMENT_SCOPES = [
+  ["users:read", "用户（只读）"],
+  ["users:write", "用户（读写）"],
+  ["api_keys:read", "API Key（只读）"],
+  ["api_keys:write", "API Key（读写）"],
+  ["rag:read", "知识库（只读）"],
+  ["rag:write", "知识库（读写）"],
+  ["usage:read", "用量（只读）"]
+];
+
+function apiKeyManagementScopeList(value) {
+  const parsed = parseJsonValue(value);
+  const list = Array.isArray(parsed) ? parsed : (typeof value === "string" && value.trim() !== "" ? value.split(",") : []);
+  const known = new Set(API_KEY_MANAGEMENT_SCOPES.map(([scope]) => scope));
+  return [...new Set(list.map((scope) => String(scope).trim()).filter((scope) => known.has(scope)))];
+}
+
+// "*:write" implies "*:read" server-side; compare sets without the implied reads.
+function normalizeManagementScopes(scopes) {
+  const set = new Set(scopes);
+  return API_KEY_MANAGEMENT_SCOPES.map(([scope]) => scope)
+    .filter((scope) => set.has(scope))
+    .filter((scope) => !(scope.endsWith(":read") && set.has(scope.replace(/:read$/, ":write"))));
+}
+
+function apiKeyManagementScopeLabels(scopes) {
+  const labels = new Map(API_KEY_MANAGEMENT_SCOPES);
+  return scopes.map((scope) => labels.get(scope) || scope);
+}
+
+function apiKeyManagementBadge(row) {
+  const scopes = apiKeyManagementScopeList(row.management_scopes);
+  if (scopes.length === 0) {
+    return null;
+  }
+  return el("span", {
+    className: "api-key-management-badge",
+    text: "管理",
+    title: `智能体管理权限：${apiKeyManagementScopeLabels(scopes).join("、")}`
+  });
+}
+
+function createApiKeyManagementScopeEditor(initialScopes, options = {}) {
+  let baseline = normalizeManagementScopes(apiKeyManagementScopeList(initialScopes));
+  const initial = new Set(apiKeyManagementScopeList(initialScopes));
+  const inputs = new Map();
+  const list = el("div", { className: "api-key-management-scope-list" });
+  for (const [scope, label] of API_KEY_MANAGEMENT_SCOPES) {
+    const input = el("input", { type: "checkbox", name: "management_scopes", value: scope, checked: initial.has(scope) });
+    inputs.set(scope, input);
+    list.append(el("label", { className: "multiselect-item" }, [input, el("span", { text: label })]));
+  }
+  const syncImpliedReads = () => {
+    for (const [scope, input] of inputs) {
+      if (!scope.endsWith(":write")) {
+        continue;
+      }
+      const read = inputs.get(scope.replace(/:write$/, ":read"));
+      if (!read) {
+        continue;
+      }
+      if (input.checked) {
+        if (!read.disabled) {
+          read.dataset.explicit = read.checked ? "1" : "0";
+        }
+        read.checked = true;
+        read.disabled = true;
+        read.title = "已由读写权限包含";
+      } else if (read.disabled) {
+        read.disabled = false;
+        read.checked = read.dataset.explicit === "1";
+        read.title = "";
+      }
+    }
+  };
+  list.addEventListener("change", syncImpliedReads);
+  syncImpliedReads();
+  const selected = () => [...inputs.entries()]
+    .filter(([, input]) => input.checked && !input.disabled)
+    .map(([scope]) => scope);
+  const summary = el("summary", { text: initial.size > 0 ? `智能体管理权限（已授予 ${initial.size} 项）` : "智能体管理权限" });
+  const node = el("details", { className: "api-key-management-scopes", open: baseline.length > 0 }, [
+    summary,
+    el("p", { className: "muted", text: "授予后该 Key 可调用 /v1/management/* 管理本部门的用户、Key、知识库和用量；不要放在浏览器或前端代码中。" }),
+    options.editing ? el("p", { className: "muted", text: "收窄权限会同时收回该 Key 下发给其他 Key 的对应权限。读写权限已包含只读权限。" }) : el("p", { className: "muted", text: "读写权限已包含只读权限。" }),
+    list
+  ]);
+  return {
+    node,
+    selected,
+    changed() {
+      return normalizeManagementScopes(selected()).join(",") !== baseline.join(",");
+    },
+    commit(scopes) {
+      baseline = normalizeManagementScopes(apiKeyManagementScopeList(scopes));
+    }
+  };
 }

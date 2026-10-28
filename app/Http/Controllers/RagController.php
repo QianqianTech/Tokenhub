@@ -11,6 +11,7 @@ use TokenHub\Services\RagAdminTrialService;
 use TokenHub\Services\RagAdminEvaluationCaseService;
 use TokenHub\Services\RagPermissionService;
 use TokenHub\Services\RagRetrievalService;
+use TokenHub\Services\RagSearchService;
 use TokenHub\Services\RagRetrievalEvaluationService;
 use TokenHub\Services\RagRetrievalQualityService;
 use TokenHub\Services\RagTemplateService;
@@ -112,6 +113,11 @@ final class RagController
     public function confirmVectorization(Request $request): Response
     {
         return Response::ok((new RagUploadService())->confirm($this->apiKey(), (string) $request->params['upload_id']));
+    }
+
+    public function search(Request $request): Response
+    {
+        return Response::ok((new RagSearchService())->search($this->apiKey(), $request->json()));
     }
 
     public function retrieval(Request $request): Response

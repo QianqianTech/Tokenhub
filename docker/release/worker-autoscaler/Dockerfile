@@ -4,8 +4,8 @@ RUN apk add --no-cache redis
 
 WORKDIR /srv/app
 
+# deploy/docker/compose.yml mounts compose.yml and .env into /srv/app.
 COPY scripts/worker-autoscaler.sh /usr/local/bin/worker-autoscaler
-COPY docker-compose.offline.yml /srv/app/docker-compose.offline.yml
 
 RUN chmod +x /usr/local/bin/worker-autoscaler
 

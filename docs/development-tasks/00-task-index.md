@@ -32,7 +32,7 @@
 ## 全局约束
 
 - 后端使用 PHP 8.2+ 原生自研服务，不使用 Laravel、Hyperf、ThinkPHP、Symfony 等完整后端框架。
-- Caddy 是唯一入口层，负责 HTTPS、反代、增强 WAF、IP/CIDR 限制、安全响应头和静态资源托管。
+- Caddy 是唯一入口层，负责 HTTPS、反代、IP/CIDR 限制、安全响应头和静态资源托管。
 - MySQL 存储核心业务数据；Redis 用于缓存、限额、会话、队列或队列辅助。
 - Admin 使用原生 JavaScript/TypeScript + ES Modules，自研静态页面，通过同域 `/admin-api/*` 调用 PHP。
 - 所有密钥、生成内容、日志、导出文件必须按最小权限、脱敏、审计和留存策略处理。

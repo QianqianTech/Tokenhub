@@ -17,7 +17,21 @@ final class ExternalUsageService
      */
     public function summary(array $apiKey, array $query): array
     {
-        [$where, $bindings] = $this->where($apiKey, $query, 'day');
+        return $this->summaryFor($this->keySubject($apiKey), $this->scope($apiKey), $query);
+    }
+
+    /**
+     * Usage for an explicit subject, e.g. a whole department or one user
+     * (agent management API). Every subject column is an equality filter.
+     *
+     * @param array<string, int> $subject columns of usage_aggregates_*: department_id, user_id, api_key_id
+     * @param array<string, mixed> $scope echoed back to the caller
+     * @param array<string, mixed> $query
+     * @return array<string, mixed>
+     */
+    public function summaryFor(array $subject, array $scope, array $query): array
+    {
+        [$where, $bindings] = $this->where($subject, $query, 'day');
         $row = App::db()->first(
             "SELECT COALESCE(SUM(request_count), 0) request_count,
                     COALESCE(SUM(success_count), 0) success_count,
@@ -41,7 +55,7 @@ final class ExternalUsageService
         $cacheWriteTokens = (int) ($row['cache_write_tokens'] ?? 0);
 
         return [
-            'scope' => $this->scope($apiKey),
+            'scope' => $scope,
             'period' => $this->period($query),
             'totals' => [
                 'request_count' => $requestCount,
@@ -57,8 +71,8 @@ final class ExternalUsageService
                 'total_cost' => $row['total_cost'] === null ? null : (string) $row['total_cost'],
                 'avg_latency_ms' => $requestCount > 0 ? round(((float) ($row['latency_ms_sum'] ?? 0)) / $requestCount, 2) : 0,
             ],
-            'by_model' => $this->byDimension($apiKey, $query, 'model_id'),
-            'by_capability' => $this->byDimension($apiKey, $query, 'capability'),
+            'by_model' => $this->byDimension($subject, $query, 'model_id'),
+            'by_capability' => $this->byDimension($subject, $query, 'capability'),
             'generated_at' => gmdate('c'),
         ];
     }
@@ -70,8 +84,19 @@ final class ExternalUsageService
      */
     public function trends(array $apiKey, array $query): array
     {
+        return $this->trendsFor($this->keySubject($apiKey), $this->scope($apiKey), $query);
+    }
+
+    /**
+     * @param array<string, int> $subject see summaryFor()
+     * @param array<string, mixed> $scope
+     * @param array<string, mixed> $query
+     * @return array<string, mixed>
+     */
+    public function trendsFor(array $subject, array $scope, array $query): array
+    {
         $bucket = $this->bucket($query);
-        [$where, $bindings] = $this->where($apiKey, $query, $bucket);
+        [$where, $bindings] = $this->where($subject, $query, $bucket);
         $table = $bucket === 'day' ? 'usage_aggregates_day' : 'usage_aggregates_hour';
         $limit = min(200, max(1, (int) ($query['limit'] ?? ($bucket === 'day' ? 31 : 48))));
         $rows = App::db()->select(
@@ -94,7 +119,7 @@ final class ExternalUsageService
         );
 
         return [
-            'scope' => $this->scope($apiKey),
+            'scope' => $scope,
             'period' => $this->period($query),
             'bucket' => $bucket,
             'buckets' => array_map(fn (array $row): array => $this->publicBucket($row), $rows),
@@ -104,14 +129,35 @@ final class ExternalUsageService
 
     /**
      * @param array<string, mixed> $apiKey
+     * @return array<string, int>
+     */
+    private function keySubject(array $apiKey): array
+    {
+        return ['api_key_id' => (int) ($apiKey['id'] ?? 0)];
+    }
+
+    /**
+     * @param array<string, int> $subject
      * @param array<string, mixed> $query
      * @return array{0: string, 1: list<mixed>}
      */
-    private function where(array $apiKey, array $query, string $bucket): array
+    private function where(array $subject, array $query, string $bucket): array
     {
         $period = $this->period($query);
-        $conditions = ['api_key_id = ?', 'bucket_at >= ?'];
-        $bindings = [(int) ($apiKey['id'] ?? 0), $period['from']];
+        $conditions = [];
+        $bindings = [];
+        foreach ($subject as $column => $value) {
+            if (!in_array($column, ['department_id', 'user_id', 'api_key_id'], true)) {
+                throw new \InvalidArgumentException('Unsupported usage subject column: ' . $column);
+            }
+            $conditions[] = "{$column} = ?";
+            $bindings[] = (int) $value;
+        }
+        if ($conditions === []) {
+            throw new \InvalidArgumentException('Usage queries need a subject.');
+        }
+        $conditions[] = 'bucket_at >= ?';
+        $bindings[] = $period['from'];
         if ($period['to'] !== null) {
             $conditions[] = 'bucket_at <= ?';
             $bindings[] = $period['to'];
@@ -128,13 +174,13 @@ final class ExternalUsageService
     }
 
     /**
-     * @param array<string, mixed> $apiKey
+     * @param array<string, int> $subject
      * @param array<string, mixed> $query
      * @return list<array<string, mixed>>
      */
-    private function byDimension(array $apiKey, array $query, string $dimension): array
+    private function byDimension(array $subject, array $query, string $dimension): array
     {
-        [$where, $bindings] = $this->where($apiKey, $query, 'day');
+        [$where, $bindings] = $this->where($subject, $query, 'day');
         $rows = App::db()->select(
             "SELECT {$dimension} AS id,
                     COALESCE(SUM(request_count), 0) request_count,

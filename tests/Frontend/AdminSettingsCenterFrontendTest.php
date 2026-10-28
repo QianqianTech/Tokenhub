@@ -50,8 +50,6 @@ assert_true(str_contains($resources, '"settings-center"'), 'Admin resources shou
 assert_true(str_contains($resources, '"settings-brand-identity"'), 'Admin resources should keep brand identity metadata for the settings center.');
 assert_true(str_contains($resources, '"settings-tls-certificates"'), 'Admin resources should expose certificates as a settings subpage.');
 assert_true(str_contains($resources, '"settings-entry-security"'), 'Admin resources should expose entry security as a settings subpage.');
-assert_true(str_contains($resources, '"settings-firewall"'), 'Admin resources should expose WAF firewall as a settings subpage.');
-assert_true(str_contains($resources, '"settings-waf-detection"'), 'Admin resources should expose WAF core detection as a settings subpage.');
 assert_true(str_contains($resources, '"settings-retention-export"'), 'Admin resources should expose retention and export as a settings subpage.');
 assert_true(str_contains($resources, '"settings-alert-thresholds"'), 'Admin resources should expose alert thresholds as a dedicated alert settings subpage.');
 assert_true(str_contains($resources, '"settings-rag-upload-review"'), 'Admin resources should expose RAG upload review as a settings subpage.');
@@ -66,7 +64,7 @@ $systemSection = substr($resources, (int) $systemSectionStart, (int) $systemSect
 foreach (['content-retention-policy', 'settings-center', 'admin-users', 'permission-config', 'system-settings'] as $settingsItem) {
     assert_true(str_contains($systemSection, '"' . $settingsItem . '"'), 'System settings should include ' . $settingsItem . ' in the left sidebar.');
 }
-foreach (['settings-brand-identity', 'settings-tls-certificates', 'settings-entry-security', 'settings-firewall', 'settings-alert-thresholds', 'settings-rag-vectorization-monitoring'] as $settingsItem) {
+foreach (['settings-brand-identity', 'settings-tls-certificates', 'settings-entry-security', 'settings-alert-thresholds', 'settings-rag-vectorization-monitoring'] as $settingsItem) {
     assert_true(!str_contains($systemSection, '"' . $settingsItem . '"'), 'System settings should keep ' . $settingsItem . ' inside page tabs instead of the left sidebar.');
 }
 assert_true(str_contains($resources, '"settings-brand-identity": { label: "标题与标识"'), 'Brand identity subpage should be labeled clearly.');
@@ -104,14 +102,6 @@ foreach (['base-entry', 'security', 'governance', 'rag'] as $categoryKey) {
 }
 assert_true(str_contains($tableSource, '/admin-api/system/settings-center'), 'Settings center should load settings center data.');
 assert_true(str_contains($tableSource, '/admin-api/system/settings-center/${section}'), 'Settings center should save sections separately.');
-assert_true(str_contains($tableSource, '"settings-firewall"'), 'Table renderer should include a firewall settings page definition.');
-assert_true(str_contains($tableSource, 'firewall_settings'), 'Firewall settings page should save the firewall_settings section.');
-assert_true(str_contains($tableSource, 'auto_allow_local_private_ips'), 'Firewall settings should expose automatic local private IP access.');
-assert_true(str_contains($tableSource, 'createFirewallSettingsPage'), 'Firewall settings should use a dedicated renderer for local access status.');
-assert_true(str_contains($tableSource, 'renderFirewallLocalIpStatus'), 'Firewall settings should render detected local private IP status.');
-assert_true(str_contains($tableSource, '${ip}/32'), 'Firewall settings should present detected local private IPs as exact /32 entries.');
-assert_true(str_contains($tableSource, 'local_access_ips'), 'Firewall settings should prefer WAF-specific local access IPs that include the container host gateway.');
-assert_true(str_contains($adminCss, '.waf-local-access-summary'), 'Firewall local access status should have dedicated styling.');
 assert_true(str_contains($tableSource, 'rag_upload_review'), 'Settings center should save RAG upload review settings.');
 assert_true(str_contains($tableSource, 'reviewer_roles'), 'RAG upload review settings should expose reviewer roles.');
 assert_true(str_contains($tableSource, 'rag_package_upload'), 'Settings center should save RAG package upload settings.');
@@ -121,9 +111,8 @@ assert_true(str_contains($tableSource, 'rag_ai_image_processing'), 'Settings cen
 assert_true(str_contains($tableSource, 'vision_model_id'), 'RAG AI image processing settings should expose vision model id.');
 assert_true(str_contains($tableSource, 'rag_vectorization_monitoring'), 'Settings center should save RAG vectorization monitoring settings.');
 assert_true(str_contains($tableSource, 'success_rate_threshold'), 'RAG vectorization monitoring should expose success threshold.');
-foreach (['manual_blocked_cidrs', 'allowed_methods', 'blocked_paths', 'sensitive_query_keys', 'max_body_bytes', 'login_failure_threshold'] as $field) {
-    assert_true(str_contains($tableSource, $field), 'Firewall settings page should expose ' . $field . '.');
-}
+assert_true(!str_contains($resources, '"settings-firewall"') && !str_contains($resources, '"settings-waf-detection"'), 'Settings center should not expose removed WAF settings subpages.');
+assert_true(!str_contains($tableSource, 'firewall_settings') && !str_contains($tableSource, 'waf_detection_settings') && !str_contains($tableSource, 'login_failure_threshold'), 'Settings center should not save removed WAF or IP ban settings.');
 assert_true(str_contains($tableSource, '/admin-api/system/settings-center/certificate-alert-check'), 'Settings center should run certificate alert checks.');
 assert_true(str_contains($tableSource, '/admin-api/system/certificate-status'), 'Settings center should load real certificate status.');
 assert_true(str_contains($tableSource, 'renderCertificateStatus'), 'Settings center should render parsed certificate status.');
@@ -174,7 +163,6 @@ assert_true(!str_contains($tableSource, '最近告警'), 'Settings pages should 
 assert_true(str_contains($tableSource, '证书与入口'), 'Settings center should render certificate settings.');
 assert_true(str_contains($tableSource, '标题与标识'), 'Settings center should render title and logo settings.');
 assert_true(str_contains($tableSource, 'brand_identity'), 'Settings center should save brand identity settings.');
-assert_true(str_contains($tableSource, 'firewall_settings'), 'Settings center should save firewall settings.');
 assert_true(str_contains($tableSource, 'logo_url'), 'Settings center should expose a logo URL field.');
 assert_true(str_contains($tableSource, '访问安全'), 'Settings center should render entry security settings.');
 assert_true(str_contains($tableSource, '留存与导出'), 'Settings center should render retention and export settings.');

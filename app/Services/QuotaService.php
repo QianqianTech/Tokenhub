@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace TokenHub\Services;
 
 use TokenHub\Support\App;
+use TokenHub\Support\ConfigVersion;
 
 final class QuotaService
 {
@@ -71,6 +72,77 @@ final class QuotaService
     }
 
     /**
+     * Reserves extra token/cost budget for an in-flight request, e.g. after RAG
+     * context was injected and the final payload grew. Request and concurrency
+     * counters are not touched. All-or-nothing across bound policies.
+     *
+     * @param array<string, mixed> $apiKey
+     * @param array<string, int|float> $delta
+     * @return array{allowed: bool, code?: string, message?: string, status?: int, reservations?: list<list<array<string, mixed>>>}
+     */
+    public function reserveDelta(array $apiKey, array $delta): array
+    {
+        $reservations = [];
+        foreach ($this->policies($apiKey) as $policy) {
+            $window = $this->periodWindow((string) ($policy['period'] ?? 'day'));
+            $scope = $this->scopeKey($policy, $apiKey);
+            $counters = [];
+            foreach ([
+                ['metric' => 'input_tokens', 'usage' => 'input_tokens', 'limit_field' => 'input_token_limit'],
+                ['metric' => 'output_tokens', 'usage' => 'output_tokens', 'limit_field' => 'output_token_limit'],
+                ['metric' => 'total_tokens', 'usage' => 'total_tokens', 'limit_field' => 'total_token_limit'],
+                ['metric' => 'cost_amount', 'usage' => 'cost_amount', 'limit_field' => 'cost_limit'],
+            ] as $definition) {
+                $amount = $definition['metric'] === 'cost_amount' ? (float) ($delta['cost_amount'] ?? 0) : (int) ($delta[$definition['metric']] ?? 0);
+                if ($amount <= 0) {
+                    continue;
+                }
+                $counters[] = [...$definition, 'amount' => $amount, 'key' => $this->counterKey($policy, $scope, $window, $definition['metric']), 'limit' => $policy[$definition['limit_field']] ?? null, 'ttl' => $window['ttl']];
+            }
+            if ($counters === []) {
+                continue;
+            }
+            $reserved = App::redis()->reserveCounters($counters);
+            if (($reserved['allowed'] ?? false) !== true) {
+                $this->rollbackReservations($reservations);
+                $rejected = $counters[(int) ($reserved['rejected_index'] ?? 0)] ?? [];
+                return ['allowed' => false, 'code' => 'QUOTA_EXCEEDED', 'message' => (($rejected['metric'] ?? 'quota') . ' exceeded'), 'status' => 429];
+            }
+            $reservations[] = $counters;
+        }
+
+        return ['allowed' => true, 'reservations' => $reservations];
+    }
+
+    /**
+     * Fully undoes reservations of a request that never reached the upstream
+     * (including its request counter). Concurrency is released separately.
+     *
+     * @param list<list<array<string, mixed>>> $reservations
+     */
+    public function rollbackReservations(array $reservations): void
+    {
+        foreach ($reservations as $counters) {
+            foreach ($counters as $counter) {
+                if (($counter['metric'] ?? '') === 'concurrency' || !isset($counter['key'], $counter['amount'])) {
+                    continue;
+                }
+                if ((float) $counter['amount'] > 0) {
+                    App::redis()->decrementBy((string) $counter['key'], $counter['amount']);
+                }
+            }
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $apiKey
+     */
+    public function requiresCostTracking(array $apiKey): bool
+    {
+        return $this->requiresCostTrackingForPolicies($this->policies($apiKey));
+    }
+
+    /**
      * @param list<string> $keys
      */
     public function releaseConcurrency(array $keys): void
@@ -99,7 +171,8 @@ final class QuotaService
     {
         return 'quota_policies:' . (int) ($apiKey['id'] ?? 0)
             . ':' . (int) ($apiKey['user_id'] ?? 0)
-            . ':' . (int) ($apiKey['department_id'] ?? 0);
+            . ':' . (int) ($apiKey['department_id'] ?? 0)
+            . ConfigVersion::cacheSuffix();
     }
 
     /**
@@ -137,6 +210,44 @@ final class QuotaService
             $cost = (float) ($usage['cost_amount'] ?? 0);
             if ($cost > 0) {
                 $this->incrementCounter($policy, $scope, $window, 'cost_amount', $cost);
+            }
+        }
+    }
+
+    /**
+     * Applies a later correction (task settlement: refund of a failed task,
+     * true-up to the measured usage) to the counters of the period in which
+     * the request was charged. Only counters that still exist are touched:
+     * an expired period needs no correction, and decrementing a missing key
+     * would create a stray negative counter.
+     *
+     * @param array<string, mixed> $apiKey id, user_id, department_id
+     * @param array<string, int|float> $delta metric => signed amount
+     */
+    public function adjustUsage(array $apiKey, array $delta, int $chargedAt): void
+    {
+        foreach ($this->policies($apiKey) as $item) {
+            $policy = $item;
+            $window = $this->periodWindow((string) ($policy['period'] ?? 'day'), $chargedAt);
+            $scope = $this->scopeKey($policy, $apiKey);
+            foreach (['input_tokens', 'output_tokens', 'total_tokens', 'audio_seconds', 'tts_chars', 'image_count', 'video_seconds', 'cost_amount'] as $metric) {
+                $amount = (float) ($delta[$metric] ?? 0);
+                if ($amount == 0.0) {
+                    continue;
+                }
+                $key = $this->counterKey($policy, $scope, $window, $metric);
+                try {
+                    if (!App::redis()->connection()->exists($key)) {
+                        continue;
+                    }
+                    if ($amount > 0) {
+                        App::redis()->incrementByFloat($key, $amount);
+                    } else {
+                        App::redis()->decrementBy($key, -$amount);
+                    }
+                } catch (\Throwable $throwable) {
+                    App::logger()->warning('quota', 'quota settlement adjustment failed', ['key' => $key, 'error' => $throwable->getMessage()]);
+                }
             }
         }
     }

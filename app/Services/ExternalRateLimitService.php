@@ -29,6 +29,33 @@ final class ExternalRateLimitService
         ];
     }
 
+    /**
+     * Read-only check: true when the current window already reached the limit,
+     * so the next failure would be rejected. Used to stop expensive work (a
+     * database lookup) for identities that are already being throttled,
+     * without consuming a slot.
+     */
+    public function exhausted(string $scope, string|int $identity, int $limit, int $ttlSeconds = 60): bool
+    {
+        if ($limit <= 0) {
+            return false;
+        }
+        try {
+            $current = App::redis()->get($this->counterKey($scope, (string) $identity, max(1, $ttlSeconds), $limit));
+        } catch (\Throwable) {
+            return false;
+        }
+
+        return is_numeric($current) && (float) $current >= $limit;
+    }
+
+    public function retryAfter(int $ttlSeconds = 60): int
+    {
+        $ttlSeconds = max(1, $ttlSeconds);
+
+        return max(1, $ttlSeconds - (time() % $ttlSeconds));
+    }
+
     public function counterKey(string $scope, string|int $identity, int $ttlSeconds, int $limit): string
     {
         $bucket = intdiv(time(), max(1, $ttlSeconds));

@@ -11,8 +11,17 @@
 | `users:read` / `users:write` | 查询 / 创建、更新、停用普通用户 |
 | `api_keys:read` / `api_keys:write` | 查询 / 创建、更新模型权限、销毁 API Key |
 | `rag:read` / `rag:write` | 查询 / 创建、更新、删除知识库与数据集 |
+| `usage:read` | 查询本部门（可细化到用户或 Key）的用量汇总与趋势 |
 
-`*:write` 自动包含同资源 `*:read`。管理 Key 只能操作自身 `department_id` 内的资源，不能创建、修改或停用管理员账号。管理 Key 创建下级 Key 时，只能委派自己已持有的 scope；系统会记录父子委派关系，父 Key 被禁用或删除后，所有后代 Key 的管理 scope 会立即失效。首个管理 Key 必须由管理员后台创建；不要把它放入浏览器、前端代码或日志。
+任何持有至少一个管理 scope 的 Key 都可以调用 `GET /v1/management/department` 查看自己所在部门、资源数量与自身 scope。管理员在后台“API Key”的新建/编辑表单中勾选“智能体管理权限”签发或调整管理 Key；收窄某个 Key 的 scope 时，它委派出去的下级 Key 会同步去掉父 Key 不再持有的 scope。
+
+`*:write` 自动包含同资源 `*:read`。管理 Key 只能操作自身 `department_id` 内的资源，不能创建、修改或停用管理员账号。
+
+**修改其他 Key 的边界**：对持有管理 scope 的 Key 执行修改（PATCH、替换模型、轮换、删除）时，只有委派链上的祖先 Key 可以操作，否则返回 `403 MANAGEMENT_TARGET_FORBIDDEN`。因此下级 Key 不能停用、轮换或删除它的父 Key，也不能动另一棵委派树里的管理 Key；没有管理 scope 的普通 Key 由本部门任何 `api_keys:write` Key 管理（PATCH、替换模型、删除）。**轮换只允许作用于自己和自己委派出去的下级 Key**：轮换会把新明文交给调用方，并带上原 Key 的知识库绑定和额度，所以不能轮换别人的普通 Key（需要时删除后重新签发）。Key 不能通过 PATCH 修改自己。
+
+同样的边界也适用于用户：如果某个用户名下有不在调用方委派子树内的管理 Key（包括调用方自己的 Key 和它的祖先），`PATCH/DELETE /v1/management/users/{id}` 返回 `403 MANAGEMENT_TARGET_FORBIDDEN`，因为停用用户或改密码会让该用户的所有 Key 失效。
+
+委派链上任何一级 Key 被停用、删除、过期，或其所属用户、部门被停用，所有后代 Key 的管理 scope 立即失效。签发 Key 或替换模型时，`model_ids` 只能是调用方自己被授权的活动模型（否则 `403 MANAGEMENT_MODEL_DELEGATION_DENIED`）。管理 Key 创建下级 Key 时，只能委派自己已持有的 scope；系统会记录父子委派关系，父 Key 被禁用或删除后，所有后代 Key 的管理 scope 会立即失效。首个管理 Key 必须由管理员后台创建；不要把它放入浏览器、前端代码或日志。
 
 写请求可带 `Idempotency-Key: <uuid>`，在网络重试时复用同一个值。创建 API Key 的响应中 `key` 只返回一次，必须立即写入密钥库。
 
@@ -28,8 +37,9 @@ curl -sS "$TOKENHUB_BASE_URL/v1/management/users" \
 | 方法 | 路径 | Scope | 说明 |
 | --- | --- | --- | --- |
 | GET | `/v1/management/users?limit=50&offset=0` | `users:read` | 分页列出本部门普通用户 |
+| GET | `/v1/management/users/{id}` | `users:read` | 查询单个普通用户 |
 | POST | `/v1/management/users` | `users:write` | 注册普通用户 |
-| PATCH | `/v1/management/users/{id}` | `users:write` | 修改用户名、密码或状态 |
+| PATCH | `/v1/management/users/{id}` | `users:write` | 修改用户名、密码或状态；改为 `disabled`/`departed` 或改密码时，该用户的 Key 认证缓存立即失效 |
 | DELETE | `/v1/management/users/{id}` | `users:write` | 停用用户并使其 Key 缓存失效 |
 
 ```bash
@@ -43,10 +53,30 @@ curl -sS -X POST "$TOKENHUB_BASE_URL/v1/management/users" \
 
 | 方法 | 路径 | Scope | 说明 |
 | --- | --- | --- | --- |
-| GET | `/v1/management/api-keys` | `api_keys:read` | 分页列出本部门 Key（不含明文） |
+| GET | `/v1/management/api-keys?user_id=&status=` | `api_keys:read` | 分页列出本部门 Key（不含明文），可按用户和状态过滤 |
+| GET | `/v1/management/api-keys/{id}` | `api_keys:read` | Key 详情：授权模型、管理 scope，`manageable`（能否 PATCH/替换模型/删除）与 `rotatable`（能否轮换） |
+| GET | `/v1/management/api-keys/{id}/quota` | `api_keys:read` | 该 Key 适用的额度策略与模型额度（与 `GET /v1/quota` 同结构） |
 | POST | `/v1/management/api-keys` | `api_keys:write` | 为本部门普通用户签发 Key |
+| PATCH | `/v1/management/api-keys/{id}` | `api_keys:write` | 修改 `name`、`status`（`active`/`disabled`）、`expires_at`（未来时间或 `null`）、`allowed_ip_cidrs`（IPv4 地址或 CIDR）；已过期的 Key（包括轮换后到期的旧 Key）不能再修改；只能重新启用由智能体停用的 Key |
+| POST | `/v1/management/api-keys/{id}:rotate` | `api_keys:write` | 轮换自己或下级管理 Key；旧 Key 在 `grace_minutes`（默认 60，最多 10080）内继续可用 |
 | PUT | `/v1/management/api-keys/{id}/models` | `api_keys:write` | 替换可调用的活动模型 ID 列表 |
 | DELETE | `/v1/management/api-keys/{id}` | `api_keys:write` | 软删除并立即失效认证缓存 |
+
+**停用来源**：系统记录每个 Key 是被管理员（后台编辑或批量停用）还是被智能体（`PATCH status=disabled`）停用的，详情接口以 `disabled_by`（`admin` / `management`）返回。智能体只能重新启用自己这一侧停用的 Key；管理员停用的 Key，以及启用此记录之前就已停用的 Key，返回 `409 MANAGEMENT_KEY_DISABLED_BY_ADMIN`，需管理员在后台启用。
+
+创建 Key 只接受 `user_id`、`name`、`expires_at`、`allowed_ip_cidrs`、`model_ids`、`management_scopes`；`model_ids` 必须是活动模型，其他字段返回 `422 MANAGEMENT_INVALID_PAYLOAD`。轮换会把模型授权、模型额度、RAG 绑定、管理 scope 以及在委派树中的位置一并迁移到新 Key，原来挂在旧 Key 下的子 Key 改挂到新 Key。
+
+```bash
+# 停用、设置过期与 IP 白名单
+curl -sS -X PATCH "$TOKENHUB_BASE_URL/v1/management/api-keys/456" \
+  -H "Authorization: Bearer $TOKENHUB_MANAGEMENT_KEY" -H 'Content-Type: application/json' \
+  --data '{"expires_at":"2027-01-01T00:00:00Z","allowed_ip_cidrs":["10.0.0.0/8"]}'
+
+# 轮换（返回新 Key 明文一次；旧 Key 30 分钟后失效）
+curl -sS -X POST "$TOKENHUB_BASE_URL/v1/management/api-keys/456:rotate" \
+  -H "Authorization: Bearer $TOKENHUB_MANAGEMENT_KEY" -H 'Content-Type: application/json' \
+  --data '{"grace_minutes":30}'
+```
 
 ```bash
 curl -sS -X POST "$TOKENHUB_BASE_URL/v1/management/api-keys" \
@@ -59,7 +89,22 @@ curl -sS -X DELETE "$TOKENHUB_BASE_URL/v1/management/api-keys/456" \
   -H "Authorization: Bearer $TOKENHUB_MANAGEMENT_KEY"
 ```
 
-## 4. RAG 知识库与数据集
+## 4. 部门与用量
+
+| 方法 | 路径 | Scope | 说明 |
+| --- | --- | --- | --- |
+| GET | `/v1/management/department` | 任一管理 scope | 所在部门、活动用户数与活动 Key 数、当前 Key 的 scope |
+| GET | `/v1/management/usage/summary` | `usage:read` | 部门用量汇总、按模型与按能力拆分 |
+| GET | `/v1/management/usage/trends` | `usage:read` | 部门用量趋势（`bucket=day\|hour`） |
+
+用量接口的参数与 `/v1/usage/*` 相同（`from`、`to`、`model_id`、`provider_id`、`capability`、`bucket`、`limit`），另可加 `user_id` 或 `api_key_id` 缩小到本部门某个用户或 Key；跨部门 ID 返回 `404 MANAGEMENT_RESOURCE_NOT_FOUND`。
+
+```bash
+curl -sS "$TOKENHUB_BASE_URL/v1/management/usage/summary?from=2026-10-01&user_id=123" \
+  -H "Authorization: Bearer $TOKENHUB_MANAGEMENT_KEY"
+```
+
+## 4.1 RAG 知识库与数据集
 
 | 方法 | 路径 | Scope |
 | --- | --- | --- |
@@ -176,4 +221,4 @@ curl -fsS -X DELETE "$TOKENHUB_BASE_URL/v1/management/api-keys/$WORKLOAD_KEY_ID"
 
 ## 7. 响应与错误处理
 
-成功响应使用 `{"data": ...}`；列表附带 `pagination.limit`、`pagination.offset`、`pagination.total`。常见错误：`401 API_KEY_INVALID`（Key 无效）、`403 MANAGEMENT_SCOPE_REQUIRED`（缺 scope）、`403 MANAGEMENT_SCOPE_DELEGATION_DENIED`（试图委派未持有 scope）、`404 MANAGEMENT_RESOURCE_NOT_FOUND`（跨部门或不存在资源）、`422 MANAGEMENT_INVALID_PAYLOAD`（参数不合法）、`429 RATE_LIMITED`（按 `Retry-After` 重试）。删除是软删除/停用；不要依赖物理删除。
+成功响应使用 `{"data": ...}`；列表附带 `pagination.limit`、`pagination.offset`、`pagination.total`。常见错误：`401 API_KEY_INVALID`（Key 无效）、`403 MANAGEMENT_SCOPE_REQUIRED`（缺 scope）、`403 MANAGEMENT_SCOPE_DELEGATION_DENIED`（试图委派未持有 scope）、`404 MANAGEMENT_RESOURCE_NOT_FOUND`（跨部门或不存在资源）、`403 MANAGEMENT_TARGET_FORBIDDEN`（试图修改父 Key 或其他委派树的管理 Key）、`403 MANAGEMENT_MODEL_DELEGATION_DENIED`（授予自己没有的模型）、`409 MANAGEMENT_KEY_DISABLED_BY_ADMIN`（该 Key 由管理员停用，只能由管理员重新启用）、`409 MANAGEMENT_KEY_DELETED` / `409 MANAGEMENT_KEY_EXPIRED` / `409 MANAGEMENT_KEY_NOT_ACTIVE`（已删除或已过期的 Key 不能修改、非活动 Key 不能轮换）、`422 MANAGEMENT_INVALID_PAYLOAD`（参数不合法）、`429 RATE_LIMITED`（按 `Retry-After` 重试）。删除是软删除/停用；不要依赖物理删除。

@@ -76,8 +76,16 @@ final class ExternalFileService
     {
         $limit = max(1, min(100, (int) ($query['limit'] ?? 50)));
         $mediaType = trim((string) ($query['type'] ?? $query['media_type'] ?? ''));
-        $clauses = ['api_key_id = ?', 'deleted_at IS NULL'];
-        $params = [$apiKey['id'] ?? 0];
+        // Same visibility matrix as tasks/assets (AssetAccessPolicy).
+        [$ownerClause, $ownerParam] = match ((new AssetAccessPolicy())->scope()) {
+            'api_key' => ['api_key_id = ?', $apiKey['id'] ?? 0],
+            'department' => ['(api_key_id = ? OR department_id = ?)', null],
+            default => ['(api_key_id = ? OR owner_user_id = ?)', null],
+        };
+        $clauses = [$ownerClause, 'deleted_at IS NULL'];
+        $params = $ownerParam !== null
+            ? [$ownerParam]
+            : [$apiKey['id'] ?? 0, (new AssetAccessPolicy())->scope() === 'department' ? ($apiKey['department_id'] ?? 0) : ($apiKey['user_id'] ?? 0)];
         $cursorId = $this->cursorId(isset($query['cursor']) ? (string) $query['cursor'] : null);
         if ($cursorId !== null) {
             $clauses[] = 'id < ?';
@@ -126,7 +134,8 @@ final class ExternalFileService
     public function delete(array $apiKey, string $fileId): array
     {
         $asset = $this->file($apiKey, $fileId);
-        App::db()->execute('UPDATE media_assets SET deleted_at = NOW() WHERE asset_id = ? AND api_key_id = ?', [$asset['asset_id'], $apiKey['id'] ?? 0]);
+        App::db()->execute('UPDATE media_assets SET deleted_at = NOW() WHERE id = ? AND deleted_at IS NULL', [(int) $asset['id']]);
+        (new AuditService())->write('asset.delete', 'media_assets', (string) $asset['asset_id'], ['api_key_id' => $apiKey['id'] ?? null]);
         $this->deleteOwnedLocalFile((string) ($asset['storage_path'] ?? ''));
         return ['file_id' => $fileId, 'deleted' => true, 'deleted_at' => gmdate('Y-m-d H:i:s')];
     }
@@ -143,10 +152,11 @@ final class ExternalFileService
     private function file(array $apiKey, string $fileId): array
     {
         $asset = App::db()->first(
-            'SELECT * FROM media_assets WHERE asset_id = ? AND api_key_id = ? AND media_type = "file" AND deleted_at IS NULL',
-            [$fileId, $apiKey['id'] ?? 0]
+            'SELECT * FROM media_assets WHERE asset_id = ? AND media_type = "file" AND deleted_at IS NULL',
+            [$fileId]
         );
-        if ($asset === null) {
+        // Unauthorized and missing look identical: no object existence leak.
+        if ($asset === null || !(new AssetAccessPolicy())->allows($asset, $apiKey)) {
             abort_json('FILE_NOT_FOUND', 'File not found', 404);
         }
         return $asset;

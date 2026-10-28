@@ -29,8 +29,13 @@ assert_true(str_contains($resources, '"managed_department_ids": "授权管理部
 assert_true(str_contains($resources, 'full_admin: "全功能管理员"'), 'Administrator type values should use Chinese labels.');
 assert_true(str_contains($table, 'adminUserPermissionLabels'), 'Administrator permissions should render through a readable-label helper.');
 assert_true(str_contains($table, 'adminUserDepartmentLabels'), 'Administrator managed departments should render through a readable-label helper.');
-assert_true(str_contains($app, 'admin-users-localization-v1'), 'Administrator localization should use a new module version.');
-assert_true(str_contains($index, 'admin-users-localization-v1'), 'Administrator localization should refresh the admin application module.');
+preg_match('/app\.js\?v=(\d{8}-[A-Za-z0-9._-]+)/', $index, $entryVersionMatch);
+$adminAssetVersion = $entryVersionMatch[1] ?? '';
+assert_true($adminAssetVersion !== '', 'Administrator localization should refresh the admin application module through a cache-busted entrypoint.');
+assert_true(
+    str_contains($app, './resources.js?v=' . $adminAssetVersion . '"') && str_contains($app, './table.js?v=' . $adminAssetVersion . '"'),
+    'Administrator localization modules should be imported with the same cache version as the entrypoint.'
+);
 assert_true(str_contains($resources, 'resourcesForUser'), 'Admin resources should be filtered from effective capabilities.');
 assert_true(str_contains($app, 'resourcesForUser'), 'Admin navigation should consume effective capability-filtered resources.');
 assert_true(str_contains($auth, "['permissions']"), 'Authenticated administrator data should include effective capabilities.');

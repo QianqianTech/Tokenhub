@@ -33,9 +33,6 @@ $requiredTables = [
     'export_tasks',
     'dashboard_share_links',
     'dashboard_share_access_logs',
-    'waf_rules',
-    'waf_rule_versions',
-    'waf_events',
     'desensitization_policies',
     'desensitization_events',
     'log_archive_files',
@@ -53,7 +50,7 @@ $requiredIdentifiers = [
     'demo-provider-openai',
     'demo-key-platform',
     'demo-share-global',
-    'demo-waf-sqli',
+    'demo-policy-pii-redaction',
     'demo-content-retention',
 ];
 

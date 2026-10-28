@@ -2,24 +2,14 @@
   "openapi": "3.1.0",
   "info": {
     "title": "TokenHub External API",
-    "version": "1.2.0",
-    "description": "API-key-only external API for model gateway, Seedance video generation, user sync, files, usage, webhooks, and RAG knowledge-base workflows."
+    "version": "1.3.0",
+    "description": "API-key external API for the TokenHub model gateway (OpenAI and Anthropic compatible), multimodal tasks, user sync, files, usage, webhooks, RAG knowledge-base workflows, the agent management API and MCP. `info.version` is the API contract version; the served document adds `info.x-tokenhub-release` with the installed TokenHub release."
   },
   "security": [
     {
       "BearerApiKey": []
-    }],
-  "x-agent-management-contract": {
-    "/v1/management/users": {"get":{"tags":["Agent Management"],"operationId":"listManagedUsers","summary":"List ordinary users in the management key department","responses":{"200":{"description":"OK"},"401":{"$ref":"#/components/responses/Error"},"403":{"$ref":"#/components/responses/Error"},"429":{"$ref":"#/components/responses/RateLimited"}}},"post":{"tags":["Agent Management"],"operationId":"createManagedUser","summary":"Create an ordinary user","requestBody":{"required":true,"content":{"application/json":{"schema":{"type":"object","required":["username","password"],"properties":{"username":{"type":"string"},"password":{"type":"string"},"status":{"type":"string"}}}}}},"responses":{"201":{"description":"Created"},"401":{"$ref":"#/components/responses/Error"},"403":{"$ref":"#/components/responses/Error"},"422":{"$ref":"#/components/responses/Error"},"429":{"$ref":"#/components/responses/RateLimited"}}}},
-    "/v1/management/users/{id}": {"patch":{"tags":["Agent Management"],"operationId":"updateManagedUser","summary":"Update an ordinary user","requestBody":{"required":true,"content":{"application/json":{"schema":{"type":"object"}}}},"responses":{"200":{"description":"OK"},"403":{"$ref":"#/components/responses/Error"},"404":{"$ref":"#/components/responses/Error"},"422":{"$ref":"#/components/responses/Error"}}},"delete":{"tags":["Agent Management"],"operationId":"disableManagedUser","summary":"Disable an ordinary user","responses":{"200":{"description":"OK"},"403":{"$ref":"#/components/responses/Error"},"404":{"$ref":"#/components/responses/Error"}}}},
-    "/v1/management/api-keys": {"get":{"tags":["Agent Management"],"operationId":"listManagedApiKeys","summary":"List department API keys","responses":{"200":{"description":"OK"},"403":{"$ref":"#/components/responses/Error"}}},"post":{"tags":["Agent Management"],"operationId":"createManagedApiKey","summary":"Create an API key for a department user","requestBody":{"required":true,"content":{"application/json":{"schema":{"type":"object","required":["user_id"],"properties":{"user_id":{"type":"integer"},"name":{"type":"string"},"model_ids":{"type":"array","items":{"type":"integer"}},"management_scopes":{"type":"array","items":{"type":"string"}}}}}}},"responses":{"201":{"description":"Created; plaintext key is returned once"},"403":{"$ref":"#/components/responses/Error"},"404":{"$ref":"#/components/responses/Error"},"422":{"$ref":"#/components/responses/Error"}}}},
-    "/v1/management/api-keys/{id}/models": {"put":{"tags":["Agent Management"],"operationId":"replaceManagedApiKeyModels","summary":"Replace allowed models for an API key","requestBody":{"required":true,"content":{"application/json":{"schema":{"type":"object","required":["model_ids"],"properties":{"model_ids":{"type":"array","items":{"type":"integer"}}}}}}},"responses":{"200":{"description":"OK"},"403":{"$ref":"#/components/responses/Error"},"404":{"$ref":"#/components/responses/Error"}}}},
-    "/v1/management/api-keys/{id}": {"delete":{"tags":["Agent Management"],"operationId":"deleteManagedApiKey","summary":"Soft-delete an API key","responses":{"200":{"description":"OK"},"403":{"$ref":"#/components/responses/Error"},"404":{"$ref":"#/components/responses/Error"}}}},
-    "/v1/management/rag/knowledge-bases": {"get":{"tags":["Agent Management"],"operationId":"listManagedKnowledgeBases","summary":"List department knowledge bases","responses":{"200":{"description":"OK"},"403":{"$ref":"#/components/responses/Error"}}},"post":{"tags":["Agent Management"],"operationId":"createManagedKnowledgeBase","summary":"Create a department knowledge base","requestBody":{"required":true,"content":{"application/json":{"schema":{"type":"object","required":["name"],"properties":{"name":{"type":"string"},"description":{"type":"string"},"visibility":{"type":"string"}}}}}},"responses":{"201":{"description":"Created"},"403":{"$ref":"#/components/responses/Error"},"422":{"$ref":"#/components/responses/Error"}}}},
-    "/v1/management/rag/knowledge-bases/{id}": {"patch":{"tags":["Agent Management"],"operationId":"updateManagedKnowledgeBase","summary":"Update a knowledge base","requestBody":{"required":true,"content":{"application/json":{"schema":{"type":"object"}}}},"responses":{"200":{"description":"OK"},"403":{"$ref":"#/components/responses/Error"},"404":{"$ref":"#/components/responses/Error"}}},"delete":{"tags":["Agent Management"],"operationId":"deleteManagedKnowledgeBase","summary":"Soft-delete a knowledge base","responses":{"200":{"description":"OK"},"403":{"$ref":"#/components/responses/Error"},"404":{"$ref":"#/components/responses/Error"}}}},
-    "/v1/management/rag/datasets": {"get":{"tags":["Agent Management"],"operationId":"listManagedRagDatasets","summary":"List department RAG datasets","responses":{"200":{"description":"OK"},"403":{"$ref":"#/components/responses/Error"}}},"post":{"tags":["Agent Management"],"operationId":"createManagedRagDataset","summary":"Create a dataset in a department knowledge base","requestBody":{"required":true,"content":{"application/json":{"schema":{"type":"object","required":["kb_id","name"],"properties":{"kb_id":{"type":"integer"},"name":{"type":"string"},"dataset_type":{"type":"string"}}}}}},"responses":{"201":{"description":"Created"},"403":{"$ref":"#/components/responses/Error"},"404":{"$ref":"#/components/responses/Error"},"422":{"$ref":"#/components/responses/Error"}}}},
-    "/v1/management/rag/datasets/{id}": {"patch":{"tags":["Agent Management"],"operationId":"updateManagedRagDataset","summary":"Update a RAG dataset","requestBody":{"required":true,"content":{"application/json":{"schema":{"type":"object"}}}},"responses":{"200":{"description":"OK"},"403":{"$ref":"#/components/responses/Error"},"404":{"$ref":"#/components/responses/Error"}}},"delete":{"tags":["Agent Management"],"operationId":"deleteManagedRagDataset","summary":"Soft-delete a RAG dataset","responses":{"200":{"description":"OK"},"403":{"$ref":"#/components/responses/Error"},"404":{"$ref":"#/components/responses/Error"}}}}
-  },
+    }
+  ],
   "components": {
     "securitySchemes": {
       "BearerApiKey": {
@@ -1061,6 +1051,354 @@
             }
           }
         }
+      },
+      "CompletionRequest": {
+        "type": "object",
+        "required": [
+          "model",
+          "prompt"
+        ],
+        "properties": {
+          "model": {
+            "type": "string"
+          },
+          "prompt": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            ]
+          },
+          "max_tokens": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "stream": {
+            "type": "boolean"
+          },
+          "temperature": {
+            "type": "number"
+          }
+        },
+        "additionalProperties": true
+      },
+      "RerankRequest": {
+        "type": "object",
+        "required": [
+          "model",
+          "query",
+          "documents"
+        ],
+        "properties": {
+          "model": {
+            "type": "string",
+            "description": "A TokenHub model whose capability is rerank."
+          },
+          "query": {
+            "type": "string"
+          },
+          "documents": {
+            "type": "array",
+            "items": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              ]
+            }
+          },
+          "top_n": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "return_documents": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": true
+      },
+      "ModerationRequest": {
+        "type": "object",
+        "required": [
+          "model",
+          "input"
+        ],
+        "properties": {
+          "model": {
+            "type": "string",
+            "description": "A TokenHub model whose capability is moderation."
+          },
+          "input": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {}
+              }
+            ]
+          }
+        },
+        "additionalProperties": true
+      },
+      "RagSearchRequest": {
+        "type": "object",
+        "required": [
+          "query"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "query": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "knowledge_base_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 20,
+            "description": "kb_id values; omit to search the key's default knowledge bases."
+          },
+          "dataset_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 50
+          },
+          "top_k": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 20,
+            "default": 5
+          }
+        }
+      },
+      "RagSearchResult": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string"
+          },
+          "retrieval_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Use with POST /v1/rag/feedback."
+          },
+          "searched_datasets": {
+            "type": "integer"
+          },
+          "hit_count": {
+            "type": "integer"
+          },
+          "sources": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "source_id": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "content": {
+                  "type": "string",
+                  "description": "At most 6000 characters."
+                },
+                "content_truncated": {
+                  "type": "boolean"
+                },
+                "score": {
+                  "type": "number"
+                },
+                "knowledge_base_id": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "dataset_id": {
+                  "type": "string"
+                },
+                "dataset_name": {
+                  "type": "string"
+                },
+                "source_uri": {
+                  "type": "string"
+                },
+                "modality": {
+                  "type": "string"
+                },
+                "retrieval_strategy": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "ManagedApiKeyUpdate": {
+        "type": "object",
+        "additionalProperties": false,
+        "minProperties": 1,
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 160
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "disabled"
+            ]
+          },
+          "expires_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Must be in the future; null removes the expiry."
+          },
+          "allowed_ip_cidrs": {
+            "type": "array",
+            "maxItems": 100,
+            "items": {
+              "type": "string"
+            },
+            "description": "IPv4 addresses or CIDR ranges; [] allows any address."
+          }
+        }
+      },
+      "ManagedApiKeyCreate": {
+        "type": "object",
+        "required": [
+          "user_id"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "user_id": {
+            "type": "integer"
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 160
+          },
+          "expires_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "allowed_ip_cidrs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "model_ids": {
+            "type": "array",
+            "items": {
+              "type": "integer"
+            },
+            "description": "Active model ids only."
+          },
+          "management_scopes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ManagementScope"
+            },
+            "description": "Only scopes the calling key holds can be delegated."
+          }
+        }
+      },
+      "ManagementScope": {
+        "type": "string",
+        "enum": [
+          "users:read",
+          "users:write",
+          "api_keys:read",
+          "api_keys:write",
+          "rag:read",
+          "rag:write",
+          "usage:read"
+        ]
+      },
+      "RotatedApiKey": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "key": {
+            "type": "string",
+            "description": "Plaintext key, returned once."
+          },
+          "display": {
+            "type": "string"
+          },
+          "replaces_api_key_id": {
+            "type": "integer"
+          },
+          "old_key_expires_at": {
+            "type": "string"
+          }
+        }
+      },
+      "McpJsonRpcRequest": {
+        "type": "object",
+        "required": [
+          "jsonrpc",
+          "method"
+        ],
+        "properties": {
+          "jsonrpc": {
+            "const": "2.0"
+          },
+          "id": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              }
+            ]
+          },
+          "method": {
+            "type": "string",
+            "examples": [
+              "initialize",
+              "tools/list",
+              "tools/call"
+            ]
+          },
+          "params": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        }
       }
     },
     "responses": {
@@ -1077,11 +1415,18 @@
       "RateLimited": {
         "description": "Rate limited; retry after the response header delay",
         "headers": {
-          "Retry-After": {"schema": {"type": "integer", "minimum": 1}}
+          "Retry-After": {
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
         },
         "content": {
           "application/json": {
-            "schema": {"$ref": "#/components/schemas/ErrorEnvelope"}
+            "schema": {
+              "$ref": "#/components/schemas/ErrorEnvelope"
+            }
           }
         }
       }
@@ -1403,12 +1748,34 @@
         }
       }
     },
+    "/v1/audio/translations": {
+      "post": {
+        "summary": "Speech translation proxy (multipart/form-data, file field)",
+        "responses": {
+          "200": {
+            "description": "Translation result (JSON, or the plain text body for response_format text/srt/vtt)"
+          },
+          "403": {
+            "description": "No enabled provider route for model"
+          },
+          "422": {
+            "description": "Missing or unsupported file"
+          },
+          "429": {
+            "description": "Quota exceeded"
+          },
+          "502": {
+            "description": "Provider rejected or failed"
+          }
+        }
+      }
+    },
     "/v1/audio/transcriptions": {
       "post": {
         "summary": "ASR transcription proxy",
         "responses": {
           "200": {
-            "description": "Transcription result"
+            "description": "Transcription result (JSON, or the plain text body for response_format text/srt/vtt)"
           },
           "202": {
             "description": "Asynchronous task accepted"
@@ -1437,6 +1804,28 @@
           },
           "403": {
             "description": "No enabled provider route for model"
+          },
+          "429": {
+            "description": "Quota exceeded"
+          },
+          "502": {
+            "description": "Provider rejected or failed"
+          }
+        }
+      }
+    },
+    "/v1/images/edits": {
+      "post": {
+        "summary": "Image edit proxy (multipart/form-data, image or image[] plus optional mask)",
+        "responses": {
+          "200": {
+            "description": "OpenAI images response: data[] items carry b64_json or a short-lived TokenHub url; assets[] lists stored assets"
+          },
+          "403": {
+            "description": "No enabled provider route for model"
+          },
+          "422": {
+            "description": "Missing or unsupported file"
           },
           "429": {
             "description": "Quota exceeded"
@@ -1644,13 +2033,17 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": ["data"],
+                  "required": [
+                    "data"
+                  ],
                   "properties": {
                     "data": {
                       "type": "array",
                       "items": {
                         "type": "object",
-                        "required": ["id"],
+                        "required": [
+                          "id"
+                        ],
                         "properties": {
                           "id": {
                             "type": "string",
@@ -1666,7 +2059,9 @@
                   "authorizedModels": {
                     "value": {
                       "data": [
-                        {"id": "deepseek-v4-flash"}
+                        {
+                          "id": "deepseek-v4-flash"
+                        }
                       ]
                     }
                   }
@@ -2843,8 +3238,24 @@
       "get": {
         "summary": "External event page",
         "parameters": [
-          {"name": "limit", "in": "query", "schema": {"type": "integer", "minimum": 1, "maximum": 500}},
-          {"name": "cursor", "in": "query", "description": "Stable outbox cursor: evt_<id>", "schema": {"type": "string", "pattern": "^evt_[0-9]+$"}}
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 500
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "description": "Stable outbox cursor: evt_<id>",
+            "schema": {
+              "type": "string",
+              "pattern": "^evt_[0-9]+$"
+            }
+          }
         ],
         "responses": {
           "200": {
@@ -2868,7 +3279,16 @@
         ],
         "summary": "Create webhook",
         "parameters": [
-          {"name": "Idempotency-Key", "in": "header", "required": false, "description": "Replay a previous mutation response when method, path, API key, and payload match", "schema": {"type": "string", "maxLength": 120}}
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "description": "Replay a previous mutation response when method, path, API key, and payload match",
+            "schema": {
+              "type": "string",
+              "maxLength": 120
+            }
+          }
         ],
         "security": [
           {
@@ -3096,7 +3516,10 @@
             "name": "cursor",
             "in": "query",
             "description": "Asset page cursor: id_<id>",
-            "schema": {"type": "string", "pattern": "^id_[0-9]+$"}
+            "schema": {
+              "type": "string",
+              "pattern": "^id_[0-9]+$"
+            }
           }
         ],
         "responses": {
@@ -3115,14 +3538,35 @@
     },
     "/v1/webhooks/{id}:rotate-secret": {
       "post": {
-        "tags": ["Webhooks"],
+        "tags": [
+          "Webhooks"
+        ],
         "summary": "Rotate webhook signing secret",
-        "security": [{"BearerApiKey": []}],
-        "parameters": [{"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}],
+        "security": [
+          {
+            "BearerApiKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
-          "200": {"description": "New secret returned once; prior secret remains valid for 24 hours"},
-          "404": {"$ref": "#/components/responses/Error"},
-          "429": {"$ref": "#/components/responses/RateLimited"}
+          "200": {
+            "description": "New secret returned once; prior secret remains valid for 24 hours"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
         }
       }
     },
@@ -3294,15 +3738,2094 @@
         }
       }
     },
-    "/v1/management/users": {"$ref":"#/x-agent-management-contract/~1v1~1management~1users"},
-    "/v1/management/users/{id}": {"$ref":"#/x-agent-management-contract/~1v1~1management~1users~1{id}"},
-    "/v1/management/api-keys": {"$ref":"#/x-agent-management-contract/~1v1~1management~1api-keys"},
-    "/v1/management/api-keys/{id}/models": {"$ref":"#/x-agent-management-contract/~1v1~1management~1api-keys~1{id}~1models"},
-    "/v1/management/api-keys/{id}": {"$ref":"#/x-agent-management-contract/~1v1~1management~1api-keys~1{id}"},
-    "/v1/management/rag/knowledge-bases": {"$ref":"#/x-agent-management-contract/~1v1~1management~1rag~1knowledge-bases"},
-    "/v1/management/rag/knowledge-bases/{id}": {"$ref":"#/x-agent-management-contract/~1v1~1management~1rag~1knowledge-bases~1{id}"},
-    "/v1/management/rag/datasets": {"$ref":"#/x-agent-management-contract/~1v1~1management~1rag~1datasets"},
-    "/v1/management/rag/datasets/{id}": {"$ref":"#/x-agent-management-contract/~1v1~1management~1rag~1datasets~1{id}"}
+    "/v1/management/users": {
+      "$ref": "#/x-agent-management-contract/~1v1~1management~1users",
+      "get": {
+        "tags": [
+          "Agent Management"
+        ],
+        "operationId": "listManagedUsers",
+        "summary": "List ordinary users in the management key department",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "security": [
+          {
+            "BearerApiKey": []
+          }
+        ],
+        "x-required-scope": "users:read"
+      },
+      "post": {
+        "tags": [
+          "Agent Management"
+        ],
+        "operationId": "createManagedUser",
+        "summary": "Create an ordinary user",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "username",
+                  "password"
+                ],
+                "properties": {
+                  "username": {
+                    "type": "string"
+                  },
+                  "password": {
+                    "type": "string"
+                  },
+                  "status": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "security": [
+          {
+            "BearerApiKey": []
+          }
+        ],
+        "x-required-scope": "users:write"
+      }
+    },
+    "/v1/management/users/{id}": {
+      "$ref": "#/x-agent-management-contract/~1v1~1management~1users~1{id}",
+      "patch": {
+        "tags": [
+          "Agent Management"
+        ],
+        "operationId": "updateManagedUser",
+        "summary": "Update an ordinary user",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "security": [
+          {
+            "BearerApiKey": []
+          }
+        ],
+        "x-required-scope": "users:write",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "Agent Management"
+        ],
+        "operationId": "disableManagedUser",
+        "summary": "Disable an ordinary user",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "security": [
+          {
+            "BearerApiKey": []
+          }
+        ],
+        "x-required-scope": "users:write",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ]
+      },
+      "get": {
+        "tags": [
+          "Agent Management"
+        ],
+        "operationId": "getManagedUser",
+        "summary": "Get one ordinary user of the department",
+        "security": [
+          {
+            "BearerApiKey": []
+          }
+        ],
+        "x-required-scope": "users:read",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        }
+      }
+    },
+    "/v1/management/api-keys": {
+      "$ref": "#/x-agent-management-contract/~1v1~1management~1api-keys",
+      "get": {
+        "tags": [
+          "Agent Management"
+        ],
+        "operationId": "listManagedApiKeys",
+        "summary": "List department API keys",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "security": [
+          {
+            "BearerApiKey": []
+          }
+        ],
+        "x-required-scope": "api_keys:read",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "maximum": 100
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "user_id",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "active",
+                "disabled",
+                "deleted"
+              ]
+            }
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "Agent Management"
+        ],
+        "operationId": "createManagedApiKey",
+        "summary": "Create an API key for a department user",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ManagedApiKeyCreate"
+              },
+              "examples": {
+                "default": {
+                  "value": {
+                    "user_id": 123,
+                    "name": "agent-workload",
+                    "model_ids": [
+                      101,
+                      102
+                    ],
+                    "allowed_ip_cidrs": [
+                      "10.0.0.0/8"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created; plaintext key is returned once"
+          },
+          "403": {
+            "description": "MANAGEMENT_SCOPE_REQUIRED or MANAGEMENT_SCOPE_DELEGATION_DENIED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "security": [
+          {
+            "BearerApiKey": []
+          }
+        ],
+        "x-required-scope": "api_keys:write",
+        "description": "model_ids must be active models the calling key may use itself (403 MANAGEMENT_MODEL_DELEGATION_DENIED)."
+      }
+    },
+    "/v1/management/api-keys/{id}/models": {
+      "$ref": "#/x-agent-management-contract/~1v1~1management~1api-keys~1{id}~1models",
+      "put": {
+        "tags": [
+          "Agent Management"
+        ],
+        "operationId": "replaceManagedApiKeyModels",
+        "summary": "Replace allowed models for an API key",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "model_ids"
+                ],
+                "properties": {
+                  "model_ids": {
+                    "type": "array",
+                    "items": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "security": [
+          {
+            "BearerApiKey": []
+          }
+        ],
+        "x-required-scope": "api_keys:write",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "description": "Keys that hold management scopes can only be changed by a key that delegated to them (directly or transitively); otherwise 403 MANAGEMENT_TARGET_FORBIDDEN."
+      }
+    },
+    "/v1/management/api-keys/{id}": {
+      "$ref": "#/x-agent-management-contract/~1v1~1management~1api-keys~1{id}",
+      "delete": {
+        "tags": [
+          "Agent Management"
+        ],
+        "operationId": "deleteManagedApiKey",
+        "summary": "Soft-delete an API key",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "security": [
+          {
+            "BearerApiKey": []
+          }
+        ],
+        "x-required-scope": "api_keys:write",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "description": "Keys that hold management scopes can only be changed by a key that delegated to them (directly or transitively); otherwise 403 MANAGEMENT_TARGET_FORBIDDEN."
+      },
+      "get": {
+        "tags": [
+          "Agent Management"
+        ],
+        "operationId": "getManagedApiKey",
+        "summary": "Get one API key (no plaintext) with model grants, management scopes and whether the caller may change it",
+        "security": [
+          {
+            "BearerApiKey": []
+          }
+        ],
+        "x-required-scope": "api_keys:read",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "Agent Management"
+        ],
+        "operationId": "updateManagedApiKey",
+        "summary": "Rename, disable/enable, set expiry or IP allowlist",
+        "security": [
+          {
+            "BearerApiKey": []
+          }
+        ],
+        "x-required-scope": "api_keys:write",
+        "description": "Keys that hold management scopes can only be changed by a key that delegated to them (directly or transitively); otherwise 403 MANAGEMENT_TARGET_FORBIDDEN. Expired keys (including keys rotated out) cannot be changed (409 MANAGEMENT_KEY_EXPIRED). status=active only re-enables keys an agent disabled; keys disabled by an administrator return 409 MANAGEMENT_KEY_DISABLED_BY_ADMIN.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ManagedApiKeyUpdate"
+              },
+              "examples": {
+                "default": {
+                  "value": {
+                    "status": "disabled"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        }
+      }
+    },
+    "/v1/management/rag/knowledge-bases": {
+      "$ref": "#/x-agent-management-contract/~1v1~1management~1rag~1knowledge-bases",
+      "get": {
+        "tags": [
+          "Agent Management"
+        ],
+        "operationId": "listManagedKnowledgeBases",
+        "summary": "List department knowledge bases",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "security": [
+          {
+            "BearerApiKey": []
+          }
+        ],
+        "x-required-scope": "rag:read"
+      },
+      "post": {
+        "tags": [
+          "Agent Management"
+        ],
+        "operationId": "createManagedKnowledgeBase",
+        "summary": "Create a department knowledge base",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "name"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "description": {
+                    "type": "string"
+                  },
+                  "visibility": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "security": [
+          {
+            "BearerApiKey": []
+          }
+        ],
+        "x-required-scope": "rag:write"
+      }
+    },
+    "/v1/management/rag/knowledge-bases/{id}": {
+      "$ref": "#/x-agent-management-contract/~1v1~1management~1rag~1knowledge-bases~1{id}",
+      "patch": {
+        "tags": [
+          "Agent Management"
+        ],
+        "operationId": "updateManagedKnowledgeBase",
+        "summary": "Update a knowledge base",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "security": [
+          {
+            "BearerApiKey": []
+          }
+        ],
+        "x-required-scope": "rag:write",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "Agent Management"
+        ],
+        "operationId": "deleteManagedKnowledgeBase",
+        "summary": "Soft-delete a knowledge base",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "security": [
+          {
+            "BearerApiKey": []
+          }
+        ],
+        "x-required-scope": "rag:write",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ]
+      }
+    },
+    "/v1/management/rag/datasets": {
+      "$ref": "#/x-agent-management-contract/~1v1~1management~1rag~1datasets",
+      "get": {
+        "tags": [
+          "Agent Management"
+        ],
+        "operationId": "listManagedRagDatasets",
+        "summary": "List department RAG datasets",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "security": [
+          {
+            "BearerApiKey": []
+          }
+        ],
+        "x-required-scope": "rag:read"
+      },
+      "post": {
+        "tags": [
+          "Agent Management"
+        ],
+        "operationId": "createManagedRagDataset",
+        "summary": "Create a dataset in a department knowledge base",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "kb_id",
+                  "name"
+                ],
+                "properties": {
+                  "kb_id": {
+                    "type": "integer"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "dataset_type": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "security": [
+          {
+            "BearerApiKey": []
+          }
+        ],
+        "x-required-scope": "rag:write"
+      }
+    },
+    "/v1/management/rag/datasets/{id}": {
+      "$ref": "#/x-agent-management-contract/~1v1~1management~1rag~1datasets~1{id}",
+      "patch": {
+        "tags": [
+          "Agent Management"
+        ],
+        "operationId": "updateManagedRagDataset",
+        "summary": "Update a RAG dataset",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "security": [
+          {
+            "BearerApiKey": []
+          }
+        ],
+        "x-required-scope": "rag:write",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "Agent Management"
+        ],
+        "operationId": "deleteManagedRagDataset",
+        "summary": "Soft-delete a RAG dataset",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "security": [
+          {
+            "BearerApiKey": []
+          }
+        ],
+        "x-required-scope": "rag:write",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ]
+      }
+    },
+    "/v1/completions": {
+      "post": {
+        "tags": [
+          "Gateway"
+        ],
+        "summary": "OpenAI-compatible legacy text completions proxy (text_generation models; supports stream)",
+        "security": [
+          {
+            "BearerApiKey": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CompletionRequest"
+              },
+              "examples": {
+                "default": {
+                  "value": {
+                    "model": "chat-model",
+                    "prompt": "Say hello",
+                    "max_tokens": 32
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Upstream response (OpenAI-compatible shape)"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/rerank": {
+      "post": {
+        "tags": [
+          "Gateway"
+        ],
+        "summary": "Rerank documents against a query (Jina/Cohere/TEI-compatible body; rerank models only)",
+        "security": [
+          {
+            "BearerApiKey": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RerankRequest"
+              },
+              "examples": {
+                "default": {
+                  "value": {
+                    "model": "bge-reranker",
+                    "query": "差旅报销流程",
+                    "documents": [
+                      "差旅报销需要发票",
+                      "年假规定"
+                    ],
+                    "top_n": 1
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Upstream response (OpenAI-compatible shape)"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "description": "The `rag` option is not accepted here (422 RAG_ENDPOINT_UNSUPPORTED)."
+      }
+    },
+    "/v1/moderations": {
+      "post": {
+        "tags": [
+          "Gateway"
+        ],
+        "summary": "OpenAI-compatible content moderation proxy (moderation models only)",
+        "security": [
+          {
+            "BearerApiKey": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ModerationRequest"
+              },
+              "examples": {
+                "default": {
+                  "value": {
+                    "model": "omni-moderation",
+                    "input": "text to classify"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Upstream response (OpenAI-compatible shape)"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/responses/{id}": {
+      "get": {
+        "tags": [
+          "Gateway"
+        ],
+        "summary": "Not supported: retrieve a stored response",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "501": {
+            "description": "RESPONSES_STATE_UNSUPPORTED: stored responses are not kept by this gateway",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Gateway"
+        ],
+        "summary": "Not supported: delete a stored response",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "501": {
+            "description": "RESPONSES_STATE_UNSUPPORTED: stored responses are not kept by this gateway",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/responses/{id}/cancel": {
+      "post": {
+        "tags": [
+          "Gateway"
+        ],
+        "summary": "Not supported: cancel a background response",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "501": {
+            "description": "RESPONSES_STATE_UNSUPPORTED: stored responses are not kept by this gateway",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/responses/{id}/input_items": {
+      "get": {
+        "tags": [
+          "Gateway"
+        ],
+        "summary": "Not supported: list stored input items",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "501": {
+            "description": "RESPONSES_STATE_UNSUPPORTED: stored responses are not kept by this gateway",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/rag/search": {
+      "post": {
+        "tags": [
+          "RAG"
+        ],
+        "summary": "Search the knowledge bases this API key can read (no chat model call)",
+        "description": "Hybrid vector + keyword retrieval with the key's knowledge-base and dataset bindings. Same engine as the gateway `rag` option and the MCP `search_knowledge_base` tool. The query passes the key's outbound desensitization policy first (system/department/key scope): masked text is searched and echoed; a matching block policy or a summary policy returns 422 DESENSITIZATION_BLOCKED. Query embedding calls are billed to the key as usage records with capability=embedding and endpoint=rag:query-embedding (priced with the embedding model; quota counters are not charged).",
+        "security": [
+          {
+            "BearerApiKey": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RagSearchRequest"
+              },
+              "examples": {
+                "default": {
+                  "value": {
+                    "query": "差旅报销需要哪些材料",
+                    "knowledge_base_ids": [
+                      "kb_finance"
+                    ],
+                    "top_k": 5
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Passages ordered by relevance",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Envelope"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/RagSearchResult"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/management/department": {
+      "get": {
+        "tags": [
+          "Agent Management"
+        ],
+        "operationId": "getManagedDepartment",
+        "summary": "The management key's department, resource counts and own scopes",
+        "security": [
+          {
+            "BearerApiKey": []
+          }
+        ],
+        "x-required-scope": "any management scope",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        }
+      }
+    },
+    "/v1/management/usage/summary": {
+      "get": {
+        "tags": [
+          "Agent Management"
+        ],
+        "operationId": "getManagedUsageSummary",
+        "summary": "Department usage totals, by model and by capability",
+        "security": [
+          {
+            "BearerApiKey": []
+          }
+        ],
+        "x-required-scope": "usage:read",
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Start (date or ISO 8601, UTC); default: 30 days ago"
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "user_id",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Only this user of the department"
+          },
+          {
+            "name": "api_key_id",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Only this key of the department"
+          },
+          {
+            "name": "model_id",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "provider_id",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "capability",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        }
+      }
+    },
+    "/v1/management/usage/trends": {
+      "get": {
+        "tags": [
+          "Agent Management"
+        ],
+        "operationId": "getManagedUsageTrends",
+        "summary": "Department usage buckets",
+        "security": [
+          {
+            "BearerApiKey": []
+          }
+        ],
+        "x-required-scope": "usage:read",
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Start (date or ISO 8601, UTC); default: 30 days ago"
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "user_id",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Only this user of the department"
+          },
+          {
+            "name": "api_key_id",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Only this key of the department"
+          },
+          {
+            "name": "model_id",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "provider_id",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "capability",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "bucket",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "hour",
+                "day"
+              ]
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "maximum": 200
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        }
+      }
+    },
+    "/v1/management/api-keys/{id}:rotate": {
+      "post": {
+        "tags": [
+          "Agent Management"
+        ],
+        "operationId": "rotateManagedApiKey",
+        "summary": "Rotate the calling key itself or a management key it delegated to; the old key keeps working for grace_minutes",
+        "security": [
+          {
+            "BearerApiKey": []
+          }
+        ],
+        "x-required-scope": "api_keys:write",
+        "description": "Ordinary keys of other users cannot be rotated (403 MANAGEMENT_TARGET_FORBIDDEN): rotation hands the caller the new secret with the old key's grants and RAG bindings. Grants, quotas, RAG bindings, management scopes and the key's place in the delegation tree move to the new key.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "grace_minutes": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 10080,
+                    "default": 60
+                  }
+                }
+              },
+              "examples": {
+                "default": {
+                  "value": {
+                    "grace_minutes": 60
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Envelope"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/RotatedApiKey"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        }
+      }
+    },
+    "/v1/management/api-keys/{id}/quota": {
+      "get": {
+        "tags": [
+          "Agent Management"
+        ],
+        "operationId": "getManagedApiKeyQuota",
+        "summary": "Quota policies and per-model quotas for a department key (same shape as GET /v1/quota)",
+        "security": [
+          {
+            "BearerApiKey": []
+          }
+        ],
+        "x-required-scope": "api_keys:read",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        }
+      }
+    },
+    "/mcp": {
+      "post": {
+        "tags": [
+          "MCP"
+        ],
+        "summary": "Model Context Protocol endpoint (Streamable HTTP, stateless JSON-RPC)",
+        "description": "Tools: search_knowledge_base, list_knowledge_bases, list_models, get_quota, get_usage_summary, get_api_key_info. See docs/mcp.md.",
+        "security": [
+          {
+            "BearerApiKey": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/McpJsonRpcRequest"
+              },
+              "examples": {
+                "default": {
+                  "value": {
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "tools/list"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "JSON-RPC response"
+          },
+          "202": {
+            "description": "Notification accepted"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "MCP"
+        ],
+        "summary": "Not allowed: no server-initiated stream (stateless server)",
+        "security": [],
+        "responses": {
+          "405": {
+            "description": "Method not allowed"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "MCP"
+        ],
+        "summary": "Not allowed: there is no session to terminate",
+        "security": [],
+        "responses": {
+          "405": {
+            "description": "Method not allowed"
+          }
+        }
+      }
+    },
+    "/v1/models/{model}:generateContent": {
+      "post": {
+        "summary": "Gemini-native generateContent (also served at /v1beta/models/{model}:generateContent for Google GenAI SDKs; x-goog-api-key accepted)",
+        "parameters": [
+          {
+            "name": "model",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "TokenHub model name"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "description": "Gemini GenerateContentRequest (contents, systemInstruction, tools, generationConfig). The model comes from the path.",
+                "additionalProperties": true
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Gemini GenerateContentResponse with usageMetadata"
+          },
+          "401": {
+            "description": "Missing or invalid API key"
+          },
+          "403": {
+            "description": "No enabled provider route for model"
+          },
+          "429": {
+            "description": "Quota exceeded"
+          },
+          "502": {
+            "description": "Provider rejected or failed"
+          }
+        }
+      }
+    },
+    "/v1/models/{model}:streamGenerateContent": {
+      "post": {
+        "summary": "Gemini-native streaming generateContent (?alt=sse returns server-sent events)",
+        "parameters": [
+          {
+            "name": "model",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "TokenHub model name"
+          },
+          {
+            "name": "alt",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "sse"
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "description": "Gemini GenerateContentRequest (contents, systemInstruction, tools, generationConfig). The model comes from the path.",
+                "additionalProperties": true
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Stream of GenerateContentResponse chunks",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key"
+          },
+          "403": {
+            "description": "No enabled provider route for model"
+          },
+          "429": {
+            "description": "Quota exceeded"
+          },
+          "502": {
+            "description": "Provider rejected or failed"
+          }
+        }
+      }
+    },
+    "/v1/music/generations": {
+      "post": {
+        "summary": "Music generation proxy (ElevenLabs Music and vendor-profile channels)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "model",
+                  "prompt"
+                ],
+                "properties": {
+                  "model": {
+                    "type": "string"
+                  },
+                  "prompt": {
+                    "type": "string"
+                  },
+                  "duration": {
+                    "type": "integer",
+                    "description": "Length in seconds"
+                  },
+                  "response_format": {
+                    "type": "string"
+                  },
+                  "vendor_options": {
+                    "type": "object",
+                    "additionalProperties": true,
+                    "description": "Vendor-specific fields; billing fields are ignored"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Generated audio (data[].b64_json or asset URL)"
+          },
+          "202": {
+            "description": "Asynchronous task accepted"
+          },
+          "401": {
+            "description": "Missing or invalid API key"
+          },
+          "403": {
+            "description": "No enabled provider route for model"
+          },
+          "429": {
+            "description": "Quota exceeded"
+          },
+          "502": {
+            "description": "Provider rejected or failed"
+          }
+        }
+      }
+    },
+    "/v1/realtime/client_secrets": {
+      "post": {
+        "summary": "Short-lived, single-use client secret for browser realtime sessions (wss /v1/realtime, served by the realtime gateway)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "model"
+                ],
+                "properties": {
+                  "model": {
+                    "type": "string"
+                  },
+                  "expires_in": {
+                    "type": "integer",
+                    "minimum": 10,
+                    "maximum": 600,
+                    "default": 60,
+                    "description": "Seconds"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "{value: ek_..., expires_at, model}; model access is checked when the session opens"
+          },
+          "401": {
+            "description": "Missing or invalid API key"
+          },
+          "422": {
+            "description": "model is required"
+          }
+        }
+      }
+    },
+    "/v1/task-callbacks/{task_id}/{signature}": {
+      "post": {
+        "summary": "Vendor task callback (signed URL generated by TokenHub; triggers a status refresh, never trusts the body)",
+        "security": [],
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "signature",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Accepted (or challenge echoed)"
+          },
+          "404": {
+            "description": "Unknown task or bad signature"
+          }
+        }
+      }
+    },
+    "/v1/tasks/{id}:cancel": {
+      "post": {
+        "tags": [
+          "Tasks"
+        ],
+        "summary": "Cancel an async task that has not started upstream (Seedance, MiniMax H3, Wan); the charge is refunded",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Task view with cancelled=true"
+          },
+          "409": {
+            "description": "TASK_NOT_CANCELLABLE: running, finished, or vendor without cancellation"
+          }
+        }
+      }
+    },
+    "/v1/videos": {
+      "post": {
+        "tags": [
+          "Videos"
+        ],
+        "summary": "OpenAI Videos API create (any configured video vendor); body as /v1/videos/generations plus seconds/size/input_reference",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "description": "model, prompt, seconds, size, input_reference"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OpenAI video object; id is the TokenHub task id"
+          }
+        }
+      }
+    },
+    "/v1/videos/{id}": {
+      "get": {
+        "tags": [
+          "Videos"
+        ],
+        "summary": "OpenAI Videos API retrieve; refreshes unfinished tasks",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OpenAI video object (queued|in_progress|completed|failed)"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Videos"
+        ],
+        "summary": "Cancel an unfinished video or delete a finished one's assets",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "{id, object: video.deleted, deleted: true}"
+          }
+        }
+      }
+    },
+    "/v1/videos/{id}/content": {
+      "get": {
+        "tags": [
+          "Videos"
+        ],
+        "summary": "Download the video (variant=video) or its last frame (variant=thumbnail)",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Binary media"
+          },
+          "409": {
+            "description": "VIDEO_NOT_READY"
+          }
+        }
+      }
+    }
   },
   "servers": [
     {
@@ -3341,6 +5864,12 @@
     },
     {
       "name": "RAG"
+    },
+    {
+      "name": "Agent Management"
+    },
+    {
+      "name": "MCP"
     }
   ]
 }

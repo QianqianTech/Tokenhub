@@ -20,6 +20,6 @@ assert_true(str_contains($source, "'providers'"), 'Global write gate should cove
 assert_true(str_contains($source, "'models'"), 'Global write gate should cover models.');
 assert_true(str_contains($source, "'model_prices'"), 'Global write gate should cover model prices.');
 assert_true(str_contains($source, "'system_settings'"), 'Global write gate should cover system settings.');
-assert_true(str_contains($source, "'waf_rules'"), 'Global write gate should cover WAF rules.');
+assert_true(!str_contains($source, 'waf_'), 'Generic CRUD should not expose removed WAF tables.');
 assert_true(str_contains($source, "'desensitization_policies'"), 'Global write gate should cover desensitization policies.');
 assert_true(str_contains($source, "'log_retention_policies'"), 'Global write gate should cover log retention policies.');

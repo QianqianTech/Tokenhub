@@ -11,6 +11,7 @@ use TokenHub\Http\Controllers\ExternalController;
 use TokenHub\Http\Controllers\FileController;
 use TokenHub\Http\Controllers\GatewayController;
 use TokenHub\Http\Controllers\HealthController;
+use TokenHub\Http\Controllers\McpController;
 use TokenHub\Http\Controllers\RagController;
 use TokenHub\Http\Controllers\ScreenController;
 use TokenHub\Http\Controllers\SyncController;
@@ -21,9 +22,8 @@ use TokenHub\Middleware\AgentManagementAuthMiddleware;
 use TokenHub\Middleware\ApiKeyAuthMiddleware;
 use TokenHub\Middleware\CsrfMiddleware;
 use TokenHub\Middleware\GatewayAuthMiddleware;
+use TokenHub\Middleware\McpAuthMiddleware;
 use TokenHub\Middleware\ScreenAuthMiddleware;
-use TokenHub\Middleware\SystemIpBanMiddleware;
-use TokenHub\Middleware\WafInspectionMiddleware;
 use TokenHub\Support\Router;
 
 final class Kernel
@@ -31,9 +31,8 @@ final class Kernel
     public static function router(): Router
     {
         $router = new Router();
-        $router->middleware(new SystemIpBanMiddleware());
-        $router->middleware(new WafInspectionMiddleware());
         $health = new HealthController();
+        $mcp = new McpController();
         $admin = new AdminController();
         $agentManagement = new AgentManagementController();
         $download = new DownloadController();
@@ -102,6 +101,13 @@ final class Kernel
         $router->put('/admin-api/api-keys/{id}/models', [$admin, 'updateApiKeyModels'], [new AdminAuthMiddleware(), new CsrfMiddleware()]);
         $router->get('/admin-api/api-keys/{id}/rag-bindings', [$admin, 'apiKeyRagBindings'], [new AdminAuthMiddleware()]);
         $router->put('/admin-api/api-keys/{id}/rag-bindings', [$admin, 'updateApiKeyRagBindings'], [new AdminAuthMiddleware(), new CsrfMiddleware()]);
+        $router->post('/admin-api/api-keys/{id}/rotate', [$admin, 'rotateApiKey'], [new AdminAuthMiddleware(), new CsrfMiddleware()]);
+        $router->get('/admin-api/quota-status', [$admin, 'quotaStatus'], [new AdminAuthMiddleware()]);
+        $router->post('/admin-api/quota-adjustments', [$admin, 'adjustQuota'], [new AdminAuthMiddleware(), new CsrfMiddleware()]);
+        $router->get('/admin-api/diagnostics/requests/{request_id}', [$admin, 'requestDiagnostics'], [new AdminAuthMiddleware()]);
+        $router->post('/admin-api/providers/{id}/catalog-sync', [$admin, 'catalogSync'], [new AdminAuthMiddleware(), new CsrfMiddleware()]);
+        $router->get('/admin-api/providers/{id}/catalog-prices', [$admin, 'catalogPrices'], [new AdminAuthMiddleware()]);
+        $router->post('/admin-api/providers/{id}/catalog-prices', [$admin, 'catalogPrices'], [new AdminAuthMiddleware(), new CsrfMiddleware()]);
         $router->delete('/admin-api/api-keys/{id}', [$admin, 'deleteApiKey'], [new AdminAuthMiddleware(), new CsrfMiddleware()]);
         $router->get('/admin-api/logs', [$admin, 'logs'], [new AdminAuthMiddleware()]);
         $router->post('/admin-api/exports/{type}', [$admin, 'createExport'], [new AdminAuthMiddleware(), new CsrfMiddleware()]);
@@ -141,20 +147,6 @@ final class Kernel
         $router->get('/admin-api/dashboard/security', [$admin, 'dashboardSecurity'], [new AdminAuthMiddleware()]);
         $router->get('/admin-api/dashboard/performance', [$admin, 'dashboardPerformance'], [new AdminAuthMiddleware()]);
         $router->get('/admin-api/dashboard/multimodal', [$admin, 'dashboardMultimodal'], [new AdminAuthMiddleware()]);
-        $router->post('/admin-api/waf/publish', [$admin, 'publishWaf'], [new AdminAuthMiddleware(), new CsrfMiddleware()]);
-        $router->get('/admin-api/waf/overview', [$admin, 'wafOverview'], [new AdminAuthMiddleware()]);
-        $router->get('/admin-api/waf/ip-bans', [$admin, 'wafIpBans'], [new AdminAuthMiddleware()]);
-        $router->post('/admin-api/waf/ip-bans', [$admin, 'banWafIp'], [new AdminAuthMiddleware(), new CsrfMiddleware()]);
-        $router->delete('/admin-api/waf/ip-bans/{ip}', [$admin, 'unbanWafIp'], [new AdminAuthMiddleware(), new CsrfMiddleware()]);
-        $router->post('/admin-api/waf/rollback', [$admin, 'rollbackWaf'], [new AdminAuthMiddleware(), new CsrfMiddleware()]);
-        $router->get('/admin-api/waf/events', [$admin, 'wafEvents'], [new AdminAuthMiddleware()]);
-        $router->get('/admin-api/waf/statistics', [$admin, 'wafStatistics'], [new AdminAuthMiddleware()]);
-        $router->get('/admin-api/waf/templates', [$admin, 'wafTemplates'], [new AdminAuthMiddleware()]);
-        $router->post('/admin-api/waf/preview', [$admin, 'previewWaf'], [new AdminAuthMiddleware(), new CsrfMiddleware()]);
-        $router->post('/admin-api/waf/events/{id}/handle', [$admin, 'handleWafEvent'], [new AdminAuthMiddleware(), new CsrfMiddleware()]);
-        $router->post('/admin-api/waf/auto-disposition', [$admin, 'autoDispositionWaf'], [new AdminAuthMiddleware(), new CsrfMiddleware()]);
-        $router->get('/admin-api/waf/versions', [$admin, 'wafVersions'], [new AdminAuthMiddleware()]);
-        $router->get('/admin-api/waf/versions/{version_code}/diff', [$admin, 'wafVersionDiff'], [new AdminAuthMiddleware()]);
         $router->get('/admin-api/operations/status', [$admin, 'operationsStatus'], [new AdminAuthMiddleware()]);
         $router->post('/admin-api/alerts/{id}/status', [$admin, 'updateAlertStatus'], [new AdminAuthMiddleware(), new CsrfMiddleware()]);
         $router->post('/admin-api/media-assets/{asset_id}/download-url', [$admin, 'mediaDownloadUrl'], [new AdminAuthMiddleware(), new CsrfMiddleware()]);
@@ -163,8 +155,29 @@ final class Kernel
         foreach (GatewayController::ENDPOINTS as $endpoint) {
             $router->post($endpoint, [$gateway, 'proxy'], [new GatewayAuthMiddleware()]);
         }
+        // Stateful Responses API features are not proxied: answer explicitly
+        // instead of a generic 404 so SDK users see the contract boundary.
+        $router->get('/v1/responses/{id}', [$gateway, 'responsesStateUnsupported'], [new ApiKeyAuthMiddleware()]);
+        $router->delete('/v1/responses/{id}', [$gateway, 'responsesStateUnsupported'], [new ApiKeyAuthMiddleware()]);
+        $router->post('/v1/responses/{id}/cancel', [$gateway, 'responsesStateUnsupported'], [new ApiKeyAuthMiddleware()]);
+        $router->get('/v1/responses/{id}/input_items', [$gateway, 'responsesStateUnsupported'], [new ApiKeyAuthMiddleware()]);
         $router->get('/v1/tasks/{id}', [$gateway, 'task'], [new GatewayAuthMiddleware()]);
+        $router->post('/v1/task-callbacks/{task_id}/{signature}', [$gateway, 'taskCallback']);
+        // Realtime relay (Go realtime-gateway): internal session/usage API and browser client secrets.
+        $realtime = new \TokenHub\Http\Controllers\RealtimeController();
+        $router->post('/internal/realtime/sessions', [$realtime, 'sessions']);
+        $router->post('/internal/realtime/usage', [$realtime, 'usage']);
+        $router->post('/v1/realtime/client_secrets', [$realtime, 'clientSecret'], [new GatewayAuthMiddleware()]);
+        // Gemini-native API (Google GenAI SDKs): model in the path.
+        foreach (['/v1beta/models/{model}:generateContent', '/v1beta/models/{model}:streamGenerateContent', '/v1/models/{model}:generateContent', '/v1/models/{model}:streamGenerateContent'] as $geminiPath) {
+            $router->post($geminiPath, [$gateway, 'proxy'], [new GatewayAuthMiddleware()]);
+        }
         $router->post('/v1/tasks/{id}:refresh', [$gateway, 'refreshTask'], [new GatewayAuthMiddleware()]);
+        $router->post('/v1/tasks/{id}:cancel', [$gateway, 'cancelTask'], [new GatewayAuthMiddleware()]);
+        // OpenAI Videos API surface (id = TokenHub task id).
+        $router->get('/v1/videos/{id}', [$gateway, 'video'], [new GatewayAuthMiddleware()]);
+        $router->get('/v1/videos/{id}/content', [$gateway, 'videoContent'], [new GatewayAuthMiddleware()]);
+        $router->delete('/v1/videos/{id}', [$gateway, 'deleteVideo'], [new GatewayAuthMiddleware()]);
         $router->get('/v1/assets/{id}/download-url', [$gateway, 'assetDownloadUrl'], [new GatewayAuthMiddleware()]);
         $router->get('/v1/me', [$external, 'me'], [new ApiKeyAuthMiddleware()]);
         $router->get('/v1/models', [$external, 'models'], [new ApiKeyAuthMiddleware()]);
@@ -196,10 +209,11 @@ final class Kernel
         $router->get('/v1/rag/uploads/{upload_id}', [$rag, 'uploadStatus'], [new ApiKeyAuthMiddleware()]);
         $router->get('/v1/rag/uploads/{upload_id}/preview', [$rag, 'preview'], [new ApiKeyAuthMiddleware()]);
         $router->post('/v1/rag/uploads/{upload_id}/confirm-vectorization', [$rag, 'confirmVectorization'], [new ApiKeyAuthMiddleware()]);
+        $router->post('/v1/rag/search', [$rag, 'search'], [new ApiKeyAuthMiddleware()]);
         $router->get('/v1/rag/retrievals/{retrieval_id}', [$rag, 'retrieval'], [new ApiKeyAuthMiddleware()]);
         $router->post('/v1/rag/feedback', [$rag, 'feedback'], [new ApiKeyAuthMiddleware()]);
         $router->get('/v1/capabilities', [$external, 'capabilities'], [new ApiKeyAuthMiddleware()]);
-        $router->get('/v1/models/{model}', [$external, 'modelDetail'], [new ApiKeyAuthMiddleware()]);
+        $router->get('/v1/models/{model+}', [$external, 'modelDetail'], [new ApiKeyAuthMiddleware()]);
         $router->get('/v1/model-health', [$external, 'modelHealth'], [new ApiKeyAuthMiddleware()]);
         $router->get('/v1/openapi.json', [$external, 'openapi'], [new ApiKeyAuthMiddleware()]);
         $router->get('/v1/events', [$external, 'events'], [new ApiKeyAuthMiddleware()]);
@@ -211,12 +225,20 @@ final class Kernel
         $router->post('/v1/webhook-deliveries/{delivery_id}:retry', [$webhooks, 'retryDelivery'], [new ApiKeyAuthMiddleware()]);
         $router->delete('/v1/webhooks/{id}', [$webhooks, 'delete'], [new ApiKeyAuthMiddleware()]);
         $router->post('/v1/feedback', [$external, 'feedback'], [new ApiKeyAuthMiddleware()]);
+        $router->get('/v1/management/department', [$agentManagement, 'department'], [new AgentManagementAuthMiddleware(AgentManagementAuthMiddleware::ANY_SCOPE)]);
+        $router->get('/v1/management/usage/summary', [$agentManagement, 'usageSummary'], [new AgentManagementAuthMiddleware('usage:read')]);
+        $router->get('/v1/management/usage/trends', [$agentManagement, 'usageTrends'], [new AgentManagementAuthMiddleware('usage:read')]);
         $router->get('/v1/management/users', [$agentManagement, 'users'], [new AgentManagementAuthMiddleware('users:read')]);
+        $router->get('/v1/management/users/{id}', [$agentManagement, 'user'], [new AgentManagementAuthMiddleware('users:read')]);
         $router->post('/v1/management/users', [$agentManagement, 'createUser'], [new AgentManagementAuthMiddleware('users:write')]);
         $router->patch('/v1/management/users/{id}', [$agentManagement, 'updateUser'], [new AgentManagementAuthMiddleware('users:write')]);
         $router->delete('/v1/management/users/{id}', [$agentManagement, 'deleteUser'], [new AgentManagementAuthMiddleware('users:write')]);
         $router->get('/v1/management/api-keys', [$agentManagement, 'apiKeys'], [new AgentManagementAuthMiddleware('api_keys:read')]);
         $router->post('/v1/management/api-keys', [$agentManagement, 'createApiKey'], [new AgentManagementAuthMiddleware('api_keys:write')]);
+        $router->get('/v1/management/api-keys/{id}', [$agentManagement, 'showApiKey'], [new AgentManagementAuthMiddleware('api_keys:read')]);
+        $router->patch('/v1/management/api-keys/{id}', [$agentManagement, 'updateApiKey'], [new AgentManagementAuthMiddleware('api_keys:write')]);
+        $router->post('/v1/management/api-keys/{id}:rotate', [$agentManagement, 'rotateApiKey'], [new AgentManagementAuthMiddleware('api_keys:write')]);
+        $router->get('/v1/management/api-keys/{id}/quota', [$agentManagement, 'apiKeyQuota'], [new AgentManagementAuthMiddleware('api_keys:read')]);
         $router->put('/v1/management/api-keys/{id}/models', [$agentManagement, 'replaceApiKeyModels'], [new AgentManagementAuthMiddleware('api_keys:write')]);
         $router->delete('/v1/management/api-keys/{id}', [$agentManagement, 'deleteApiKey'], [new AgentManagementAuthMiddleware('api_keys:write')]);
         $router->get('/v1/management/rag/knowledge-bases', [$agentManagement, 'knowledgeBases'], [new AgentManagementAuthMiddleware('rag:read')]);
@@ -227,6 +249,11 @@ final class Kernel
         $router->post('/v1/management/rag/datasets', [$agentManagement, 'createDataset'], [new AgentManagementAuthMiddleware('rag:write')]);
         $router->patch('/v1/management/rag/datasets/{id}', [$agentManagement, 'updateDataset'], [new AgentManagementAuthMiddleware('rag:write')]);
         $router->delete('/v1/management/rag/datasets/{id}', [$agentManagement, 'deleteDataset'], [new AgentManagementAuthMiddleware('rag:write')]);
+
+        // Model Context Protocol (Streamable HTTP, stateless). See docs/mcp.md.
+        $router->post('/mcp', [$mcp, 'handle'], [new McpAuthMiddleware()]);
+        $router->get('/mcp', [$mcp, 'methodNotAllowed']);
+        $router->delete('/mcp', [$mcp, 'methodNotAllowed']);
 
         $router->post('/screen-api/auth/login', [$screen, 'login']);
         $router->post('/screen-api/auth/share-login', [$screen, 'shareLogin']);
@@ -257,9 +284,6 @@ final class Kernel
             'media-assets' => 'media_assets',
             'usage-contents' => 'usage_contents',
             'export-tasks' => 'export_tasks',
-            'waf-rules' => 'waf_rules',
-            'waf-rule-versions' => 'waf_rule_versions',
-            'waf-events' => 'waf_events',
             'desensitization-policies' => 'desensitization_policies',
             'desensitization-events' => 'desensitization_events',
             'log-retention-policies' => 'log_retention_policies',

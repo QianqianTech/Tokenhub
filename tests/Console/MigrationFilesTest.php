@@ -36,11 +36,19 @@ assert_true(str_contains($logsSql, 'CREATE TABLE IF NOT EXISTS alert_events'), '
 assert_true(str_contains($logsSql, "'gateway-access'"), 'Logs migration should seed gateway-access retention policy.');
 assert_true(str_contains($logsSql, "'audit'"), 'Logs migration should seed audit retention policy.');
 
-$runner = file_get_contents(__DIR__ . '/../../app/Console/MigrationRunner.php');
-assert_true(str_contains($runner, '*logs_observability*.sql'), 'Console migration runner should include logs observability migrations.');
-assert_true(str_contains($runner, '*external_sync*.sql'), 'Console migration runner should include external sync migrations.');
+$discovered = array_map('basename', \TokenHub\Console\MigrationRunner::discover(__DIR__ . '/../../database/migrations'));
+assert_true(in_array('2026_07_08_000011_logs_observability_audit.sql', $discovered, true), 'Console migration runner should include logs observability migrations.');
+assert_true(in_array('2026_07_08_000013_external_sync_api.sql', $discovered, true), 'Console migration runner should include external sync migrations.');
+assert_true(in_array('0001_create_tokenhub_schema.sql', $discovered, true), 'Console migration runner should apply the full schema on fresh installs.');
+assert_true(in_array('2026_07_08_000006_multimodal_assets_v1.sql', $discovered, true), 'Console migration runner should include multimodal migrations.');
 
-$wafMigration = __DIR__ . '/../../database/migrations/2026_07_10_000017_waf_core_attack_defense.sql';
-assert_true(is_file($wafMigration), 'WAF core attack defense migration should exist.');
-assert_true(str_contains((string) file_get_contents($wafMigration), 'risk_score'), 'WAF core attack defense migration should add risk score storage.');
-assert_true(str_contains($runner, '*waf*.sql'), 'Console migration runner should include WAF migrations.');
+$removeWafMigration = (string) file_get_contents(__DIR__ . '/../../database/migrations/2026_10_28_000001_foundation_remove_waf.sql');
+foreach (['waf_events', 'waf_rule_versions', 'waf_rules', 'system_ip_bans'] as $table) {
+    assert_true(str_contains($removeWafMigration, 'DROP TABLE IF EXISTS ' . $table), 'Remove-WAF migration should drop ' . $table . '.');
+}
+$removeIndex = array_search('2026_10_28_000001_foundation_remove_waf.sql', $discovered, true);
+foreach ($discovered as $index => $name) {
+    if (str_contains($name, 'waf')) {
+        assert_true($index <= $removeIndex, 'WAF tables must be dropped after every migration that created them: ' . $name);
+    }
+}

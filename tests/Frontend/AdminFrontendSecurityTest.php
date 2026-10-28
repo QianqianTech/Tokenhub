@@ -26,15 +26,23 @@ assert_true(is_string($dashboardSource), 'Dashboard source should be readable.')
 assert_true(is_string($resources), 'Resource source should be readable.');
 assert_true(is_string($tableSource), 'Admin table source should be readable.');
 assert_true(is_string($caddyfile), 'Caddyfile should be readable.');
+preg_match('/app\.js\?v=(\d{8}-[A-Za-z0-9._-]+)/', $adminHtml, $entryVersionMatch);
 assert_true(
-    (bool) preg_match('/app\.js\?v=20260710-[A-Za-z0-9._-]+/', $adminHtml),
-    'Admin entry module should use the current cache version.'
+    isset($entryVersionMatch[1]) && str_contains($adminHtml, 'app.css?v=' . $entryVersionMatch[1] . '"'),
+    'Admin entry module should use the current cache version, shared with the stylesheet.'
 );
-$sharedApiModule = './api.js?v=20260710-csrf-shared-v1';
+preg_match('/["\'](\.\/api\.js\?v=[A-Za-z0-9._-]+)["\']/', $appJs, $sharedApiModuleMatch);
+$sharedApiModule = $sharedApiModuleMatch[1] ?? '';
 assert_true(
-    str_contains($appJs, $sharedApiModule),
-    'Admin API module should use the shared CSRF cache version.'
+    $sharedApiModule !== '',
+    'Admin API module should use a shared, cache-busted CSRF module version.'
 );
+foreach ($adminSources as $adminSourceFile => $source) {
+    preg_match_all('/from\s+["\'](\.\/api\.js[^"\']*)["\']/', (string) $source, $apiImports);
+    foreach ($apiImports[1] as $apiImport) {
+        assert_same($sharedApiModule, $apiImport, "Admin module {$adminSourceFile} must import the shared API module instance.");
+    }
+}
 foreach ([$appJs, $tableSource, $dashboardSource] as $adminModule) {
     assert_true(
         str_contains($adminModule, $sharedApiModule),
@@ -123,7 +131,6 @@ assert_true(str_contains($resources, '智慧分析'), 'Admin navigation labels s
 assert_true(str_contains($resources, '用量明细'), 'Usage navigation label should be normalized Chinese.');
 assert_true(str_contains($resources, '日志中心'), 'Log navigation label should be normalized Chinese.');
 assert_true(str_contains($resources, 'API 密钥'), 'Admin navigation should use Chinese API key labels.');
-assert_true(str_contains($resources, '防火墙攻击记录'), 'Admin navigation should localize WAF labels.');
 assert_true(str_contains($resources, 'export const columnLabels'), 'Admin resources should centralize Chinese table column labels.');
 assert_true(str_contains($resources, '"username": "用户名"'), 'Admin table labels should localize username.');
 assert_true(str_contains($resources, '"department_id": "部门 ID"'), 'Admin table labels should localize department_id.');
@@ -138,7 +145,13 @@ assert_true(!preg_match('/label: "[^"]*Header/', $resources), 'Admin resource fo
 assert_true(!str_contains($resources, 'IP/CIDR'), 'Admin resource form labels should not expose English CIDR notation.');
 assert_true(!str_contains($resources, 'JSON 数组'), 'Admin resource form labels should not expose mixed-language JSON array wording.');
 assert_true(str_contains($tableSource, 'columnLabel(column)'), 'Generic resource tables should translate column headers.');
-assert_true(str_contains($tableSource, 'columns.map(columnLabel)'), 'Simple statistic tables should translate column headers.');
+$detailTableStart = strpos($tableSource, 'function renderDataDetails');
+$detailTableEnd = $detailTableStart === false ? false : strpos($tableSource, "\n}\n", $detailTableStart);
+$detailTableSource = $detailTableStart === false || $detailTableEnd === false ? '' : substr($tableSource, $detailTableStart, $detailTableEnd - $detailTableStart);
+assert_true(
+    str_contains($detailTableSource, 'columns.map(columnLabel)') || str_contains($detailTableSource, 'el("th", { text: columnLabel(column) })'),
+    'Simple statistic tables should translate column headers.'
+);
 assert_true(str_contains($tableSource, 'formatResourceValue(column, row[column])'), 'Generic resource tables should translate enum cell values.');
 assert_true(str_contains($dashboardSource, 'formatResourceValue(column, row[column])'), 'Dashboard tables should translate enum cell values.');
 assert_true(!preg_match('/label: "[^"]*CIDR/', $tableSource), 'Settings center labels should not expose English CIDR labels.');
@@ -173,14 +186,12 @@ assert_true(str_contains($dashboardSource, 'audit-logs'), 'Dashboard should dril
 assert_true(str_contains($caddyfile, 'Content-Security-Policy'), 'Caddy should emit a CSP header.');
 assert_true(str_contains($caddyfile, 'script-src \'self\''), 'CSP should only allow same-origin scripts.');
 assert_true(str_contains($caddyfile, '@php path /health /ready /admin-api/* /screen-api/* /v1/* /download/*'), 'Caddy should forward API and readiness routes to PHP.');
-assert_true(str_contains($caddyfile, 'caddy-security.jsonl'), 'Caddy should write WAF events to a dedicated security log.');
 assert_true(str_contains($caddyfile, 'request>headers>Authorization replace "****"'), 'Caddy logs should mask Authorization rather than delete it.');
 assert_true(str_contains($caddyfile, 'request>headers>Cookie replace "****"'), 'Caddy logs should mask Cookie rather than delete it.');
 
-assert_true(str_contains($resources, '"waf-rule-versions"'), 'Admin resources should expose WAF rule versions.');
-assert_true(str_contains($resources, 'wafPublish'), 'Admin resources should expose WAF publish action metadata.');
-assert_true(str_contains($resources, 'wafPreview'), 'Admin resources should expose WAF preview action metadata.');
-assert_true(str_contains($resources, 'wafTemplates'), 'Admin resources should expose WAF template action metadata.');
+assert_true(!str_contains($resources, '"waf-') && !str_contains($resources, '"settings-firewall"') && !str_contains($resources, '防火墙'), 'Admin resources should not expose removed WAF pages or labels.');
+assert_true(!str_contains($tableSource, '/admin-api/waf') && !str_contains($tableSource, 'firewall_settings') && !str_contains($tableSource, 'login_failure_threshold'), 'Admin table renderer should not reference removed WAF or IP ban features.');
+assert_true(!str_contains($caddyfile, 'waf-current.caddy') && !str_contains($caddyfile, 'caddy-security'), 'Caddy should not import a WAF fragment or write the WAF security log.');
 assert_true(str_contains($resources, '"logs"'), 'Admin resources should expose the log center.');
 assert_true(str_contains($resources, '"alert-events"'), 'Admin resources should expose alert events.');
 assert_true(str_contains($resources, '"log-archive-files"'), 'Admin resources should expose log archives.');
@@ -190,7 +201,6 @@ assert_true(str_contains($resources, '"settings-center"'), 'Admin resources shou
 assert_true(str_contains($resources, '"settings-brand-identity"'), 'Admin resources should expose brand identity settings.');
 assert_true(str_contains($resources, '"settings-tls-certificates"'), 'Admin resources should expose certificate settings.');
 assert_true(str_contains($resources, '"settings-entry-security"'), 'Admin resources should expose entry security settings.');
-assert_true(str_contains($resources, '"settings-firewall"'), 'Admin resources should expose WAF firewall settings.');
 assert_true(str_contains($resources, '"settings-retention-export"'), 'Admin resources should expose retention and export settings.');
 assert_true(str_contains($resources, '"settings-alert-thresholds"'), 'Admin resources should expose alert settings outside the mixed system page.');
 assert_true(str_contains($resources, '"settings-rag-upload-review"'), 'Admin resources should expose RAG upload review settings.');
@@ -217,23 +227,6 @@ assert_true(str_contains($tableSource, '/admin-api/system/settings-center/certif
 assert_true(str_contains($tableSource, '/admin-api/system/settings-center/${section}'), 'Settings center should save individual sections.');
 assert_true(str_contains($tableSource, '标题与标识'), 'Settings center should render title and logo settings.');
 assert_true(str_contains($tableSource, 'brand_identity'), 'Settings center should save brand identity settings.');
-assert_true(str_contains($tableSource, 'firewall_settings'), 'Settings center should save firewall settings.');
-assert_true(str_contains($tableSource, 'manual_blocked_cidrs'), 'Firewall settings should expose manual blocked CIDRs.');
-assert_true(str_contains($tableSource, 'login_failure_threshold'), 'Firewall settings should expose the login failure threshold.');
-assert_true(str_contains($tableSource, 'renderWafEventsPage'), 'Admin table renderer should handle the dedicated WAF attack records page.');
-assert_true(str_contains($tableSource, 'renderWafRulesPage'), 'Admin table renderer should handle the dedicated WAF rules page.');
-assert_true(str_contains($tableSource, '/admin-api/waf/templates'), 'WAF rules page should load built-in rule templates.');
-assert_true(str_contains($tableSource, '/admin-api/waf/preview'), 'WAF rules page should preview generated Caddy fragments.');
-assert_true(str_contains($tableSource, 'dry_run'), 'WAF rules page should support dry-run publishing.');
-assert_true(str_contains($tableSource, 'confirm_high_risk'), 'WAF rules page should require explicit high-risk confirmation.');
-assert_true(str_contains($tableSource, 'showWafAutoDispositionDialog'), 'WAF attack records page should expose configurable automatic disposition.');
-assert_true(str_contains($tableSource, 'showWafDispositionDialog'), 'WAF attack records page should expose noted per-event handling.');
-assert_true(str_contains($tableSource, '/admin-api/waf/auto-disposition'), 'WAF attack records page should call the auto-disposition endpoint.');
-assert_true(str_contains($tableSource, '/admin-api/waf/events/${row.id}/handle'), 'WAF attack records page should call the event handling endpoint.');
-assert_true(str_contains($tableSource, '/admin-api/waf/statistics'), 'WAF attack records page should load WAF statistics.');
-assert_true(str_contains($tableSource, '/admin-api/waf/events'), 'WAF attack records page should load WAF attack records.');
-assert_true(str_contains($tableSource, 'top_rules'), 'WAF attack records page should render rule rankings.');
-assert_true(str_contains($tableSource, 'top_ips'), 'WAF attack records page should render source IP rankings.');
 assert_true(str_contains($tableSource, 'showUserPasswordReset'), 'User rows should expose password reset through a dedicated action.');
 assert_true(str_contains($tableSource, 'showUserDepartmentMove'), 'User rows should expose department move through a dedicated action.');
 assert_true(str_contains($tableSource, 'showUserStatusUpdate'), 'User rows should expose status update through a dedicated action.');

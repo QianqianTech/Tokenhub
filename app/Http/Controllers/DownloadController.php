@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace TokenHub\Http\Controllers;
 
+use TokenHub\Services\OutboundUrlPolicy;
+use TokenHub\Services\SafeRemoteFetcher;
 use TokenHub\Support\App;
 use TokenHub\Support\Request;
 use TokenHub\Support\Response;
@@ -15,6 +17,9 @@ use TokenHub\Services\PermissionService;
 
 final class DownloadController
 {
+    /** Content-Type reported by the upstream for the last remote asset read. */
+    private ?string $remoteContentType = null;
+
     public function show(Request $request): Response
     {
         $token = (string) $request->params['token'];
@@ -67,6 +72,17 @@ final class DownloadController
     }
 
     /**
+     * Serves an asset the caller is already authorized for
+     * (GET /v1/videos/{id}/content).
+     *
+     * @param array<string, mixed> $asset
+     */
+    public function serveAsset(array $asset): Response
+    {
+        return $this->fileResponse((string) ($asset['storage_path'] ?? ''), $asset, (string) ($asset['asset_id'] ?? ''));
+    }
+
+    /**
      * @param array<string, mixed> $asset
      */
     private function fileResponse(string $path, array $asset, ?string $assetId): Response
@@ -83,8 +99,15 @@ final class DownloadController
             (new AuditService())->write('asset.download', 'media_assets', $assetId);
         }
 
+        $mime = !empty($asset['export_id']) ? 'text/csv; charset=utf-8' : $this->mimeType($path, $asset);
+        if ($mime === 'application/octet-stream') {
+            // Generated media stored by URL have no recorded type: use the
+            // upstream's, else sniff the bytes, so <img>/<video> can render.
+            $mime = $this->remoteContentType ?? $this->sniff($body) ?? $mime;
+        }
+
         return Response::raw($body, 200, [
-            'Content-Type' => !empty($asset['export_id']) ? 'text/csv; charset=utf-8' : $this->mimeType($path, $asset),
+            'Content-Type' => $mime,
             'Content-Disposition' => 'attachment; filename="' . $this->filename($path, $asset) . '"',
             'Cache-Control' => 'private, max-age=0, no-store',
         ]);
@@ -110,14 +133,22 @@ final class DownloadController
         }
 
         if (preg_match('/^https?:\/\//i', $path) === 1) {
-            return @file_get_contents($path);
+            // Upstream-returned URL: re-validated per redirect, size and time bounded.
+            $fetched = (new SafeRemoteFetcher())->get($path, OutboundUrlPolicy::PURPOSE_REMOTE_ASSET);
+            if (!$fetched['ok']) {
+                App::logger()->warning('download', 'remote asset fetch refused', ['error' => $fetched['error'] ?? null]);
+                return false;
+            }
+
+            $type = strtolower(trim(explode(';', (string) ($fetched['content_type'] ?? ''))[0]));
+            $this->remoteContentType = preg_match('#^(image|video|audio)/[a-z0-9.+-]+$#', $type) === 1 ? $type : null;
+
+            return (string) $fetched['body'];
         }
 
-        if (!is_file($path)) {
-            return false;
-        }
+        $driver = \TokenHub\Services\Media\MediaStorageManager::forPath($path);
 
-        return file_get_contents($path);
+        return $driver !== null ? $driver->read($path) : false;
     }
 
     /**
@@ -135,6 +166,17 @@ final class DownloadController
 
         $type = function_exists('mime_content_type') ? mime_content_type($path) : false;
         return is_string($type) && $type !== '' ? $type : 'application/octet-stream';
+    }
+
+    private function sniff(string $body): ?string
+    {
+        if ($body === '' || !function_exists('finfo_open')) {
+            return null;
+        }
+        $finfo = finfo_open(FILEINFO_MIME_TYPE);
+        $type = $finfo !== false ? finfo_buffer($finfo, substr($body, 0, 65536)) : false;
+
+        return is_string($type) && preg_match('#^(image|video|audio)/#', $type) === 1 ? $type : null;
     }
 
     /**

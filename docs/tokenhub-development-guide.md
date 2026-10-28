@@ -50,7 +50,7 @@ TokenHub 按分层架构设计，避免把网关、安全、统计、内容留�
 
 ```text
 访问层
-  Caddy / HTTPS / IP 网段限制 / 增强 WAF / 证书自动续期
+  Caddy / HTTPS / IP 网段限制 / 证书自动续期
 
 网关层
   OpenAI 兼容 API / Anthropic 兼容 API / API Key 鉴权 / 限额 / 路由 / 流式透传
@@ -89,7 +89,7 @@ TokenHub 按分层架构设计，避免把网关、安全、统计、内容留�
 | 价格配置模块 | 可选配置输入 Token 单价、输出 Token 单价、缓存 Token 单价、请求单价、币种，用于查看成本 |
 | API Key 模块 | 对外 Key 生成、绑定用户、模型权限、限额、启停、过期时间 |
 | 代理转发模块 | 接收外部请求，鉴权、限额校验、路由到目标厂商，统一响应 |
-| 入口代理模块 | 使用 Caddy 或同类反向代理处理 TLS、HTTP/2、HTTP/3、压缩、访问日志、IP 网段限制、增强 WAF 和负载均衡 |
+| 入口代理模块 | 使用 Caddy 或同类反向代理处理 TLS、HTTP/2、HTTP/3、压缩、访问日志、IP 网段限制和负载均衡 |
 | 用量统计模块 | 记录请求明细、Token 用量、可选成本、耗时、状态码、错误信息 |
 | 多模态任务模块 | 管理 ASR、TTS、文生图、文生视频等异步任务、文件资产和状态回调 |
 | 内容留存模块 | 可选保存用户请求内容和模型生成内容，支持查看权限、脱敏和保留天数配置 |
@@ -100,7 +100,7 @@ TokenHub 按分层架构设计，避免把网关、安全、统计、内容留�
 ### 3.3 请求链路
 
 1. 客户端使用 TokenHub 生成的 API Key 发起 OpenAI 兼容或 Anthropic 兼容格式请求。
-2. Caddy 作为入口代理处理 TLS、HTTP/2、HTTP/3、连接复用、IP 网段限制、增强 WAF、基础限流和负载均衡。
+2. Caddy 作为入口代理处理 TLS、HTTP/2、HTTP/3、连接复用、IP 网段限制、基础限流和负载均衡。
 3. TokenHub 应用网关识别 Key，加载用户、部门、模型权限和限额配置。
 4. 校验 Key 状态、过期时间、模型权限、调用次数、Token 限额，以及启用价格后的成本限额。
 5. 根据请求格式和模型配置选择目标厂商。
@@ -122,7 +122,7 @@ TokenHub 按分层架构设计，避免把网关、安全、统计、内容留�
 | --- | --- | --- |
 | 后端语言 | PHP 8.2+ | 主要业务开发语言 |
 | 后端架构 | 原生 PHP 自研服务 | 不使用 Laravel、Hyperf、ThinkPHP、Symfony 等完整后端框架 |
-| 入口代理 | Caddy 2.x | HTTPS、自动证书、反向代理、增强 WAF、IP 网段限制 |
+| 入口代理 | Caddy 2.x | HTTPS、自动证书、反向代理、IP 网段限制 |
 | 数据库 | MySQL 9.7 | 用户、部门、Key、模型、明细、统计、审计等核心数据 |
 | 缓存 | Redis 6+ | Key 状态、权限缓存、限额计数、并发计数 |
 | 队列 | Redis Queue / RabbitMQ / MySQL Queue | 明细写入、聚合统计、日志归档、导出任务 |
@@ -173,7 +173,6 @@ app/
     AuthMiddleware.php
     CsrfMiddleware.php
     PermissionMiddleware.php
-    WafMiddleware.php
   Support/
     Router.php
     Response.php
@@ -321,7 +320,7 @@ Caddy 职责：
 - 自动 HTTPS 和证书续期。
 - 反向代理到 PHP 服务。
 - IP 网段限制。
-- 增强 WAF。
+- 静态入口加固（方法、高风险路径、敏感 Query）。
 - 访问日志脱敏。
 - 负载均衡多个 PHP Gateway 实例。
 - 托管 Admin 静态资源。
@@ -912,7 +911,7 @@ content_redacted,asset_ids,asset_download_urls,error_code,error_message
 | 活跃部门数 | 当天有调用的部门数 |
 | 活跃 Key 数 | 当天有调用的 Key 数 |
 | 异常请求数 | 失败、超时、限额拒绝请求数 |
-| 安全拦截次数 | Caddy WAF、IP 白名单、脱敏阻断等拦截次数 |
+| 安全拦截次数 | IP 白名单、脱敏阻断等拦截次数 |
 | 队列堆积量 | 明细、日志、聚合、导出任务队列堆积 |
 
 ### 10.2 分析视图
@@ -929,7 +928,7 @@ content_redacted,asset_ids,asset_download_urls,error_code,error_message
 | 模型分析 | 模型调用量、Token、延迟、错误率、成本占比 |
 | 厂商分析 | 厂商调用量、成功率、延迟、错误率、成本、熔断情况 |
 | API Key 分析 | Key 调用量、限额使用率、最后调用时间、异常来源 IP |
-| 安全分析 | WAF 命中、IP 拦截、脱敏命中、越权访问、导出行为 |
+| 安全分析 | IP 拦截、脱敏命中、越权访问、导出行为 |
 | 性能分析 | 网关延迟、首包延迟、SSE 连接数、队列堆积、Redis 耗时 |
 
 ### 10.3 排行榜
@@ -943,7 +942,7 @@ content_redacted,asset_ids,asset_download_urls,error_code,error_message
 | API Key 使用排行榜 | 调用次数、Token、失败次数、限额使用率、来源 IP 数 |
 | 模型热度排行榜 | 调用次数、Token、成功率、平均延迟、成本 |
 | 厂商稳定性排行榜 | 成功率、错误率、P95 延迟、超时次数 |
-| 异常调用排行榜 | 失败次数、限额拒绝次数、WAF 命中次数、脱敏阻断次数 |
+| 异常调用排行榜 | 失败次数、限额拒绝次数、脱敏阻断次数 |
 | 成本排行榜 | 部门成本、员工成本、模型成本、厂商成本 |
 
 排行榜规则：
@@ -988,7 +987,7 @@ content_redacted,asset_ids,asset_download_urls,error_code,error_message
 | 用户异常 | 单用户调用突增、失败突增、来源 IP 异常 |
 | 部门异常 | 部门用量突增、成本突增、限额接近耗尽 |
 | Key 异常 | Key 失败次数过高、来源 IP 过多、疑似泄漏 |
-| 安全异常 | WAF 命中、越权访问、脱敏阻断、导出异常 |
+| 安全异常 | 越权访问、脱敏阻断、导出异常 |
 | 系统异常 | 队列堆积、日志写入失败、明细写入失败、证书即将过期 |
 
 ### 10.6 大屏钻取
@@ -1102,9 +1101,6 @@ log_retention_policies
 export_tasks
 desensitization_policies
 desensitization_events
-waf_rules
-waf_rule_versions
-waf_events
 dashboard_share_links
 dashboard_share_access_logs
 ```
@@ -1123,7 +1119,6 @@ dashboard_share_access_logs
 - 脱敏策略可以绑定到系统、部门、API Key、模型或厂商。
 - 日志留存策略可以按日志类型配置。
 - 日志导出和会话存档导出通过 `export_tasks` 异步任务管理。
-- Caddy WAF 结构化规则保存到 `waf_rules`，每次发布生成 `waf_rule_versions`，命中事件写入 `waf_events`。
 - 独立大屏链接保存到 `dashboard_share_links`，访问、登录、失败和 IP 拒绝记录到 `dashboard_share_access_logs`。
 
 ### 11.3 索引建议
@@ -1153,10 +1148,6 @@ export_tasks(expires_at)
 desensitization_policies(scope_type, scope_id)
 desensitization_events(request_id, created_at)
 desensitization_events(policy_id, created_at)
-waf_rules(scope, enabled, priority)
-waf_rule_versions(status, created_at)
-waf_events(rule_id, created_at)
-waf_events(source_ip, created_at)
 dashboard_share_links(share_code)
 dashboard_share_links(status, expires_at)
 dashboard_share_access_logs(share_link_id, created_at)
@@ -1236,21 +1227,11 @@ GET    /admin/system/log-retention
 PUT    /admin/system/log-retention
 GET    /admin/system/desensitization
 PUT    /admin/system/desensitization
-GET    /admin/system/waf
-PUT    /admin/system/waf
 GET    /admin/desensitization/policies
 POST   /admin/desensitization/policies
 PUT    /admin/desensitization/policies/{id}
 PATCH  /admin/desensitization/policies/{id}/status
 GET    /admin/desensitization/events
-GET    /admin/waf/rules
-POST   /admin/waf/rules
-PUT    /admin/waf/rules/{id}
-PATCH  /admin/waf/rules/{id}/status
-POST   /admin/waf/publish
-GET    /admin/waf/versions
-POST   /admin/waf/versions/{id}/rollback
-GET    /admin/waf/events
 GET    /admin/audit-logs
 POST   /admin/logs/export
 GET    /admin/export-tasks
@@ -1398,7 +1379,7 @@ Caddy 负责：
 - HTTP/2、HTTP/3 和连接复用。
 - 反向代理和多实例负载均衡。
 - 基础 IP 网段限制、IP 限流和访问日志。
-- 增强 WAF 规则，例如限制方法、路径、Header、Query、请求体大小、可疑请求特征和管理端访问网段。
+- 静态入口加固规则，例如限制方法、高风险路径、敏感 Query 和请求体大小。
 - 静态管理端资源托管。
 - 健康检查和故障实例摘除。
 
@@ -1504,9 +1485,9 @@ api.example.com {
 
 证书配置不应替代业务鉴权。即使 TLS 证书有效，TokenHub Gateway 仍必须校验 API Key、IP 白名单、用户、部门、模型和限额。
 
-### 14.5 API 访问限制和增强 Caddy WAF
+### 14.5 API 访问限制和 Caddy 入口加固
 
-Caddy WAF 是本方案的重要安全边界，但它不能替代 PHP Gateway 的业务鉴权。推荐采用三层防护：Caddy 边缘 WAF 先挡明显异常流量，PHP Gateway 做业务级安全校验，日志和审计系统负责追踪、告警和复盘。
+TokenHub 不内置 WAF 防火墙功能（2026-10-28 已移除 WAF 规则管理、攻击记录和登录失败 IP 封禁）。入口安全由 Caddy 静态配置加固和 PHP Gateway 业务鉴权共同承担；如需 SQL 注入、XSS、Bot、CC 等专业防护，应在 TokenHub 之前部署独立的专业 WAF 或云 WAF。
 
 防护分层：
 
@@ -1514,9 +1495,9 @@ Caddy WAF 是本方案的重要安全边界，但它不能替代 PHP Gateway 的
 | --- | --- | --- |
 | Caddy 边缘层 | IP/CIDR、TLS、方法、路径、Header、Query、请求体大小、基础频率限制、安全响应头 | 在请求进入 PHP 前先拦截低成本风险 |
 | PHP Gateway 层 | API Key、用户、部门、模型权限、限额、AST 脱敏、JSON Body 风险识别、SSE 内容审计 | 理解业务语义，适合做深度校验 |
-| 日志审计层 | WAF 命中、规则版本、来源 IP、请求摘要、处置动作、告警 | 所有安全事件可追踪、可导出、可复盘 |
+| 日志审计层 | 访问日志、审计日志、脱敏事件、告警 | 所有安全事件可追踪、可导出、可复盘 |
 
-Caddy WAF 必须支持的规则类型：
+Caddy 静态配置建议覆盖的规则类型（写在 Caddyfile 中，不提供后台管理）：
 
 | 规则类型 | 动作 | 说明 |
 | --- | --- | --- |
@@ -1529,7 +1510,6 @@ Caddy WAF 必须支持的规则类型：
 | 静态资源安全头 | `set` | CSP、HSTS、X-Frame-Options、Referrer-Policy、Permissions-Policy |
 | 频率和并发 | `limit` / `deny` | Caddy 做粗粒度限制，精确 Key 限额由 PHP Gateway 做 |
 | 违规字段脱敏 | `mask` | Caddy 日志和简单 Header 可显示 `****` |
-| 安全事件记录 | `log` | 写入 `caddy-security.log`，包含规则 ID 和动作 |
 
 边缘层策略：
 
@@ -1541,17 +1521,7 @@ Caddy WAF 必须支持的规则类型：
 - 限制高风险路径，例如隐藏文件、管理后台调试路径、源码路径。
 - 对可疑 Header、Query、Path 做基础拦截。
 - 对违规 Header、Query 参数、响应 Header、访问日志字段做星号脱敏或删除。
-- 对 SQL 注入、XSS、Bot、CC 等复杂防护，可采用 Caddy 插件、前置专业 WAF 或云 WAF；即便启用专业 WAF，PHP Gateway 仍必须保留业务校验。
-
-WAF 规则管理要求：
-
-- 后台提供 WAF 配置页面，但不直接让管理员手写任意 Caddyfile。
-- 后台保存结构化规则，例如 `rule_id`、`scope`、`matcher`、`action`、`priority`、`enabled`、`description`。
-- 由后端生成 Caddy 配置片段，经过语法校验后才能发布。
-- 每次规则发布生成版本号，支持查看差异、回滚、审计。
-- 高危规则发布需要超级管理员确认，例如全局阻断、管理端网段变更、请求体大小降低。
-- Caddy reload 失败必须保留旧配置，不允许导致入口不可用。
-- WAF 命中事件写入独立日志，并在智慧大屏展示命中趋势、来源 IP、规则排行。
+- 对 SQL 注入、XSS、Bot、CC 等复杂防护，可在 TokenHub 之前部署专业 WAF 或云 WAF；即便启用专业 WAF，PHP Gateway 仍必须保留业务校验。
 
 Caddyfile 示例：
 
@@ -1630,7 +1600,6 @@ admin.example.com {
 - 调用次数、Token、音频、图片、视频和成本限额。
 - 并发限制和异常调用检测。
 - JSON Body、SSE 流式内容、模型输出内容、代码片段和配置文件的深度脱敏。
-- WAF 规则命中后的业务封禁策略，例如临时封禁 Key、来源 IP 降权、二次验证。
 
 ### 14.6 Caddy 违规字段脱敏
 
@@ -1882,7 +1851,6 @@ AST 脱敏用于处理代码、配置、JSON、YAML、SQL、XML、HTML 等结构
 ```text
 /var/log/tokenhub/
   caddy-access.log
-  caddy-security.log
   gateway-access.log
   gateway-error.log
   security.log
@@ -1899,7 +1867,6 @@ AST 脱敏用于处理代码、配置、JSON、YAML、SQL、XML、HTML 等结构
 | 日志文件 | 内容 | 是否允许包含敏感正文 |
 | --- | --- | --- |
 | `caddy-access.log` | Caddy 入口访问摘要、状态码、耗时、IP、路径 | 否 |
-| `caddy-security.log` | Caddy IP 拦截、WAF 命中、违规字段命中 | 否 |
 | `gateway-access.log` | API Key 鉴权后的请求摘要、模型、用户、部门、状态 | 否 |
 | `gateway-error.log` | Gateway 内部错误、上游调用失败、异常栈摘要 | 否 |
 | `security.log` | 安全事件、异常 IP、越权访问、限额异常、Key 异常 | 否 |
@@ -2021,7 +1988,6 @@ AST 脱敏用于处理代码、配置、JSON、YAML、SQL、XML、HTML 等结构
 
 告警建议：
 
-- Caddy WAF 命中次数异常。
 - 非允许网段访问次数异常。
 - API Key 鉴权失败次数异常。
 - 单用户或单部门用量突增。
@@ -2096,9 +2062,6 @@ latency_ms,error_code,message
 | `SCREEN_LINK_DISABLED` | 403 | 独立大屏链接已停用 |
 | `SCREEN_LINK_EXPIRED` | 403 | 独立大屏链接登录有效期已过，不允许新登录 |
 | `SCREEN_PERMISSION_DENIED` | 403 | 独立大屏无权查看该指标或数据范围 |
-| `WAF_BLOCKED` | 403 | Caddy WAF 或 Gateway WAF 规则拦截 |
-| `WAF_CONFIG_INVALID` | 400 | WAF 规则配置不合法 |
-| `WAF_PUBLISH_FAILED` | 500 | WAF 规则发布或 Caddy reload 失败 |
 | `MODEL_FORBIDDEN` | 403 | Key 未授权该模型 |
 | `QUOTA_EXCEEDED` | 429 | 调用次数、Token 或成本超过限额 |
 | `CONCURRENCY_EXCEEDED` | 429 | 并发请求超过限制 |
@@ -2130,8 +2093,6 @@ API Key 管理
 审计日志
 日志中心
 脱敏策略
-WAF 安全策略
-WAF 命中事件
 系统设置
 ```
 
@@ -2152,8 +2113,6 @@ WAF 命中事件
 - 日志中心：按独立日志文件、请求 ID、用户、部门、Key、厂商、模型、错误码、安全事件查询日志。
 - 导出任务：查看日志导出、会话存档导出、明细导出的任务状态、下载链接和过期时间。
 - 脱敏策略：配置 AST 脱敏规则、文本脱敏规则、作用范围、失败处理动作和命中审计。
-- WAF 安全策略：配置 Caddy 增强 WAF 结构化规则、规则优先级、作用域、发布版本、回滚和 Caddy reload 状态。
-- WAF 命中事件：查看规则命中、来源 IP、请求摘要、处置动作、关联用户或 API Key、告警状态和审计记录。
 - 系统设置：配置内容留存开关、默认留存天数、最大留存天数、是否允许导出内容。
 - 系统设置：配置管理端 IP 白名单、API 入口允许网段、Key 级 IP 白名单开关、Caddy 违规字段脱敏规则、证书模式、证书剩余有效期告警、导出文件有效期、日志脱敏规则、日志留存天数、日志归档天数、备份保留天数。
 
@@ -2201,8 +2160,7 @@ WAF 命中事件
 - 审计日志。
 - 多厂商优先级和故障切换。
 - 安全设置、日志脱敏、导出有效期和审计查询。
-- Caddy 增强 WAF、IP 网段白名单、请求体大小限制、违规字段脱敏、规则版本发布和异常访问审计。
-- WAF 安全策略页面、WAF 命中事件页面、规则发布审计和回滚。
+- Caddy IP 网段白名单、请求体大小限制、违规字段脱敏和异常访问审计。
 - 大屏分享链接管理、密码重置、会话撤销、访问日志查询和过期清理。
 - 证书续期告警、Caddy 证书存储持久化和多实例证书共享。
 - AST 脱敏策略、脱敏事件查询和出站脱敏。
@@ -2276,7 +2234,7 @@ WAF 命中事件
 - Caddy 能按 CIDR 网段限制访问，非允许网段请求被拒绝。
 - 管理端只能通过内网、VPN 或办公网段访问。
 - API Key 级 IP 白名单在 Gateway 层仍然生效，不能只依赖 Caddy。
-- Caddy 增强 WAF 能拦截非法方法、高风险路径、超大请求体、可疑 Query、异常 Header 和非授权网段。
+- Caddy 静态配置能拦截非法方法、高风险路径、超大请求体、敏感 Query 和非授权网段。
 - Caddy 能对命中的违规 Header、Query、响应 Header 和访问日志字段显示 `****` 或阻断请求。
 - Caddy 不应缓存并改写 SSE 流式响应，流式内容脱敏应由 TokenHub Gateway 处理。
 - 流式响应不能等待完整响应后再返回，应验证首包透传延迟。
@@ -2304,7 +2262,6 @@ WAF 命中事件
 - 可以配置内网 IP 或内网域名证书，支持 Caddy 本地 CA 或企业内部 CA。
 - 可以监控证书剩余有效期，并在续期失败或即将过期时告警。
 - 可以配置管理端和 API 入口允许访问的 IP 段，支持仅允许内网或指定网段访问。
-- 可以配置 Caddy 增强 WAF 规则，对非法方法、高风险路径、超大请求体、可疑 Query、异常 Header 和非授权网段进行第一层拦截。
 - 可以配置 Caddy 违规字段规则，命中后对 Header、Query、响应 Header、访问日志显示 `****` 或直接阻断。
 - JSON 正文、SSE 流式内容和模型输出的深度脱敏由 TokenHub Gateway 或 AST 脱敏模块处理。
 - 即使 Caddy 放行，TokenHub Gateway 仍会执行 API Key、IP 白名单、用户、部门、模型和限额校验。
@@ -2353,7 +2310,7 @@ WAF 命中事件
 | 内容留存 | 可配置保存天数、按权限查看、到期清理 |
 | 多模态资产 | 任务、媒体资产、短期下载链接 |
 | 大屏分享 | 独立链接、独立用户名密码、只读范围、IP 白名单、过期、访问日志 |
-| 安全 | HTTPS、IP 网段、Caddy 增强 WAF、AST 脱敏、日志脱敏、审计 |
+| 安全 | HTTPS、IP 网段、Caddy 入口加固、AST 脱敏、日志脱敏、审计 |
 | 性能 | Caddy 入口、流式透传、连接池、Redis 限额、异步写入 |
 | 日志 | 独立日志文件、JSON Lines、轮转、留存、查询、告警 |
 | 运维 | 证书自动续期、证书告警、备份加密、恢复审计 |
@@ -2398,14 +2355,14 @@ MVP 必须先做：
 - 多模态任务和媒体资产。
 - 内容留存、AST 脱敏、导出控制。
 - 完整限额、聚合统计、性能监控。
-- Caddy 增强 WAF、证书告警、日志中心。
+- Caddy 入口加固、证书告警、日志中心。
 
 第三阶段做增强：
 
 - 多厂商故障切换。
 - 成本分析和利润分析。
 - 多租户。
-- 专业 WAF 或云 WAF。
+- 前置专业 WAF 或云 WAF（独立部署，不内置于 TokenHub）。
 - 高可用队列、死信补偿。
 - 全链路追踪和集中日志平台。
 - 自动化备份恢复演练。

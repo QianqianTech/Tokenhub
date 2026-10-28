@@ -44,14 +44,7 @@ assert_true($apiKeyBulkCssStart !== false && $apiKeyBulkCssEnd !== false, 'API k
 $apiKeyBulkCss = substr($adminCss, $apiKeyBulkCssStart, $apiKeyBulkCssEnd - $apiKeyBulkCssStart);
 assert_true(str_contains($apiKeyBulkCss, 'background: var(--surface-soft);'), 'API key bulk actions should use the active theme surface.');
 assert_true(str_contains($apiKeyBulkCss, 'color: var(--muted);'), 'API key bulk-action labels should use the active theme muted color.');
-assert_true(str_contains($tableSource, 'className: "waf-overview stack"'), 'WAF attack records page should lead with a dedicated WAF overview section.');
-assert_true(str_contains($tableSource, 'className: "waf-statistics-grid"'), 'WAF overview panels should not reuse the generic dashboard grid.');
-assert_true(str_contains($tableSource, 'className: "panel dashboard-panel waf-statistics-panel"'), 'WAF overview panels should expose a dedicated layout class.');
-assert_true(str_contains($tableSource, 'className: "panel table-panel waf-attack-list"'), 'WAF attack records should render in a dedicated attack-list section.');
-assert_true(str_contains($tableSource, 'WAF 概述'), 'WAF overview should be named explicitly.');
-assert_true(str_contains($tableSource, '攻击列表'), 'WAF records should be presented as the attack list.');
-assert_true(str_contains($adminCss, '.waf-statistics-grid'), 'Admin CSS should define the WAF statistics grid.');
-assert_true(str_contains($adminCss, 'grid-template-columns: minmax(0, 1fr)'), 'WAF statistics grid should render as a single readable column.');
+assert_true(!str_contains($tableSource, 'waf-') && !str_contains($adminCss, '.waf-'), 'Removed WAF pages should not leave WAF markup or styles behind.');
 assert_true(str_contains($tableSource, 'className: "rag-summary-list"'), 'RAG dashboard summaries should render as compact lists instead of cramped wide tables.');
 assert_true(str_contains($tableSource, 'className: "rag-summary-chip"'), 'RAG dashboard summaries should expose compact key-value chips.');
 assert_true(str_contains($adminCss, 'grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr))'), 'RAG dashboard columns should never force the page wider than the workspace.');

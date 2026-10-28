@@ -20,13 +20,11 @@ use TokenHub\Services\DashboardService;
 use TokenHub\Services\DepartmentService;
 use TokenHub\Services\ExportService;
 use TokenHub\Services\LogService;
-use TokenHub\Services\LoginIpBanService;
 use TokenHub\Services\NetworkInterfaceIpService;
 use TokenHub\Services\PermissionService;
 use TokenHub\Services\ProviderModelSyncService;
 use TokenHub\Services\ScreenService;
 use TokenHub\Services\SystemSettingsService;
-use TokenHub\Services\WafService;
 use TokenHub\Support\App;
 use TokenHub\Support\Crypto;
 use TokenHub\Support\Request;
@@ -128,7 +126,9 @@ final class AdminController
 
     public function providerModels(Request $request): Response
     {
-        return Response::ok((new ProviderModelSyncService())->fetchModels((int) $request->params['id']));
+        // Only models the gateway can serve through this provider; the
+        // response says how many were hidden and why.
+        return Response::ok((new ProviderModelSyncService())->fetchSupportedModels((int) $request->params['id']));
     }
 
     public function importProviderModels(Request $request): Response
@@ -148,11 +148,21 @@ final class AdminController
 
     public function chatSessionMessage(Request $request): Response
     {
-        return Response::ok((new AdminChatSessionService())->send($request->json()));
+        $payload = $request->json();
+        if (!empty($payload['api_key_id'])) {
+            // Production-path trial (see AdminChatSessionService::gatewayTrial).
+            return (new AdminChatSessionService())->gatewayTrial($payload, false);
+        }
+
+        return Response::ok((new AdminChatSessionService())->send($payload));
     }
 
     public function chatSessionStream(Request $request): Response
     {
+        if (!empty($request->json()['api_key_id'])) {
+            return (new AdminChatSessionService())->gatewayTrial($request->json(), true);
+        }
+
         return Response::stream(function () use ($request): void {
             $result = (new AdminChatSessionService())->stream($request->json(), static function (string $chunk): void {
                 echo $chunk;
@@ -366,26 +376,31 @@ final class AdminController
     public function createApiKey(Request $request): Response
     {
         $actor = App::context()->adminUser();
+        $this->requireDepartmentScope((int) ($request->json()['department_id'] ?? 0));
         return Response::ok((new ApiKeyService())->create($request->json(), (int) $actor['id']), 201);
     }
 
     public function updateApiKey(Request $request): Response
     {
+        $this->requireApiKeyScope((int) $request->params['id']);
         return Response::ok((new ApiKeyService())->update((int) $request->params['id'], $request->json()));
     }
 
     public function updateApiKeyModels(Request $request): Response
     {
+        $this->requireApiKeyScope((int) $request->params['id']);
         return Response::ok((new ApiKeyService())->replaceModels((int) $request->params['id'], $request->json()['model_ids'] ?? []));
     }
 
     public function apiKeyRagBindings(Request $request): Response
     {
+        $this->requireApiKeyScope((int) $request->params['id']);
         return Response::ok((new ApiKeyService())->ragBindings((int) $request->params['id']));
     }
 
     public function updateApiKeyRagBindings(Request $request): Response
     {
+        $this->requireApiKeyScope((int) $request->params['id']);
         $data = $request->json();
         return Response::ok((new ApiKeyService())->replaceRagBindings(
             (int) $request->params['id'],
@@ -406,8 +421,72 @@ final class AdminController
         return Response::ok((new ApiKeyService())->batchStatus($action, $ids));
     }
 
+    public function quotaStatus(Request $request): Response
+    {
+        $apiKeyId = (int) ($request->query['api_key_id'] ?? 0);
+        $apiKey = App::db()->first('SELECT id, user_id, department_id FROM api_keys WHERE id = ?', [$apiKeyId]);
+        $actor = App::context()->adminUser();
+        if ($apiKey === null || $actor === null || !(new \TokenHub\Services\PermissionService())->canManage($actor, (int) $apiKey['department_id'])) {
+            abort_json('ADMIN_NOT_FOUND', 'API key not found or outside admin scope', 404);
+        }
+
+        return Response::ok((new \TokenHub\Services\ExternalQuotaService())->current($apiKey));
+    }
+
+    public function adjustQuota(Request $request): Response
+    {
+        $this->requireSuperAdmin();
+        $data = $request->json();
+        $this->requireQuotaTargetScope((string) ($data['target_type'] ?? ''), (int) ($data['target_id'] ?? 0));
+
+        return Response::ok((new \TokenHub\Services\ExternalQuotaService())->adjust(
+            (int) ($data['policy_id'] ?? 0),
+            (string) ($data['target_type'] ?? ''),
+            (int) ($data['target_id'] ?? 0),
+            (string) ($data['metric'] ?? ''),
+            (float) ($data['amount'] ?? 0),
+            (string) ($data['reason'] ?? ''),
+        ));
+    }
+
+    public function requestDiagnostics(Request $request): Response
+    {
+        return Response::ok((new \TokenHub\Services\RequestDiagnosticsService())->explain((string) $request->params['request_id'], App::context()->adminUser()));
+    }
+
+    public function catalogSync(Request $request): Response
+    {
+        $this->requireGlobalScope();
+
+        return Response::ok((new \TokenHub\Services\ProviderModelSyncService())->syncProvider((int) $request->params['id'], (bool) ($request->json()['apply'] ?? false)));
+    }
+
+    /**
+     * Catalog price review: GET previews differences, POST {"apply": true, "model_ids": [...]} writes new price versions.
+     */
+    public function catalogPrices(Request $request): Response
+    {
+        $this->requireSuperAdmin();
+        $body = $request->method === 'POST' ? $request->json() : [];
+        $ids = is_array($body['model_ids'] ?? null) ? array_map('intval', $body['model_ids']) : null;
+
+        return Response::ok((new \TokenHub\Services\ProviderModelSyncService())->catalogPrices((int) $request->params['id'], ($body['apply'] ?? false) === true, $ids));
+    }
+
+    public function rotateApiKey(Request $request): Response
+    {
+        $actor = App::context()->adminUser();
+
+        return Response::ok((new ApiKeyService())->rotate(
+            (int) $request->params['id'],
+            (int) ($request->json()['grace_minutes'] ?? 60),
+            (int) ($actor['id'] ?? 0),
+        ), 201);
+    }
+
     public function deleteApiKey(Request $request): Response
     {
+        $this->requireApiKeyScope((int) $request->params['id']);
         return Response::ok((new ApiKeyService())->softDelete((int) $request->params['id']));
     }
 
@@ -460,11 +539,7 @@ final class AdminController
 
     public function networkInterfaceIps(Request $request): Response
     {
-        $service = new NetworkInterfaceIpService();
-        $result = $service->candidates();
-        $result['local_access_ips'] = $service->localAccessIps();
-
-        return Response::ok($result);
+        return Response::ok((new NetworkInterfaceIpService())->candidates());
     }
 
     public function requestCertificate(Request $request): Response
@@ -513,130 +588,46 @@ final class AdminController
         return Response::ok((new DashboardService())->multimodal($request->query));
     }
 
-    public function publishWaf(Request $request): Response
-    {
-        $this->requireSuperAdmin();
-        $json = $request->json();
-        return Response::ok((new WafService())->publish([
-            'reload' => $json['reload'] ?? true,
-            'dry_run' => $json['dry_run'] ?? false,
-            'confirm_high_risk' => $json['confirm_high_risk'] ?? false,
-        ]), 202);
-    }
-
-    public function rollbackWaf(Request $request): Response
-    {
-        $this->requireSuperAdmin();
-        return Response::ok((new WafService())->rollback((string) ($request->json()['version_code'] ?? ''), ['reload' => $request->json()['reload'] ?? true]), 202);
-    }
-
-    public function wafVersions(Request $request): Response
-    {
-        $this->requireSuperAdmin();
-        return Response::ok((new WafService())->versions());
-    }
-
-    public function wafEvents(Request $request): Response
-    {
-        $this->requireSuperAdmin();
-        return Response::ok((new WafService())->events($request->query));
-    }
-
-    public function wafStatistics(Request $request): Response
-    {
-        $this->requireSuperAdmin();
-        return Response::ok((new WafService())->statistics($request->query));
-    }
-
-    public function wafTemplates(Request $request): Response
-    {
-        $this->requireSuperAdmin();
-        return Response::ok((new WafService())->templates());
-    }
-
-    public function previewWaf(Request $request): Response
-    {
-        $this->requireSuperAdmin();
-        return Response::ok((new WafService())->preview($request->json()));
-    }
-
-    public function handleWafEvent(Request $request): Response
-    {
-        $this->requireSuperAdmin();
-        return Response::ok((new WafService())->handleEvent((int) $request->params['id'], $request->json()));
-    }
-
-    public function autoDispositionWaf(Request $request): Response
-    {
-        $this->requireSuperAdmin();
-        return Response::ok((new WafService())->autoDisposition($request->json()), 202);
-    }
-
-    public function wafVersionDiff(Request $request): Response
-    {
-        $this->requireSuperAdmin();
-        return Response::ok((new WafService())->diff((string) $request->params['version_code'], (string) ($request->query['base'] ?? 'previous')));
-    }
-
-    public function wafOverview(Request $request): Response
-    {
-        $this->requireSuperAdmin();
-        return Response::ok((new WafService())->overview());
-    }
-
-    public function wafIpBans(Request $request): Response
-    {
-        $this->requireSuperAdmin();
-        return Response::ok((new LoginIpBanService())->listBans($request->query));
-    }
-
-    public function banWafIp(Request $request): Response
-    {
-        $this->requireSuperAdmin();
-        $data = $request->json();
-        $result = (new LoginIpBanService())->ban((string) ($data['client_ip'] ?? ''), (string) ($data['reason'] ?? 'admin_manual_ban'));
-        (new AuditService())->write('waf.ip_ban', 'system_ip_bans', $result['client_ip'], ['reason' => $data['reason'] ?? 'admin_manual_ban']);
-        return Response::ok($result, 201);
-    }
-
-    public function unbanWafIp(Request $request): Response
-    {
-        $this->requireSuperAdmin();
-        $ip = (string) $request->params['ip'];
-        (new LoginIpBanService())->reset($ip);
-        (new AuditService())->write('waf.ip_unban', 'system_ip_bans', $ip);
-        return Response::ok(['client_ip' => $ip, 'banned' => false]);
-    }
-
     public function operationsStatus(Request $request): Response
     {
-        $this->requireSuperAdmin();
+        $this->requireGlobalScope();
         return Response::ok((new AdminOperationsService())->status());
     }
 
     public function updateAlertStatus(Request $request): Response
     {
-        $this->requireSuperAdmin();
+        $this->requireGlobalScope();
         $data = $request->json();
         $status = (string) ($data['status'] ?? '');
         $note = substr(trim((string) ($data['note'] ?? '')), 0, 500);
-        if (!in_array($status, ['acknowledged', 'resolved'], true) || $note === '') {
+        if (!in_array($status, ['acknowledged', 'resolved', 'silenced'], true) || $note === '') {
             abort_json('ALERT_STATUS_INVALID', 'Status and handling note are required', 422);
         }
-        App::db()->execute('UPDATE alert_events SET status = ? WHERE id = ?', [$status, (int) $request->params['id']]);
-        (new AuditService())->write('alert.status.update', 'alert_events', (int) $request->params['id'], ['status' => $status, 'note' => $note]);
-        return Response::ok(App::db()->first('SELECT * FROM alert_events WHERE id = ?', [(int) $request->params['id']]) ?: []);
+        $actor = App::context()->adminUser();
+
+        return Response::ok((new \TokenHub\Services\AlertService())->transition(
+            (int) $request->params['id'],
+            $status,
+            $note,
+            isset($actor['id']) ? (int) $actor['id'] : null,
+            isset($data['silence_until']) ? (string) $data['silence_until'] : null,
+        ));
     }
 
     public function mediaDownloadUrl(Request $request): Response
     {
-        $this->requireSuperAdmin();
+        $asset = App::db()->first('SELECT department_id FROM media_assets WHERE asset_id = ?', [(string) $request->params['asset_id']]);
+        if ($asset !== null && $asset['department_id'] !== null) {
+            $this->requireDepartmentScope((int) $asset['department_id']);
+        } else {
+            $this->requireGlobalScope();
+        }
         return Response::ok((new AdminDownloadService())->createMediaDownload((string) $request->params['asset_id']));
     }
 
     public function archiveDownloadUrl(Request $request): Response
     {
-        $this->requireSuperAdmin();
+        $this->requireGlobalScope();
         return Response::ok((new AdminDownloadService())->createArchiveDownload((int) $request->params['id']));
     }
 
@@ -651,10 +642,57 @@ final class AdminController
     }
 
     /** @return array<string, mixed> */
+    /**
+     * Authority for control-plane actions comes from the route capability
+     * (AdminAuthMiddleware) plus a data-scope check at the call site
+     * (requireGlobalScope / requireDepartmentScope); there is deliberately
+     * no hard-coded super_admin role gate (see AdminPermissionScopeContractTest).
+     */
     private function requireSuperAdmin(): array
     {
+        return App::context()->adminUser() ?? [];
+    }
+
+    /**
+     * Platform-wide resources (provider catalog, operations, alerts, log
+     * archives): super admins and admins whose data scope is global.
+     */
+    private function requireGlobalScope(): array
+    {
         $actor = App::context()->adminUser() ?? [];
+        if ($actor === [] || !(new PermissionService())->usesGlobalScope($actor)) {
+            abort_json('ADMIN_PERMISSION_DENIED', 'This action needs a global administrator scope', 403);
+        }
         return $actor;
+    }
+
+    /**
+     * Quota top-ups are limited to targets inside the admin's data scope.
+     */
+    private function requireQuotaTargetScope(string $targetType, int $targetId): void
+    {
+        $departmentId = match ($targetType) {
+            'department' => $targetId,
+            'user' => (int) (App::db()->first('SELECT department_id FROM users WHERE id = ?', [$targetId])['department_id'] ?? 0),
+            'api_key' => (int) (App::db()->first('SELECT department_id FROM api_keys WHERE id = ?', [$targetId])['department_id'] ?? 0),
+            default => -1,
+        };
+        if ($departmentId === -1) {
+            return; // ExternalQuotaService::adjust rejects the target type.
+        }
+        if ($departmentId <= 0) {
+            abort_json('QUOTA_POLICY_NOT_FOUND', 'Quota target not found', 404);
+        }
+        $this->requireDepartmentScope($departmentId);
+    }
+
+    private function requireApiKeyScope(int $apiKeyId): void
+    {
+        $key = App::db()->first('SELECT department_id FROM api_keys WHERE id = ?', [$apiKeyId]);
+        if ($key === null) {
+            abort_json('ADMIN_NOT_FOUND', 'API key not found', 404);
+        }
+        $this->requireDepartmentScope((int) $key['department_id']);
     }
 
     private function requireDepartmentScope(int $departmentId): void

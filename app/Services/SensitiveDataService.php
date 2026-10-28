@@ -15,6 +15,11 @@ final class SensitiveDataService
         if ($table === 'providers') {
             $row['secret_status'] = empty($row['encrypted_secret']) ? 'empty' : 'configured';
             unset($row['encrypted_secret']);
+            if (array_key_exists('default_headers', $row) && $row['default_headers'] !== null) {
+                $vault = new ProviderHeaderVault();
+                $row['sensitive_header_plaintext'] = $vault->plaintextSensitiveHeaders(is_string($row['default_headers']) || is_array($row['default_headers']) ? $row['default_headers'] : null);
+                $row['default_headers'] = json_encode($vault->maskForDisplay(is_string($row['default_headers']) || is_array($row['default_headers']) ? $row['default_headers'] : null), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+            }
         }
 
         if ($table === 'api_keys') {

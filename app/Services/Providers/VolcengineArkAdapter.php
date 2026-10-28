@@ -6,7 +6,7 @@ namespace TokenHub\Services\Providers;
 
 use TokenHub\Services\Gateway\GatewayRequest;
 
-final class VolcengineArkAdapter implements ProviderAdapterInterface
+final class VolcengineArkAdapter implements ProviderAdapterInterface, AsyncTaskAdapter
 {
     private OpenAIAdapter $openai;
 
@@ -32,10 +32,21 @@ final class VolcengineArkAdapter implements ProviderAdapterInterface
             'content' => $this->content($payload),
         ];
 
-        foreach (['duration', 'resolution', 'ratio', 'seed', 'fps', 'watermark', 'camera_fixed'] as $key) {
+        foreach (['duration', 'resolution', 'ratio', 'seed', 'fps', 'watermark', 'camera_fixed', 'generate_audio', 'return_last_frame', 'service_tier', 'execution_expires_after'] as $key) {
             if (array_key_exists($key, $payload)) {
                 $body[$key] = $payload[$key];
             }
+        }
+        if (!isset($body['ratio']) && isset($payload['aspect_ratio'])) {
+            $body['ratio'] = $payload['aspect_ratio'];
+        }
+        if (isset($payload['__tokenhub_callback_url']) && is_string($payload['__tokenhub_callback_url'])) {
+            $body['callback_url'] = $payload['__tokenhub_callback_url'];
+        }
+        if (is_array($payload['vendor_options'] ?? null)) {
+            // Extras only: model, duration and callback stay TokenHub's.
+            $extras = array_diff_key($payload['vendor_options'], array_flip(['model', 'duration', 'callback_url', 'content', 'resolution']));
+            $body = array_replace_recursive($body, $extras);
         }
 
         return [
@@ -74,8 +85,60 @@ final class VolcengineArkAdapter implements ProviderAdapterInterface
         if (($providerResponse['error'] ?? null) !== null) {
             $response['error'] = $providerResponse['error'];
         }
+        if ($status === 'succeeded') {
+            // Measured at completion; TaskBillingService settles the charge
+            // (Seedance is billed per output token, duration may be -1 = model's choice).
+            $measured = array_filter([
+                'video_seconds' => is_numeric($providerResponse['duration'] ?? null) && (float) $providerResponse['duration'] > 0 ? (int) ceil((float) $providerResponse['duration']) : null,
+                'output_tokens' => is_numeric($providerResponse['usage']['completion_tokens'] ?? null) ? (int) $providerResponse['usage']['completion_tokens'] : null,
+            ], static fn (mixed $value): bool => $value !== null);
+            if ($measured !== []) {
+                $response['vendor_usage'] = $measured;
+            }
+        }
 
         return array_filter($response, static fn (mixed $value): bool => $value !== null);
+    }
+
+    public function supportsCallback(string $capability = 'video_generation'): bool
+    {
+        // Only the video task API takes a callback; Seedream/TTS go through the OpenAI-compatible API.
+        return $capability === 'video_generation';
+    }
+
+    public function pollRequest(array $route, string $capability, string $providerTaskId, array $taskResult = []): ?array
+    {
+        if ($capability !== 'video_generation' || $providerTaskId === '') {
+            return null;
+        }
+
+        return ['method' => 'GET', 'endpoint' => '/contents/generations/tasks/' . rawurlencode($providerTaskId), 'headers' => ['Accept' => 'application/json']];
+    }
+
+    /**
+     * DELETE cancels a queued Seedance task (Ark refuses running ones).
+     *
+     * @param array<string, mixed> $route
+     * @return array{method: string, endpoint: string, headers: array<string, string>}|null
+     */
+    public function cancelRequest(array $route, string $capability, string $providerTaskId): ?array
+    {
+        if ($capability !== 'video_generation' || $providerTaskId === '') {
+            return null;
+        }
+
+        return ['method' => 'DELETE', 'endpoint' => '/contents/generations/tasks/' . rawurlencode($providerTaskId), 'headers' => ['Accept' => 'application/json']];
+    }
+
+    public function normalizePollResponse(string $capability, array $route, array $response, string $providerTaskId): array
+    {
+        $request = new GatewayRequest(endpoint: '/v1/videos/generations', protocol: 'openai', capability: $capability, model: (string) ($route['name'] ?? ''), stream: false, payload: [], estimatedUsage: []);
+        $normalized = $this->normalizeResponse($request, $route, $response);
+        if ($normalized['status'] === 'failed' && !is_array($normalized['error'] ?? null)) {
+            $normalized['error'] = ['code' => 'PROVIDER_TASK_FAILED', 'message' => (string) ($response['error']['message'] ?? 'Upstream task ' . (string) ($response['status'] ?? 'failed'))];
+        }
+
+        return $normalized;
     }
 
     public function normalizeError(int $status, string $body): array
@@ -118,9 +181,20 @@ final class VolcengineArkAdapter implements ProviderAdapterInterface
             'text' => (string) ($payload['prompt'] ?? $payload['input'] ?? ''),
         ]];
 
-        $imageUrl = $this->imageUrl($payload['image_url'] ?? $payload['image'] ?? null);
+        $imageUrl = $this->imageUrl($payload['first_frame'] ?? $payload['image_url'] ?? $payload['image'] ?? null);
+        $lastFrame = $this->imageUrl($payload['last_frame'] ?? $payload['end_image'] ?? null);
         if ($imageUrl !== null) {
-            $content[] = ['type' => 'image_url', 'image_url' => ['url' => $imageUrl]];
+            // Seedance 2.x needs explicit roles once a last frame is present.
+            $content[] = ['type' => 'image_url', 'image_url' => ['url' => $imageUrl], ...($lastFrame !== null ? ['role' => 'first_frame'] : [])];
+        }
+        if ($lastFrame !== null) {
+            $content[] = ['type' => 'image_url', 'image_url' => ['url' => $lastFrame], 'role' => 'last_frame'];
+        }
+        foreach ((array) ($payload['reference_images'] ?? []) as $reference) {
+            $url = $this->imageUrl($reference);
+            if ($url !== null) {
+                $content[] = ['type' => 'image_url', 'image_url' => ['url' => $url], 'role' => 'reference_image'];
+            }
         }
 
         return $content;
@@ -160,7 +234,7 @@ final class VolcengineArkAdapter implements ProviderAdapterInterface
     {
         return match (strtolower($status)) {
             'success', 'succeeded', 'completed', 'done' => 'succeeded',
-            'failed', 'error', 'canceled', 'cancelled' => 'failed',
+            'failed', 'error', 'canceled', 'cancelled', 'expired' => 'failed',
             default => 'processing',
         };
     }

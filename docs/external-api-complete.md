@@ -99,13 +99,18 @@ Compatibility response:
 TokenHub 对外暴露 OpenAI-compatible 和 Anthropic-compatible 网关接口：
 
 - `POST /v1/chat/completions`
+- `POST /v1/completions`（旧版文本补全，路由到 `text_generation` 模型，支持 `stream`）
 - `POST /v1/responses`
 - `POST /v1/messages`
 - `POST /v1/messages/count_tokens`
 - `POST /v1/embeddings`
+- `POST /v1/rerank`（检索重排，路由到能力为 `rerank` 的模型）
+- `POST /v1/moderations`（内容审核，路由到能力为 `moderation` 的模型）
 - `POST /v1/audio/transcriptions`
+- `POST /v1/audio/translations`
 - `POST /v1/audio/speech`
 - `POST /v1/images/generations`
+- `POST /v1/images/edits`
 - `POST /v1/videos/generations`
 
 Chat Completions 示例：
@@ -135,6 +140,25 @@ curl "${TOKENHUB_BASE_URL}/v1/responses" \
   }'
 ```
 
+重排与审核示例（请求体按 Jina / Cohere / TEI 与 OpenAI 的通用形态原样转发，`model` 改写为渠道的上游模型名）：
+
+```bash
+curl "${TOKENHUB_BASE_URL}/v1/rerank" \
+  -H "Authorization: Bearer ${TOKENHUB_API_KEY}" \
+  -H "Content-Type: application/json" \
+  -d '{"model": "bge-reranker", "query": "差旅报销流程", "documents": ["差旅报销需要发票", "年假规定"], "top_n": 1}'
+
+curl "${TOKENHUB_BASE_URL}/v1/moderations" \
+  -H "Authorization: Bearer ${TOKENHUB_API_KEY}" \
+  -H "Content-Type: application/json" \
+  -d '{"model": "omni-moderation", "input": "需要审核的文本"}'
+```
+
+- 重排用量取上游 `usage.total_tokens`（或 `prompt_tokens`、Cohere 的 `meta.billed_units.input_tokens`）记为输入 token；审核接口通常不返回用量，按输入估算并标记 `usage_source=estimated`。
+- 模型的 `capability` 必须与接口一致：用聊天模型调用 `/v1/rerank`（或反过来）返回 `422 MODEL_CAPABILITY_UNSUPPORTED`。
+- 上游路径不是 `/v1/rerank` 的厂商（如部分云厂商的 `/reranks`、`/compatible-api/v1/rerank`）在渠道的 `tokenhub_endpoint_map` 中映射，例如 `{"/v1/rerank": "/compatible-api/v1/rerank"}`。
+- `/v1/completions` 流式请求会自动加上 `stream_options.include_usage`，用量按上游最后一帧计量。
+
 `POST /v1/messages` 支持 Anthropic 形态的 `system`、`tools`、`tool_choice`、`stream`、文本块、图片块、`tool_use` 和 `tool_result`。`POST /v1/messages/count_tokens` 用于按 Anthropic 消息结构估算输入 token。
 
 流式输出：
@@ -151,6 +175,28 @@ curl -N "${TOKENHUB_BASE_URL}/v1/chat/completions" \
     "stream": true
   }'
 ```
+
+### 4.1 多模态接口约定
+
+| 能力 | 接口 | 请求 | 响应 |
+| --- | --- | --- | --- |
+| 图片理解 | `/v1/chat/completions`、`/v1/responses`、`/v1/messages` | `image_url`（URL 或 `data:image/...;base64,`）、`input_image`、Anthropic `image` 块 | 与上游协议一致 |
+| 图片生成 | `/v1/images/generations` | JSON | OpenAI 结构：`data[]` 每项带 `b64_json`，或 `url`（TokenHub 短期下载链接，默认 3600 秒，`GATEWAY_MEDIA_URL_TTL_SECONDS`）；另附 `assets[]` |
+| 图片编辑 | `/v1/images/edits` | `multipart/form-data`：`image` 或多个 `image[]`（png/jpeg/webp），可选 `mask` | 同图片生成 |
+| 语音合成 | `/v1/audio/speech` | JSON | 默认返回音频二进制（上游 Content-Type）；请求头 `X-TokenHub-Response-Mode: json` 返回 `b64_json` |
+| 语音识别 / 翻译 | `/v1/audio/transcriptions`、`/v1/audio/translations` | `multipart/form-data`：`file`（单文件 ≤ 25 MiB，`GATEWAY_MAX_UPLOAD_BYTES`） | `json` / `verbose_json` 返回 JSON；`text` / `srt` / `vtt` 原样返回文本 |
+| 视频理解 | `/v1/chat/completions` | `{"type":"video_url","video_url":{"url":...}}`（豆包、通义 VL、GLM-V 等）；Gemini 原生 `inline_data` / `file_data` 的 `video/*` | 与上游协议一致；模型须为 `video_understanding` 或在能力契约中声明 video |
+| 音频理解 | `/v1/chat/completions` | `{"type":"input_audio","input_audio":{"data":...,"format":"wav"}}`；Gemini `audio/*` | 与上游协议一致；模型须为 `audio_understanding` 或在契约中声明 audio |
+| 视频生成 | `/v1/videos/generations` | JSON，`image_url` 为图生视频 | 异步，`202` + `task_id`，见第 5 节 |
+
+说明：
+
+- 上游返回的素材 URL 不会直接暴露给调用方；图片 `url` 指向 TokenHub 的 `/download/...`，过期后用 `GET /v1/assets/{id}/download-url` 重新获取。设置 `GATEWAY_MEDIA_INLINE_RESPONSE=false` 后只返回 `assets[]`。
+- 图片按每张固定预算估算输入 token（`GATEWAY_MEDIA_TOKEN_ESTIMATE`，默认 1500），不再按 base64 长度估算；实际用量以上游返回为准。
+- 脱敏策略不会改写 base64 媒体数据和媒体 URL（如带签名参数的对象存储链接）。
+- 语音合成按字符计费（中文一个字算 1）；语音识别的音频秒数取自上游 `usage.seconds`、`duration` 或字幕最后时间戳。
+- 只配置为 `vision_understanding` 的模型同样接收纯文本请求。
+- 网关按请求内容识别输入模态：含视频片段的请求只路由到 `video_understanding` 模型（也接受图片），含音频输入的只路由到 `audio_understanding` 模型；模型能力契约（`capabilities.input_modalities`）有声明时以契约为准。不满足时返回 `422 MODEL_CAPABILITY_UNSUPPORTED` 并说明缺少哪种输入。`audio`、`modalities` 等语音输出参数不算音频输入。
 
 ## 5. 火山引擎 Seedance / 视频生成
 
@@ -207,6 +253,31 @@ GET /v1/assets/{id}/download-url
 ### POST /v1/tasks/{id}:refresh
 
 当任务处于非终态，并且已有 `provider_task_id` 时，TokenHub 会尝试从支持的上游厂商刷新状态。终态任务返回当前结果，并带 `refreshed=false`。
+
+### POST /v1/tasks/{id}:cancel
+
+取消尚未开始的上游任务（火山方舟、MiniMax H3、百炼万相支持；运行中的任务会被上游拒绝）。成功后任务状态为 `failed`，`error_code` 为 `TASK_CANCELLED`，提交时的预扣全额退还。无法取消时返回 `409 TASK_NOT_CANCELLABLE`。
+
+### 异步任务计费
+
+异步任务（视频、异步生图、音乐）提交时按请求参数预扣，任务结束时结算：失败、取消、过期全额退还；成功按厂商实测用量（实际时长、输出 token、上游成本等）多退少补。结算结果在 `GET /v1/tasks/{id}` 的 `result.billing` 中：
+
+```json
+{"reason": "actual_usage", "adjusted": true, "charged": {"video_seconds": 10, "cost_amount": "1.00000000"}, "final": {"video_seconds": 6, "output_tokens": 108900, "cost_amount": "0.81780000"}, "cost_delta": "-0.18220000"}
+```
+
+`reason` 取值：`actual_usage`（按实测结算）、`refund_failed`、`refund_cancelled`、`refund_expired`、`no_measurement`（厂商未报告用量，保持预扣）。
+
+### OpenAI Videos API
+
+使用 OpenAI SDK（`client.videos.*`）的应用可以直接接入，后端是渠道配置的任意视频厂商：
+
+| 接口 | 说明 |
+| --- | --- |
+| `POST /v1/videos` | 请求体同 `/v1/videos/generations`；另外 `seconds` 换算为时长，`size`（如 `1920x1080`）换算为比例和分辨率，`input_reference`（URL 或 data URI）作为首帧。返回 OpenAI video 对象，`id` 即任务 ID |
+| `GET /v1/videos/{id}` | video 对象（`queued` / `in_progress` / `completed` / `failed`），未完成时顺带刷新上游状态；`seconds` 为实测时长 |
+| `GET /v1/videos/{id}/content` | 视频文件；`?variant=thumbnail` 返回尾帧图片（有时） |
+| `DELETE /v1/videos/{id}` | 未完成时取消任务，已完成时删除素材 |
 
 ### GET /v1/assets
 
@@ -412,6 +483,49 @@ RAG API 用于外部系统导入知识库、预览解析结果、确认向量化
 
 确认预览内容并启动向量化。存在校验错误时会返回 `RAG_UPLOAD_HAS_ERRORS`。
 
+### POST /v1/rag/search
+
+直接检索当前 API Key 可读的知识库，不调用对话模型。适合自己组织提示词的智能体（例如先检索、再决定调用哪个模型）。检索引擎、权限绑定与网关 `rag` 参数及 MCP `search_knowledge_base` 工具相同。
+
+**计量**：查询向量化会调用知识库配置的 embedding 模型。这些调用（包括本接口、MCP 检索和网关 `rag` 参数触发的检索）每次记一条用量，计入当前 API Key、用户和部门，按该 embedding 模型的价格计费，在 `/v1/usage/*`、`/v1/management/usage/*` 和后台用量中以 `capability=embedding`、`endpoint=rag:query-embedding` 出现。上游未返回用量时按查询长度估算（`usage_source=estimated`）。这些记录不扣减额度策略中的请求数或 token 额度。使用本地回退向量（未配置 embedding 模型）时不产生费用记录。
+
+```bash
+curl "${TOKENHUB_BASE_URL}/v1/rag/search" \
+  -H "Authorization: Bearer ${TOKENHUB_API_KEY}" \
+  -H "Content-Type: application/json" \
+  -d '{"query": "差旅报销需要哪些材料", "knowledge_base_ids": ["kb_finance"], "top_k": 5}'
+```
+
+| 字段 | 说明 |
+| --- | --- |
+| `query` | 必填，1–2000 字符 |
+| `knowledge_base_ids` | 可选，`kb_id` 列表（最多 20 个）；不传时检索 Key 的默认知识库 |
+| `dataset_ids` | 可选，数据集 ID 列表（最多 50 个） |
+| `top_k` | 可选，1–20，默认 5 |
+
+查询在送往向量模型和写入检索日志之前，按与网关请求相同的出站脱敏策略处理（系统、部门、API Key 范围的策略生效；模型/厂商范围的策略因没有模型路由而不适用）：`replace` 策略会把手机号、邮箱、密钥等替换为 `****` 后再检索，响应中的 `query` 也是脱敏后的文本；`block` 策略命中或 `summary` 策略返回 `422 DESENSITIZATION_BLOCKED`。
+
+未知字段、类型错误返回 `422 RAG_SEARCH_INVALID`，缺少 `query` 返回 `422 RAG_QUERY_REQUIRED`，无权访问指定知识库返回 `403 RAG_KB_FORBIDDEN`。响应：
+
+```json
+{
+  "ok": true,
+  "data": {
+    "query": "差旅报销需要哪些材料",
+    "retrieval_id": "rtr_xxx",
+    "searched_datasets": 2,
+    "hit_count": 1,
+    "sources": [
+      {"source_id": "src_1", "title": "差旅报销制度", "content": "……", "content_truncated": false, "score": 0.9123,
+       "knowledge_base_id": "kb_finance", "dataset_id": "ds_1", "dataset_name": "财务制度", "source_uri": "policy.pdf#p3",
+       "modality": "text", "retrieval_strategy": "hybrid"}
+    ]
+  }
+}
+```
+
+单条 `content` 最多 6000 字符，超出时截断并置 `content_truncated: true`。`searched_datasets` 为 0 表示该 Key 没有绑定可读知识库。`retrieval_id` 可用于 `GET /v1/rag/retrievals/{retrieval_id}` 和 `POST /v1/rag/feedback`。
+
 ### GET /v1/rag/retrievals/{retrieval_id}
 
 读取某次 RAG 模型调用返回的检索来源。只能读取当前 API Key 产生的检索记录。
@@ -431,7 +545,9 @@ RAG API 用于外部系统导入知识库、预览解析结果、确认向量化
 
 ## 12. 在模型调用中启用 RAG
 
-Chat 或 Responses 请求可以携带 `rag` 参数：
+`POST /v1/chat/completions`、`POST /v1/responses` 和 `POST /v1/messages` 可以携带 `rag` 参数；其他接口（embeddings、rerank、moderations、旧版 completions、多模态）没有可注入的对话，携带 `rag` 会返回 `422 RAG_ENDPOINT_UNSUPPORTED`，需要检索时改用 `POST /v1/rag/search`。
+
+Chat 请求示例：
 
 ```json
 {
@@ -482,6 +598,10 @@ Chat 或 Responses 请求可以携带 `rag` 参数：
 | 403 | `MODEL_FORBIDDEN` | 模型未授权或没有可用路由 |
 | 403 | `RAG_KB_FORBIDDEN` | 当前 API Key 无知识库权限 |
 | 403 | `RAG_DATASET_FORBIDDEN` | 当前 API Key 无数据集权限 |
+| 422 | `MODEL_CAPABILITY_UNSUPPORTED` | 模型能力与接口不符（如用聊天模型调用 `/v1/rerank`） |
+| 422 | `RAG_ENDPOINT_UNSUPPORTED` | 该接口不支持 `rag` 参数 |
+| 422 | `RAG_SEARCH_INVALID` | `/v1/rag/search` 参数不合法 |
+| 422 | `DESENSITIZATION_BLOCKED` | 内容命中阻断型脱敏策略 |
 | 404 | `CONTENT_FORBIDDEN` | 任务或资产不存在，或不属于当前 API Key |
 | 404 | `WEBHOOK_NOT_FOUND` | Webhook 不存在或不属于当前 API Key |
 | 409 | `WEBHOOK_DELIVERY_ALREADY_SUCCEEDED` | 已成功投递的 Webhook 不能重试 |

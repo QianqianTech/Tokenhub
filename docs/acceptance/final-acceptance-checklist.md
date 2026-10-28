@@ -66,10 +66,10 @@
 - [ ] 分享登录后保持会话，主动退出后才需要重新登录。
 - [ ] 分享访问日志可查询和审计。
 
-## 10 安全、WAF 和脱敏
+## 10 安全和脱敏
 
-- [ ] Caddy 启用 HTTPS、安全响应头、IP/CIDR 限制和 WAF fragment。
-- [ ] WAF 可拦截非法方法、高风险路径、异常 Query 和非授权 IP。
+- [ ] Caddy 启用 HTTPS、安全响应头和 IP/CIDR 限制。
+- [ ] Caddy 生产模板拒绝非法方法、高风险路径和异常 Query。
 - [ ] Admin Cookie 使用 `HttpOnly`、`Secure`、`SameSite=Strict`。
 - [ ] Admin 写操作缺少 CSRF 时返回 419。
 - [ ] AST 脱敏和出站脱敏生效。
@@ -80,7 +80,7 @@
 - [ ] 应用日志、Worker 日志、Caddy 访问日志、安全日志、审计日志分离。
 - [ ] 日志留存策略可配置。
 - [ ] 日志查询和导出可审计。
-- [ ] 队列堆积、WAF 命中异常、日志写入失败有可观测入口。
+- [ ] 队列堆积、日志写入失败有可观测入口。
 
 ## 12 测试、部署和恢复
 
@@ -88,7 +88,7 @@
 - [ ] `docs/deployment/production.md` 覆盖生产目录权限、服务账号、日志目录、媒体目录、导出目录。
 - [ ] `Caddyfile.example` 可作为生产模板，并可通过 `caddy validate`。
 - [ ] `scripts/pressure-smoke.sh` 覆盖非流式、SSE、Key 鉴权、限额和异步日志检查。
-- [ ] `scripts/security-smoke.sh` 覆盖 WAF、CSRF、CSP、Cookie flags、Key 泄漏和日志脱敏。
+- [ ] `scripts/security-smoke.sh` 覆盖敏感路径拦截、CSRF、CSP、Cookie flags、Key 泄漏和日志脱敏。
 - [ ] `scripts/acceptance-check.sh` 可在无凭据和有凭据两种模式运行。
 - [ ] `scripts/backup-tokenhub.sh` 能生成数据库和文件备份。
 - [ ] `scripts/restore-drill-check.sh` 能校验备份，并可导入演练库。

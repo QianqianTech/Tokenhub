@@ -21,6 +21,11 @@ final class AgentManagementUserService
         return ['data' => $rows, 'pagination' => ['limit' => $limit, 'offset' => $offset, 'total' => $total]];
     }
 
+    public function show(int $id, array $apiKey): array
+    {
+        return $this->user($id, $apiKey);
+    }
+
     public function create(array $apiKey, array $data): array
     {
         $username = trim((string) ($data['username'] ?? ''));
@@ -44,6 +49,7 @@ final class AgentManagementUserService
     public function update(int $id, array $apiKey, array $data): array
     {
         $this->user($id, $apiKey);
+        $this->assertUserManageable($id, $apiKey);
         $updates = [];
         foreach (['username', 'status'] as $field) {
             if (array_key_exists($field, $data)) {
@@ -51,14 +57,22 @@ final class AgentManagementUserService
             }
         }
         if (array_key_exists('password', $data)) {
-            $updates['password_hash'] = password_hash((string) $data['password'], PASSWORD_DEFAULT);
+            if (!is_string($data['password']) || $data['password'] === '') {
+                abort_json('MANAGEMENT_INVALID_PAYLOAD', 'password must be a non-empty string', 422);
+            }
+            $updates['password_hash'] = password_hash($data['password'], PASSWORD_DEFAULT);
         }
-        if (($updates['username'] ?? 'ok') === '' || (isset($updates['status']) && !in_array($updates['status'], ['active', 'disabled', 'departed'], true))) {
+        if (($updates['username'] ?? 'ok') === '' || strlen($updates['username'] ?? '') > 120 || (isset($updates['status']) && !in_array($updates['status'], ['active', 'disabled', 'departed'], true))) {
             abort_json('MANAGEMENT_INVALID_PAYLOAD', 'Invalid user update payload', 422);
         }
         if ($updates !== []) {
             $sets = implode(', ', array_map(static fn (string $field): string => "{$field} = ?", array_keys($updates)));
             App::db()->execute("UPDATE users SET {$sets} WHERE id = ?", [...array_values($updates), $id]);
+            if (isset($updates['status']) || isset($updates['password_hash'])) {
+                // Cached API key rows carry the user's state; a disabled or
+                // departed user must stop authenticating immediately.
+                (new ApiKeyService())->invalidateByUser($id);
+            }
             (new AuditService())->write('agent_management.user.update', 'users', $id, array_diff_key($updates, ['password_hash' => true]));
         }
         return $this->user($id, $apiKey);
@@ -67,10 +81,22 @@ final class AgentManagementUserService
     public function disable(int $id, array $apiKey): array
     {
         $this->user($id, $apiKey);
+        $this->assertUserManageable($id, $apiKey);
         App::db()->execute('UPDATE users SET status = "disabled" WHERE id = ?', [$id]);
         (new ApiKeyService())->invalidateByUser($id);
         (new AuditService())->write('agent_management.user.disable', 'users', $id);
         return ['id' => $id, 'disabled' => true];
+    }
+
+    /**
+     * Disabling a user (or changing their password) disables every key the
+     * user owns, so the delegation rule for keys applies to their owners too.
+     */
+    private function assertUserManageable(int $id, array $apiKey): void
+    {
+        if (!(new ApiKeyManagementScopeService())->canManageUser((int) ($apiKey['id'] ?? 0), $id)) {
+            abort_json('MANAGEMENT_TARGET_FORBIDDEN', 'This user owns a management API key outside the calling key\'s delegated keys', 403);
+        }
     }
 
     private function user(int $id, array $apiKey): array

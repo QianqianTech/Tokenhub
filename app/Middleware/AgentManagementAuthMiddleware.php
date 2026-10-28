@@ -11,6 +11,9 @@ use TokenHub\Support\Response;
 
 final class AgentManagementAuthMiddleware
 {
+    /** Any management scope (e.g. reading the key's own department). */
+    public const ANY_SCOPE = '*';
+
     public function __construct(private readonly string $requiredScope)
     {
     }
@@ -20,7 +23,11 @@ final class AgentManagementAuthMiddleware
         return (new ApiKeyAuthMiddleware())($request, function (Request $request) use ($next): Response {
             $apiKey = App::context()->apiKey() ?? [];
             $apiKeyId = (int) ($apiKey['id'] ?? 0);
-            if (!(new ApiKeyManagementScopeService())->hasScope($apiKeyId, $this->requiredScope)) {
+            $scopes = new ApiKeyManagementScopeService();
+            $allowed = $this->requiredScope === self::ANY_SCOPE
+                ? $scopes->hasAnyScope($apiKeyId)
+                : $scopes->hasScope($apiKeyId, $this->requiredScope);
+            if (!$allowed) {
                 return Response::error('MANAGEMENT_SCOPE_REQUIRED', 'API key lacks the required management scope', 403);
             }
 

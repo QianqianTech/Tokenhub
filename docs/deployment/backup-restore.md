@@ -6,6 +6,34 @@
 - RTO：4 小时，从数据库和文件备份可用开始计算。
 - 恢复后核心配置、用户、API Key、用量明细、审计数据必须一致。
 
+## Docker 部署
+
+```sh
+cd deploy/docker            # 或离线包中的 tokenhub/ 目录
+./backup.sh                 # 写入 ./backups/<时间>/，默认保留最近 7 份（KEEP=14 可调整）
+CONFIRM_RESTORE=1 ./restore.sh ./backups/20261028-023000
+```
+
+备份内容如下：
+
+| 文件 | 内容 |
+| --- | --- |
+| `mysql.sql.gz` | `mysqldump --single-transaction` 导出 |
+| `qdrant-index.json` + `qdrant-snapshots.tar.gz` | 每个 collection 的快照，恢复时通过 Qdrant recover API 导入 |
+| `redis-data.tar.gz` | 额度计数、队列 |
+| `storage.tar.gz` | 媒体、导出文件、日志、TLS 片段 |
+| `caddy-data.tar.gz` | 证书和内部 CA |
+| `env` | 含 `APP_KEY` 和全部密码，备份目录权限为 0700 |
+| `image-tag`、`SHA256SUMS` | 镜像版本和校验和 |
+
+`restore.sh` 先校验 SHA256，再按以下顺序执行：停止应用 → 恢复各卷 → 导入 MySQL → 恢复 Qdrant → 启动（init 容器会补齐迁移）→ 自检。
+
+Windows 使用 `backup.ps1` 备份，在 WSL 或 Git Bash 中执行 `restore.sh` 恢复。
+
+## 源码安装
+
+以下内容针对 `deploy/linux/install.sh` 安装的环境。脚本会自动读取 `/etc/tokenhub/tokenhub.env` 中的数据库和 Redis 配置。
+
 ## 备份范围
 
 | 范围 | 默认路径或来源 | 说明 |
@@ -16,6 +44,10 @@
 | Caddy 配置 | `/etc/caddy` | 入口配置 |
 | 媒体资产 | `/var/lib/tokenhub/media` | ASR/TTS/图片/视频相关资产 |
 | 导出归档 | `/var/lib/tokenhub/exports` | CSV、会话归档和短期下载文件 |
+| Qdrant 快照 | Qdrant API → 备份目录 `qdrant/` | 知识库向量（`RAG_VECTOR_STORE=mysql_fallback` 时跳过） |
+| Redis | `/var/lib/redis` | 额度计数、队列 |
+| 应用存储 | `/var/www/tokenhub/storage` | 日志、缓存、上传 |
+| TLS 片段 | `/var/lib/tokenhub/caddy` | 证书中心生成的 Caddy TLS 配置 |
 
 ## 备份执行
 
@@ -98,7 +130,7 @@ bash scripts/restore-drill-check.sh
 - API Key 哈希和授权配置存在，明文 Key 不应从备份或日志中恢复展示。
 - 用量明细、聚合统计、审计日志数量与备份时间点一致。
 - 媒体文件和导出文件能按权限下载。
-- Caddy 安全响应头、WAF fragment、日志脱敏生效。
+- Caddy 安全响应头、日志脱敏生效。
 - Worker 可以消费新队列任务，失败队列可见。
 
 ## 性能和安全演练命令
@@ -114,8 +146,36 @@ CADDY_LB_UPSTREAMS='127.0.0.1:9000 127.0.0.1:9001' \
 bash scripts/pressure-smoke.sh
 
 BASE_URL=https://your-domain.example \
-EXPECT_WAF_QUERY_BLOCK=1 \
+EXPECT_QUERY_BLOCK=1 \
 EXPECT_ADMIN_IP_BLOCK=1 \
 BLOCKED_IP=203.0.113.10 \
 bash scripts/security-smoke.sh
 ```
+
+
+## RAG 与向量数据（2026-10 补充）
+
+`scripts/backup-tokenhub.sh` 现在同时备份：
+
+- `RAG_STORAGE_PATH`（默认 `/var/lib/tokenhub/rag`，即 `storage/rag` 上传原件与导入包）→ `rag-storage.tar.gz`
+- Qdrant：设置 `QDRANT_URL`（及 `QDRANT_API_KEY`）后，为每个以 `QDRANT_COLLECTION_PREFIX` 开头的集合创建快照并下载到 `qdrant/`，清单写入 `qdrant/collections.txt`
+
+一致性：SQL 导出与 Qdrant 快照在同一备份窗口内完成；恢复后若向量与 `rag_chunks` 不一致，以数据库为准重新向量化。
+`scripts/restore-drill-check.sh` 会校验每个集合的快照存在、检查核心业务表可读，并提示需要补齐聚合的用量记录（`php bin/usage-reconcile.php --resume`）。
+恢复演练需记录实际恢复时间（RTO）与最后一条可用数据时间（RPO），并完成登录、模型调用、RAG 检索、资产下载和对账用例。
+
+## Qdrant 恢复（源码安装）
+
+`scripts/backup-tokenhub.sh` 会把每个集合的快照下载到备份目录下的 `qdrant/`。下载后会从 Qdrant 中删除该快照，避免快照在 Qdrant 中不断累积。
+
+恢复时，逐个上传快照：
+
+```bash
+B=/backup/tokenhub/latest
+while read -r c; do
+  curl -fsS -X POST -H "api-key: $QDRANT_API_KEY" -F "snapshot=@$B/qdrant/$c.snapshot" \
+    "http://127.0.0.1:6333/collections/$c/snapshots/upload?priority=snapshot"
+done < "$B/qdrant/collections.txt"
+```
+
+Docker 部署使用 `deploy/docker/backup.sh` 和 `restore.sh`，Qdrant 快照的备份和恢复已包含在其中（通过 `bin/qdrant-snapshot.php` 实现）。

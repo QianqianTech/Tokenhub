@@ -23,14 +23,26 @@ final class TrustedProxyService
             return $peer;
         }
 
+        // Walk X-Forwarded-For from the right: every trusted proxy appends the
+        // address it received the request from, so the first hop that is not
+        // one of our proxies is the real client. The left-most entries are
+        // whatever the client chose to send and must never be believed.
+        $hops = [];
         foreach (explode(',', (string) $request->header('x-forwarded-for', '')) as $candidate) {
             $candidate = trim($candidate);
             if (filter_var($candidate, FILTER_VALIDATE_IP) !== false) {
-                return $candidate;
+                $hops[] = $candidate;
+            }
+        }
+        foreach (array_reverse($hops) as $hop) {
+            if (!$this->isTrusted($hop)) {
+                return $hop;
             }
         }
 
-        return $peer;
+        // Every hop is one of our proxies (internal traffic): the furthest
+        // one is the best available origin.
+        return $hops[0] ?? $peer;
     }
 
     private function isTrusted(string $ip): bool

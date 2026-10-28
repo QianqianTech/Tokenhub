@@ -63,7 +63,7 @@ grep -q 'TokenHub' "$tmp/screen.html" || fail "screen static page does not conta
 assert_status_in ".env block" "403 404" -I "$BASE_URL/.env"
 assert_status_in ".git block" "403 404" -I "$BASE_URL/.git/config"
 assert_status_in "download protection" "400 401 403 404" "$BASE_URL/download/not-a-real-token"
-assert_status_in "waf path block" "403 404" -I "$BASE_URL/phpinfo"
+assert_status_in "sensitive path block" "403 404" -I "$BASE_URL/phpinfo"
 
 headers="$(curl -sSI -m "$TIMEOUT_SECONDS" "$BASE_URL/admin/" || true)"
 printf '%s\n' "$headers" | grep -qi 'content-security-policy' || fail "CSP header is missing"

@@ -24,3 +24,22 @@ assert_same('rag.manage', $permissions->capabilityForAdminRequest($request('POST
 assert_same('api_catalog.read', $permissions->capabilityForAdminRequest($request('GET', '/admin-api/providers')), 'Provider reads should require API catalog read capability.');
 assert_same('system.manage', $permissions->capabilityForAdminRequest($request('PUT', '/admin-api/system/settings-center/entry_security')), 'System settings writes should require system management capability.');
 assert_same('unknown', $permissions->capabilityForAdminRequest($request('GET', '/admin-api/unmapped')), 'Unmapped protected APIs must fail closed.');
+
+// Every registered /admin-api route behind the admin session must map to a
+// real capability: an 'unknown' mapping denies the route to every admin,
+// super admins included, so the page silently breaks.
+$public = ['GET /admin-api/health', 'POST /admin-api/login'];
+$unmapped = [];
+foreach (\TokenHub\Bootstrap\Kernel::router()->routes() as $route) {
+    $name = $route['method'] . ' ' . $route['path'];
+    if (!str_starts_with($route['path'], '/admin-api/') || in_array($name, $public, true)) {
+        continue;
+    }
+    if ($permissions->capabilityForAdminRequest($request($route['method'], $route['path'])) === 'unknown') {
+        $unmapped[] = $name;
+    }
+}
+assert_same([], $unmapped, 'Every protected admin route should map to a capability.');
+assert_same('usage.read', $permissions->capabilityForAdminRequest($request('GET', '/admin-api/diagnostics/requests/req_1')), 'Request diagnostics should follow usage read capability.');
+assert_same('content.read', $permissions->capabilityForAdminRequest($request('GET', '/admin-api/export-tasks')), 'Export task list should follow content read capability.');
+assert_same('logs.read', $permissions->capabilityForAdminRequest($request('GET', '/admin-api/alert-events')), 'Alert events should follow logs read capability.');

@@ -1,0 +1,22 @@
+[Unit]
+Description=TokenHub realtime gateway (WebSocket relay for realtime speech models)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=@APP_USER@
+Group=@APP_USER@
+EnvironmentFile=@APP_DIR@/.env
+# Caddy's internal listener routes /internal/* to PHP-FPM (see Caddyfile.example).
+Environment=TOKENHUB_INTERNAL_URL=http://127.0.0.1:8082
+Environment=REALTIME_LISTEN_ADDR=127.0.0.1:8090
+ExecStart=@APP_DIR@/bin/realtime-gateway
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+
+[Install]
+WantedBy=multi-user.target

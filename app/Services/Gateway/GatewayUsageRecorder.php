@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace TokenHub\Services\Gateway;
 
 use TokenHub\Support\App;
+use TokenHub\Support\Crypto;
 use TokenHub\Support\Request;
 
 final class GatewayUsageRecorder
@@ -47,15 +48,25 @@ final class GatewayUsageRecorder
             ...$usage,
             'latency_ms' => (int) ((microtime(true) - $started) * 1000),
             'client_ip' => $httpRequest->clientIp(),
+            // Business time is fixed by the producer: the consumer may run much
+            // later (queue backlog) and must not move the request to another
+            // day or price it with a later price version.
+            'created_at' => gmdate('Y-m-d H:i:s', (int) floor($started)),
+            'finished_at' => gmdate('Y-m-d H:i:s'),
+            'usage_source' => $usage['usage_source'] ?? ($status === 'success' ? 'estimated' : 'none'),
         ];
 
         if ($content !== null) {
-            $record['content'] = $content;
+            // Prompt/response bodies never sit in Redis in clear text: the
+            // queue carries ciphertext, the consumer applies the retention
+            // policy (none/summary/redacted/raw) before anything is stored.
+            $content['input'] = MultipartUpload::describe(is_array($content['input'] ?? null) ? $content['input'] : []);
+            $record['content_encrypted'] = Crypto::encrypt((string) json_encode($content, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
         }
 
         App::redis()->push((string) App::config()->get('queue.name', 'tokenhub:jobs'), ['type' => 'usage.write', 'record' => $record]);
         $logRecord = $record;
-        unset($logRecord['content']);
+        unset($logRecord['content'], $logRecord['content_encrypted']);
         App::logger()->info('gateway-access', 'gateway request', $logRecord);
     }
 }

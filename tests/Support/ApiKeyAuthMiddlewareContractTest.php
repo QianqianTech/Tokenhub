@@ -9,7 +9,7 @@ $gateway = file_get_contents(__DIR__ . '/../../app/Middleware/GatewayAuthMiddlew
 $kernel = file_get_contents(__DIR__ . '/../../app/Bootstrap/Kernel.php') ?: '';
 
 assert_true(str_contains($middleware, 'final class ApiKeyAuthMiddleware'), 'Generic API key middleware should exist.');
-assert_true(str_contains($middleware, 'authenticate($token, $clientIp, null)'), 'Generic API key middleware should authenticate without requiring a model.');
+assert_true(str_contains($middleware, 'authenticate($token, $clientIp, null'), 'Generic API key middleware should authenticate without requiring a model.');
 assert_true(str_contains($middleware, 'TrustedProxyService'), 'Generic API key middleware should resolve client IP through the trusted-proxy boundary.');
 assert_true(str_contains($middleware, 'ExternalRateLimitService'), 'Generic API key middleware should enforce external API rate limits.');
 assert_true(str_contains($gateway, 'new ApiKeyAuthMiddleware()'), 'Gateway middleware should reuse generic API key middleware.');

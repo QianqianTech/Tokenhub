@@ -108,12 +108,62 @@ final class ExternalQuotaService
     private function usage(string $prefix, array $window, array $metrics): array
     {
         $usage = [];
+        $this->inFlight ??= (new \TokenHub\Services\Gateway\ReservationLeaseStore())->inFlightByKey();
+        $reserved = [];
         foreach ($metrics as $metric) {
             $keyMetric = $metric === 'request_count' ? 'requests' : $metric;
-            $value = App::redis()->get($prefix . ':' . $keyMetric . ':' . $window['bucket']);
-            $usage[$metric === 'requests' ? 'request_count' : $metric] = is_numeric($value) ? (float) $value : 0;
+            $key = $prefix . ':' . $keyMetric . ':' . $window['bucket'];
+            $value = App::redis()->get($key);
+            $name = $metric === 'requests' ? 'request_count' : $metric;
+            $usage[$name] = is_numeric($value) ? (float) $value : 0;
+            if ($keyMetric !== 'requests' && isset($this->inFlight[$key])) {
+                $reserved[$name] = $this->inFlight[$key];
+            }
         }
+        // Counters include reservations of in-flight requests; "reserved" is
+        // the part that will be replaced by measured usage when they finish.
+        $usage['reserved_in_flight'] = $reserved;
+
         return $usage;
+    }
+
+    /** @var array<string, float>|null */
+    private ?array $inFlight = null;
+
+    /**
+     * Manual quota correction for the current window (e.g. refund after an
+     * upstream incident). Positive amount consumes, negative refunds; the
+     * counter never goes below zero and every adjustment is audited with its
+     * reason. Historical usage records are never modified.
+     *
+     * @return array<string, mixed>
+     */
+    public function adjust(int $policyId, string $targetType, int $targetId, string $metric, float $amount, string $reason): array
+    {
+        $allowed = ['requests', 'input_tokens', 'output_tokens', 'total_tokens', 'audio_seconds', 'tts_chars', 'image_count', 'video_seconds', 'cost_amount'];
+        if (!in_array($metric, $allowed, true) || !in_array($targetType, ['api_key', 'user', 'department'], true) || trim($reason) === '' || $amount == 0.0) {
+            abort_json('QUOTA_ADJUSTMENT_INVALID', 'metric, target_type, a non-zero amount and a reason are required', 422);
+        }
+        $policy = App::db()->first('SELECT p.* FROM quota_policies p JOIN quota_bindings b ON b.quota_policy_id = p.id WHERE p.id = ? AND b.target_type = ? AND b.target_id = ?', [$policyId, $targetType, $targetId]);
+        if ($policy === null) {
+            abort_json('QUOTA_POLICY_NOT_FOUND', 'Quota policy is not bound to this target', 404);
+        }
+        $window = (new QuotaService())->periodWindow((string) $policy['period']);
+        $key = 'quota:' . $policyId . ':' . $targetType . ':' . $targetId . ':' . $metric . ':' . $window['bucket'];
+        $before = (float) (App::redis()->get($key) ?? 0);
+        $after = $amount > 0 ? App::redis()->incrementByFloat($key, $amount, $window['ttl']) : (float) App::redis()->decrementBy($key, abs($amount));
+        (new AuditService())->write('quota.adjust', 'quota_policies', $policyId, [
+            'target_type' => $targetType,
+            'target_id' => $targetId,
+            'metric' => $metric,
+            'amount' => $amount,
+            'before' => $before,
+            'after' => $after,
+            'window' => $window['bucket'],
+            'reason' => mb_substr($reason, 0, 500),
+        ]);
+
+        return ['policy_id' => $policyId, 'metric' => $metric, 'window' => $window['bucket'], 'before' => $before, 'after' => (float) $after];
     }
 
     /**

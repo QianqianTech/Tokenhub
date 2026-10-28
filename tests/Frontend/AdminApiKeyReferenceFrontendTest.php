@@ -56,8 +56,12 @@ assert_true(
     'API key user search must not introduce an ordinary-user login flow.'
 );
 
+// The multi-select control is a checkbox list (see dom.js field()); readFields collects
+// the checked boxes into an array instead of reading <select multiple>.selectedOptions.
 assert_true(
     str_contains($domSource, 'config.type === "multiselect"') &&
-    str_contains($domSource, 'selectedOptions'),
+    str_contains($domSource, 'input[type="checkbox"][name="${config.name}"]:checked') &&
+    str_contains($domSource, '.map((input) => input.value)') &&
+    str_contains($domSource, 'selected.map(Number)'),
     'Admin form reader should submit multi-select model choices as an array.'
 );

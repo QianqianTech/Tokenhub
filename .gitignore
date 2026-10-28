@@ -3,6 +3,8 @@
 .env.*
 !.env.example
 !.env.*.example
+# Test fixture with non-secret placeholder values
+!tests/fixtures/.env
 
 # Dependencies and runtime data
 /vendor/
@@ -18,3 +20,15 @@ __pycache__/
 .DS_Store
 Thumbs.db
 /$a
+/.composer-install.lock
+
+# Local deployment state
+/deploy/docker/.env
+/deploy/docker/backups/
+/dist/
+*.before-restore.*
+# Windows diagnostics output
+/wsl-*.txt
+/*-status.txt
+/admin-docker-deploy-output.txt
+/deploy/docker/verify-report-*.txt

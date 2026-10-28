@@ -25,8 +25,12 @@ foreach ([
 assert_true(isset($capabilities['modalities']), 'Capabilities should expose modality matrix.');
 assert_same(['text', 'image'], $capabilities['modalities']['vision_understanding']['input'] ?? null, 'Vision should declare text plus image input.');
 assert_same(['video'], $capabilities['modalities']['video_generation']['output'] ?? null, 'Video generation should declare video output.');
-assert_true(in_array('image_edit', $capabilities['planned_capabilities'] ?? [], true), 'Capabilities should disclose planned image edit support.');
-assert_true(in_array('video_understanding', $capabilities['planned_capabilities'] ?? [], true), 'Capabilities should disclose planned video understanding support.');
+assert_same('/v1/images/edits', $capabilities['model_endpoints']['image_edit'] ?? null, 'Image edits are a supported endpoint.');
+assert_same('/v1/audio/translations', $capabilities['model_endpoints']['asr_translation'] ?? null, 'Audio translations are a supported endpoint.');
+assert_true(!in_array('image_edit', $capabilities['planned_capabilities'] ?? [], true), 'Supported capabilities are not listed as planned.');
+assert_same(['text', 'image', 'video'], $capabilities['modalities']['video_understanding']['input'] ?? null, 'Video understanding is a supported modality.');
+assert_same(['text', 'audio'], $capabilities['modalities']['audio_understanding']['input'] ?? null, 'Audio understanding is a supported modality.');
+assert_same('/v1/tasks/{id}:cancel', $capabilities['model_endpoints']['task_cancel'] ?? null, 'Task cancellation is discoverable.');
 
 $requestService = file_get_contents(__DIR__ . '/../../app/Services/ExternalRequestService.php') ?: '';
 assert_true(str_contains($requestService, 'usage_record_id = ?'), 'Request detail should find task records by usage_record_id.');

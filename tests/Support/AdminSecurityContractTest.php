@@ -18,12 +18,8 @@ $adminControllerSource = file_get_contents($root . '/app/Http/Controllers/AdminC
 
 assert_true(str_contains($configSource, "env('SESSION_SECURE'"), 'app config should expose SESSION_SECURE as app.session_secure.');
 assert_true(str_contains($csrfSource, "Response::error('ADMIN_CSRF_INVALID', 'Invalid CSRF token', 419)"), 'CSRF middleware should return HTTP 419.');
-assert_true(str_contains($kernelSource, "/admin-api/waf/events"), 'Kernel should expose a dedicated WAF attack records endpoint.');
-assert_true(str_contains($kernelSource, "/admin-api/waf/statistics"), 'Kernel should expose a dedicated WAF statistics endpoint.');
-assert_true(str_contains($kernelSource, "/admin-api/waf/templates"), 'Kernel should expose WAF rule templates.');
-assert_true(str_contains($kernelSource, "/admin-api/waf/preview"), 'Kernel should expose WAF preview and dry-run validation.');
-assert_true(str_contains($kernelSource, "/admin-api/waf/events/{id}/handle"), 'Kernel should expose WAF event handling.');
-assert_true(str_contains($kernelSource, "/admin-api/waf/auto-disposition"), 'Kernel should expose WAF automatic disposition.');
+assert_true(!str_contains($kernelSource, '/admin-api/waf'), 'Kernel should not expose WAF endpoints after the WAF feature was removed.');
+assert_true(!str_contains($kernelSource, 'WafInspectionMiddleware') && !str_contains($kernelSource, 'SystemIpBanMiddleware'), 'Kernel should not register WAF or IP ban middleware.');
 assert_true(str_contains($kernelSource, "/admin-api/system/brand-identity"), 'Kernel should expose public admin brand identity settings.');
 assert_true(str_contains($kernelSource, "/admin-api/system/settings-center"), 'Kernel should expose the settings center endpoint.');
 assert_true(str_contains($kernelSource, "/admin-api/system/settings-center/{section}"), 'Kernel should expose settings center section updates.');
@@ -31,13 +27,6 @@ assert_true(str_contains($kernelSource, "/admin-api/system/settings-center/certi
 assert_true(str_contains($kernelSource, "/admin-api/providers/{id}/models"), 'Kernel should expose provider model sync endpoints.');
 assert_true(str_contains($kernelSource, "/admin-api/system/certificate-request"), 'Kernel should expose certificate request endpoint.');
 assert_true(str_contains($kernelSource, "/admin-api/system/network-interface-ips"), 'Kernel should expose server NIC IP discovery endpoint.');
-assert_true(str_contains($adminControllerSource, 'local_access_ips'), 'Network interface endpoint should expose WAF-specific local access IPs without changing certificate candidates.');
-assert_true(str_contains($adminControllerSource, 'wafEvents'), 'Admin controller should expose WAF attack records.');
-assert_true(str_contains($adminControllerSource, 'wafStatistics'), 'Admin controller should expose WAF statistics.');
-assert_true(str_contains($adminControllerSource, 'wafTemplates'), 'Admin controller should expose WAF rule templates.');
-assert_true(str_contains($adminControllerSource, 'previewWaf'), 'Admin controller should expose WAF preview and dry-run validation.');
-assert_true(str_contains($adminControllerSource, 'handleWafEvent'), 'Admin controller should handle WAF events.');
-assert_true(str_contains($adminControllerSource, 'autoDispositionWaf'), 'Admin controller should run WAF automatic disposition.');
 assert_true(str_contains($adminControllerSource, 'brandIdentity'), 'Admin controller should expose public brand identity.');
 assert_true(str_contains($adminControllerSource, 'settingsCenter'), 'Admin controller should expose the settings center.');
 assert_true(str_contains($adminControllerSource, 'updateSettingsCenterSection'), 'Admin controller should update settings center sections.');

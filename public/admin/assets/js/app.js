@@ -1,9 +1,9 @@
-import { adminErrorMessage, api, configureApi, login, setCsrf } from "./api.js?v=20260710-csrf-shared-v1";
+import { adminErrorMessage, api, configureApi, login, setCsrf } from "./api.js?v=20261028-admin-ops-v1";
 import { $, button, clear, el, setText, statusMessage } from "./dom.js?v=20260722-modal-close-label-v1";
-import { renderDashboard as renderDashboardPage } from "./dashboard.js?v=20260710-rag-workspace-v3";
-import { resources as resourceConfig, resourcesForUser, valueLabel } from "./resources.js?v=20260710-admin-users-localization-v1";
-import { renderResourcePage } from "./table.js?v=20260722-rag-api-key-bindings-v1";
-import { domainsForUser, parseAdminHash, writeAdminHash } from "./domains.js?v=20260710-admin-users-localization-v1";
+import { renderDashboard as renderDashboardPage } from "./dashboard.js?v=20261028-admin-ops-v1";
+import { resources as resourceConfig, resourcesForUser, valueLabel } from "./resources.js?v=20261028-admin-ops-v1";
+import { renderResourcePage, setAdminViewer } from "./table.js?v=20261028-admin-ops-v1";
+import { domainsForUser, parseAdminHash, writeAdminHash } from "./domains.js?v=20261028-admin-ops-v1";
 
 const adminState = {
   page: "dashboard",
@@ -28,7 +28,7 @@ const ADMIN_THEME_MEDIA_QUERY = window.matchMedia("(prefers-color-scheme: dark)"
 const NAV_OPEN_COOKIE = "tokenhub_admin_nav_open";
 const ADMIN_SIDEBAR_MODE_COOKIE = "tokenhub_admin_sidebar_mode";
 const ADMIN_NAV_RECENT_COOKIE = "tokenhub_admin_nav_recent";
-const ADMIN_SPECIAL_DOMAIN_TABS = new Set(["waf-overview", "waf-ip-bans", "waf-alerts", "operations-status", "rag-settings"]);
+const ADMIN_SPECIAL_DOMAIN_TABS = new Set(["operations-status", "rag-settings"]);
 const ADMIN_DOMAIN_ICON_PATHS = {
   operations: ["M4 4h6v6H4z", "M14 4h6v6h-6z", "M4 14h6v6H4z", "M14 14h6v6h-6z"],
   organization: ["M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2", "M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z", "M22 21v-2a4 4 0 0 0-3-3.87", "M16 3.13a4 4 0 0 1 0 7.75"],
@@ -36,15 +36,14 @@ const ADMIN_DOMAIN_ICON_PATHS = {
   access: ["M15.5 7.5A5 5 0 1 1 6 9.7a5 5 0 0 1 9.5-2.2z", "M14 10l8 8", "M19 15l-2 2", "M21 17l-2 2"],
   usage: ["M4 20V10", "M10 20V4", "M16 20v-7", "M22 20H2"],
   rag: ["M4 5c0-1.66 3.58-3 8-3s8 1.34 8 3-3.58 3-8 3-8-1.34-8-3z", "M4 5v6c0 1.66 3.58 3 8 3s8-1.34 8-3V5", "M4 11v6c0 1.66 3.58 3 8 3s8-1.34 8-3v-6"],
-  waf: ["M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z", "M9 12l2 2 4-4"],
   security: ["M5 11h14v10H5z", "M8 11V7a4 4 0 0 1 8 0v4", "M12 15v2"],
   system: ["M4 21v-7", "M4 10V3", "M12 21v-9", "M12 8V3", "M20 21v-5", "M20 12V3", "M1 14h6", "M9 8h6", "M17 16h6"]
 };
 const ADMIN_BRAND_DEFAULTS = {
   product_name: "TokenHub",
   admin_title: "TokenHub 管理后台",
-  logo_url: "",
-  favicon_url: ""
+  logo_url: "/admin/assets/brand/tokenhub-app-icon.svg",
+  favicon_url: "/admin/assets/brand/favicon.ico"
 };
 
 function normalizeAdminTheme(value) {
@@ -220,9 +219,6 @@ function writeNavOpenCookie(openKeys) {
 
 function adminDomainTabLabel(tabKey) {
   return resourceConfig[tabKey]?.label || {
-    "waf-overview": "WAF 总览",
-    "waf-ip-bans": "IP 封禁",
-    "waf-alerts": "WAF 告警",
     "operations-status": "运行状态",
     "rag-settings": "RAG 设置"
   }[tabKey] || tabKey;
@@ -487,6 +483,7 @@ async function renderDomainPage(root) {
   }
   root.append(tabs, panel);
   const content = panel;
+  setAdminViewer(adminState.user);
   if (adminState.page === "dashboard") await renderDashboardPage(content, adminNavigate);
   else await renderResourcePage(content, adminState.page, adminState.filters);
 }

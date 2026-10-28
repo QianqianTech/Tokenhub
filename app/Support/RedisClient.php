@@ -297,11 +297,82 @@ LUA;
         return (int) $this->connection()->lRem($processingQueue, $reservedPayload, 1);
     }
 
-    public function releaseReserved(string $processingQueue, string $reservedPayload, string $queue, array $payload): void
+    /**
+     * Atomically moves a reserved job back to the ready queue (retry).
+     *
+     * The previous implementation acked first and pushed second, so a crash
+     * between the two calls lost the job. Both steps now run in one Lua
+     * script: the job is pushed only if this worker still owned the reserved
+     * copy, so a concurrent requeueExpired() cannot duplicate it.
+     */
+    public function releaseReserved(string $processingQueue, string $reservedPayload, string $queue, array $payload): bool
     {
-        $this->ackReserved($processingQueue, $reservedPayload);
-        unset($payload['__reserved_payload'], $payload['reserved_at'], $payload['worker_id']);
-        $this->push($queue, $payload);
+        unset($payload['__reserved_payload'], $payload['reserved_at'], $payload['worker_id'], $payload['lease_until']);
+
+        return $this->moveReserved($processingQueue, $reservedPayload, $queue, $this->queuePayload($payload));
+    }
+
+    /**
+     * Atomically moves a reserved job to another list (e.g. the failed queue).
+     */
+    public function moveReserved(string $processingQueue, string $reservedPayload, string $targetQueue, array $targetPayload): bool
+    {
+        $encoded = json_encode($targetPayload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        if (!$this->available()) {
+            if ($reservedPayload !== '' && $this->ackReserved($processingQueue, $reservedPayload) !== 1) {
+                return false;
+            }
+            $this->push($targetQueue, $targetPayload);
+            return true;
+        }
+        if ($reservedPayload === '') {
+            $this->connection()->lPush($targetQueue, (string) $encoded);
+            return true;
+        }
+
+        $script = <<<'LUA'
+local removed = redis.call('LREM', KEYS[1], 1, ARGV[1])
+if removed == 1 then
+  redis.call('LPUSH', KEYS[2], ARGV[2])
+end
+return removed
+LUA;
+
+        return (int) $this->connection()->eval($script, [$processingQueue, $targetQueue, $reservedPayload, (string) $encoded], 2) === 1;
+    }
+
+    /**
+     * Extends the lease of a job that is still running. Returns the new raw
+     * reserved payload (needed for ack), or null if the job is no longer
+     * owned by this worker (it was requeued after an expired lease).
+     */
+    public function renewReserved(string $processingQueue, string $reservedPayload, ?int $now = null): ?string
+    {
+        $job = json_decode($reservedPayload, true);
+        if (!is_array($job)) {
+            return null;
+        }
+        $job['reserved_at'] = $now ?? time();
+        $renewed = (string) json_encode($job, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        if (!$this->available()) {
+            if ($this->ackReserved($processingQueue, $reservedPayload) !== 1) {
+                return null;
+            }
+            $processing = $this->memoryGet('queue:' . $processingQueue) ?: [];
+            array_unshift($processing, $job);
+            $this->memory['queue:' . $processingQueue] = ['value' => $processing, 'expires_at' => null];
+            return $this->encodeQueuePayload($job);
+        }
+
+        $script = <<<'LUA'
+local removed = redis.call('LREM', KEYS[1], 1, ARGV[1])
+if removed == 1 then
+  redis.call('LPUSH', KEYS[1], ARGV[2])
+end
+return removed
+LUA;
+
+        return (int) $this->connection()->eval($script, [$processingQueue, $reservedPayload, $renewed], 1) === 1 ? $renewed : null;
     }
 
     public function requeueExpired(string $processingQueue, string $queue, int $retryAfterSeconds, ?int $now = null): int
@@ -311,14 +382,16 @@ LUA;
 
         foreach ($this->queueItems($processingQueue) as $raw => $job) {
             $reservedAt = (int) ($job['reserved_at'] ?? 0);
-            if ($reservedAt <= 0 || ($now - $reservedAt) < $retryAfterSeconds) {
+            $lease = max($retryAfterSeconds, (int) ($job['lease_seconds'] ?? 0));
+            if ($reservedAt <= 0 || ($now - $reservedAt) < $lease) {
                 continue;
             }
 
-            $this->ackReserved($processingQueue, $raw);
             unset($job['__reserved_payload'], $job['reserved_at'], $job['worker_id']);
-            $this->push($queue, $job);
-            $moved++;
+            $job['requeued_count'] = (int) ($job['requeued_count'] ?? 0) + 1;
+            if ($this->moveReserved($processingQueue, (string) $raw, $queue, $job)) {
+                $moved++;
+            }
         }
 
         return $moved;

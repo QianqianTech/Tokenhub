@@ -12,8 +12,7 @@ $operations = is_file($operationsPath) ? (file_get_contents($operationsPath) ?: 
 $downloads = is_file($downloadsPath) ? (file_get_contents($downloadsPath) ?: '') : '';
 $downloadController = file_get_contents(__DIR__ . '/../../app/Http/Controllers/DownloadController.php') ?: '';
 
-assert_true(str_contains($kernel, "'/admin-api/waf/overview'"), 'Admin routes should expose the WAF overview endpoint.');
-assert_true(str_contains($kernel, "'/admin-api/waf/ip-bans'"), 'Admin routes should expose IP ban management endpoints.');
+assert_true(!str_contains($kernel, '/admin-api/waf/'), 'Admin routes should not expose removed WAF or IP ban endpoints.');
 assert_true(str_contains($kernel, "'/admin-api/operations/status'"), 'Admin routes should expose read-only operations status.');
 assert_true(str_contains($kernel, "'/admin-api/alerts/{id}/status'"), 'Admin routes should expose alert lifecycle actions.');
 assert_true(str_contains($kernel, "'/admin-api/media-assets/{asset_id}/download-url'"), 'Admin routes should expose scoped media downloads.');

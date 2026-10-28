@@ -12,8 +12,6 @@ final class SystemSettingsService
         'tls_certificates' => 'tls_certificates',
         'brand_identity' => 'brand_identity',
         'entry_security' => 'entry_security',
-        'firewall_settings' => 'firewall_settings',
-        'waf_detection_settings' => 'waf_detection_settings',
         'retention_export' => 'retention_export',
         'alert_thresholds' => 'alert_thresholds',
         'rag_upload_review' => 'rag_upload_review',
@@ -61,28 +59,6 @@ final class SystemSettingsService
                 'masked_header_fields' => ['Authorization', 'Cookie', 'X-Api-Key'],
                 'masked_query_fields' => ['api_key', 'token', 'secret'],
             ],
-            'firewall_settings' => [
-                'enabled' => true,
-                'auto_publish' => false,
-                'auto_allow_local_private_ips' => true,
-                'admin_allowed_cidrs' => [],
-                'api_allowed_cidrs' => [],
-                'manual_blocked_cidrs' => [],
-                'allowed_methods' => ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-                'blocked_paths' => ['*.env', '*.git*', '*~', '*.bak'],
-                'sensitive_query_keys' => ['token', 'key', 'secret', 'api_key', 'apikey', 'access_token'],
-                'max_body_bytes' => 10485760,
-                'login_failure_threshold' => 5,
-            ],
-            'waf_detection_settings' => [
-                'enabled' => true,
-                'mode' => 'observe',
-                'block_threshold' => 100,
-                'max_inspect_bytes' => 65536,
-                'max_field_count' => 128,
-                'max_field_bytes' => 4096,
-                'excluded_paths' => ['/health'],
-            ],
             'retention_export' => [
                 'export_download_ttl_seconds' => 300,
                 'export_file_retention_days' => 7,
@@ -90,8 +66,6 @@ final class SystemSettingsService
                 'cleanup_batch_size' => 100,
             ],
             'alert_thresholds' => [
-                'waf_spike_count' => 10,
-                'waf_spike_window_minutes' => 5,
                 'provider_error_rate' => 0.3,
                 'provider_error_window_minutes' => 5,
                 'provider_min_requests' => 5,
@@ -176,12 +150,6 @@ final class SystemSettingsService
             ]
         );
         (new AuditService())->write('settings_center.update.' . $section, 'system_settings', self::SECTION_KEYS[$section], $normalized);
-        if ($section === 'firewall_settings' && ($normalized['auto_publish'] ?? false) === true) {
-            $publish = (new WafService())->publish(['reload' => true]);
-            if (($publish['status'] ?? '') !== 'published') {
-                App::logger()->warning('security', 'firewall settings auto publish failed', $publish);
-            }
-        }
 
         return $normalized;
     }
@@ -222,28 +190,6 @@ final class SystemSettingsService
                 'masked_header_fields' => $this->stringList($data['masked_header_fields'] ?? $default['masked_header_fields']),
                 'masked_query_fields' => $this->stringList($data['masked_query_fields'] ?? $default['masked_query_fields']),
             ],
-            'firewall_settings' => [
-                'enabled' => $this->boolValue($data['enabled'] ?? $default['enabled']),
-                'auto_publish' => $this->boolValue($data['auto_publish'] ?? $default['auto_publish']),
-                'auto_allow_local_private_ips' => $this->boolValue($data['auto_allow_local_private_ips'] ?? $default['auto_allow_local_private_ips']),
-                'admin_allowed_cidrs' => $this->stringList($data['admin_allowed_cidrs'] ?? $default['admin_allowed_cidrs']),
-                'api_allowed_cidrs' => $this->stringList($data['api_allowed_cidrs'] ?? $default['api_allowed_cidrs']),
-                'manual_blocked_cidrs' => $this->stringList($data['manual_blocked_cidrs'] ?? $default['manual_blocked_cidrs']),
-                'allowed_methods' => $this->httpMethods($data['allowed_methods'] ?? $default['allowed_methods']),
-                'blocked_paths' => $this->stringList($data['blocked_paths'] ?? $default['blocked_paths']),
-                'sensitive_query_keys' => $this->stringList($data['sensitive_query_keys'] ?? $default['sensitive_query_keys']),
-                'max_body_bytes' => $this->intRange($data['max_body_bytes'] ?? null, (int) $default['max_body_bytes'], 1024, 536870912),
-                'login_failure_threshold' => $this->intRange($data['login_failure_threshold'] ?? null, (int) $default['login_failure_threshold'], 1, 100),
-            ],
-            'waf_detection_settings' => [
-                'enabled' => $this->boolValue($data['enabled'] ?? $default['enabled']),
-                'mode' => $this->choice($data['mode'] ?? null, (string) $default['mode'], ['observe', 'block']),
-                'block_threshold' => $this->intRange($data['block_threshold'] ?? null, (int) $default['block_threshold'], 1, 1000),
-                'max_inspect_bytes' => $this->intRange($data['max_inspect_bytes'] ?? null, (int) $default['max_inspect_bytes'], 1024, 65536),
-                'max_field_count' => $this->intRange($data['max_field_count'] ?? null, (int) $default['max_field_count'], 1, 128),
-                'max_field_bytes' => $this->intRange($data['max_field_bytes'] ?? null, (int) $default['max_field_bytes'], 128, 4096),
-                'excluded_paths' => array_values(array_filter($this->stringList($data['excluded_paths'] ?? $default['excluded_paths']), static fn (string $path): bool => str_starts_with($path, '/'))),
-            ],
             'retention_export' => [
                 'export_download_ttl_seconds' => $this->intRange($data['export_download_ttl_seconds'] ?? null, (int) $default['export_download_ttl_seconds'], 60, 86400),
                 'export_file_retention_days' => $this->intRange($data['export_file_retention_days'] ?? null, (int) $default['export_file_retention_days'], 1, 3650),
@@ -251,8 +197,6 @@ final class SystemSettingsService
                 'cleanup_batch_size' => $this->intRange($data['cleanup_batch_size'] ?? null, (int) $default['cleanup_batch_size'], 1, 10000),
             ],
             'alert_thresholds' => [
-                'waf_spike_count' => $this->intRange($data['waf_spike_count'] ?? null, (int) $default['waf_spike_count'], 1, 100000),
-                'waf_spike_window_minutes' => $this->intRange($data['waf_spike_window_minutes'] ?? null, (int) $default['waf_spike_window_minutes'], 1, 1440),
                 'provider_error_rate' => $this->floatRange($data['provider_error_rate'] ?? null, (float) $default['provider_error_rate'], 0.01, 1.0),
                 'provider_error_window_minutes' => $this->intRange($data['provider_error_window_minutes'] ?? null, (int) $default['provider_error_window_minutes'], 1, 1440),
                 'provider_min_requests' => $this->intRange($data['provider_min_requests'] ?? null, (int) $default['provider_min_requests'], 1, 100000),
@@ -331,8 +275,6 @@ final class SystemSettingsService
             'tls_certificates' => 'TLS certificate alert settings',
             'brand_identity' => '管理后台和运营大屏的标题、Logo 与浏览器图标设置',
             'entry_security' => 'Admin and API entry security settings',
-            'firewall_settings' => 'WAF firewall settings',
-            'waf_detection_settings' => 'WAF core attack detection settings',
             'retention_export' => 'Export and backup retention settings',
             'alert_thresholds' => 'Operational alert threshold settings',
             'rag_upload_review' => 'RAG user upload review settings',
@@ -478,19 +420,6 @@ final class SystemSettingsService
         ));
 
         return $roles === [] ? ['admin', 'super_admin'] : $roles;
-    }
-
-    /**
-     * @return list<string>
-     */
-    private function httpMethods(mixed $value): array
-    {
-        $methods = array_values(array_filter(array_map(
-            static fn (string $item): string => strtoupper($item),
-            $this->stringList($value)
-        ), static fn (string $item): bool => preg_match('/^[A-Z]+$/', $item) === 1));
-
-        return $methods === [] ? ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'] : $methods;
     }
 
     /**

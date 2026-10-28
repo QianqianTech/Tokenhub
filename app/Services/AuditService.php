@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace TokenHub\Services;
 
 use TokenHub\Support\App;
+use TokenHub\Support\ConfigVersion;
 
 final class AuditService
 {
@@ -31,6 +32,26 @@ final class AuditService
             );
         }
         App::logger()->info('audit', $action, ['target_type' => $targetType, 'target_id' => $targetId]);
+        if (self::changesRuntimeConfig($action)) {
+            // Authorization/routing/policy edits must reach every instance now,
+            // not after cache TTLs expire (see ConfigVersion).
+            ConfigVersion::bump('global', $action);
+        }
+    }
+
+    /**
+     * Audited mutations that can change who may call what, where requests
+     * route, or which policies apply.
+     */
+    public static function changesRuntimeConfig(string $action): bool
+    {
+        foreach (['admin.create', 'admin.update', 'admin.disable', 'admin.delete', 'admin.models.', 'api_key.', 'user.', 'department.', 'provider.', 'agent_management.', 'admin_user.', 'settings_center.', 'content_retention.', 'credential.'] as $prefix) {
+            if (str_starts_with($action, $prefix)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

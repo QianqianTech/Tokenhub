@@ -5,11 +5,19 @@ declare(strict_types=1);
 namespace TokenHub\Services;
 
 use TokenHub\Services\Gateway\GatewayRequest;
+use TokenHub\Services\Media\MediaStorage;
+use TokenHub\Services\Media\MediaStorageManager;
 use TokenHub\Support\App;
 use TokenHub\Support\Crypto;
 
 final class MediaAssetService
 {
+    public function __construct(
+        private readonly ?MediaStorage $storage = null,
+        private readonly ?SafeRemoteFetcher $fetcher = null,
+    ) {
+    }
+
     /**
      * @param array<string, mixed> $task
      * @param array<string, mixed> $response
@@ -19,13 +27,19 @@ final class MediaAssetService
     {
         $created = [];
         foreach ($this->extractAssets($request, $response) as $asset) {
-            $created[] = $this->create([
+            $row = $this->create([
                 ...$asset,
                 'task_id' => $task['id'] ?? null,
                 'owner_user_id' => $task['user_id'] ?? null,
                 'department_id' => $task['department_id'] ?? null,
                 'api_key_id' => $task['api_key_id'] ?? null,
             ]);
+            // Position in the upstream "data" list, so the gateway can put
+            // each asset's link back on the item it came from.
+            if (isset($asset['data_index'])) {
+                $row['data_index'] = $asset['data_index'];
+            }
+            $created[] = $row;
         }
 
         return $created;
@@ -155,8 +169,10 @@ final class MediaAssetService
         if (($payload['screen'] ?? false) === true) {
             return $this->canAccessScreen($asset, $payload);
         }
+        $policy = new AssetAccessPolicy();
 
-        return $this->canAccess($asset, $payload);
+        // Token holders lose access as soon as the issuing key is revoked.
+        return $policy->allows($asset, $payload) && $policy->issuerStillValid($payload);
     }
 
     /**
@@ -165,28 +181,7 @@ final class MediaAssetService
      */
     public function canAccess(array $asset, ?array $apiKey): bool
     {
-        if ($apiKey === null) {
-            return false;
-        }
-
-        if (!empty($asset['expires_at']) && strtotime((string) $asset['expires_at']) < time()) {
-            return false;
-        }
-
-        $apiKeyId = (int) ($apiKey['id'] ?? $apiKey['api_key_id'] ?? 0);
-        if (($asset['api_key_id'] ?? null) !== null && (int) $asset['api_key_id'] === $apiKeyId) {
-            return true;
-        }
-
-        if (($asset['owner_user_id'] ?? null) !== null && (int) $asset['owner_user_id'] === (int) ($apiKey['user_id'] ?? 0)) {
-            return true;
-        }
-
-        if (($asset['department_id'] ?? null) !== null && (int) $asset['department_id'] === (int) ($apiKey['department_id'] ?? 0)) {
-            return true;
-        }
-
-        return false;
+        return (new AssetAccessPolicy())->allows($asset, $apiKey);
     }
 
     /**
@@ -245,7 +240,7 @@ final class MediaAssetService
     private function extractAssets(GatewayRequest $request, array $response): array
     {
         $assets = [];
-        foreach (($response['data'] ?? []) as $item) {
+        foreach (array_values(is_array($response['data'] ?? null) ? $response['data'] : []) as $index => $item) {
             if (!is_array($item)) {
                 continue;
             }
@@ -253,10 +248,27 @@ final class MediaAssetService
             if (!empty($item['b64_json']) && is_string($item['b64_json'])) {
                 $asset = $this->base64Asset($request, $item['b64_json']);
                 if ($asset !== null) {
-                    $assets[] = $asset;
+                    $assets[] = [...$asset, 'data_index' => $index];
                 }
             } elseif (!empty($item['url']) && is_string($item['url'])) {
-                $assets[] = $this->urlAsset($request, $item['url']);
+                $assets[] = [...$this->urlAsset($request, $item['url']), 'data_index' => $index];
+            }
+        }
+
+        // Vendors that answer "images" instead of "data" (SiliconFlow) or put
+        // generated images on the chat message (OpenRouter image output).
+        if (!is_array($response['data'] ?? null)) {
+            $extra = is_array($response['images'] ?? null) ? $response['images'] : (is_array($response['choices'][0]['message']['images'] ?? null) ? $response['choices'][0]['message']['images'] : []);
+            foreach (array_values($extra) as $item) {
+                $url = is_array($item) ? ($item['url'] ?? $item['image_url']['url'] ?? null) : null;
+                if (is_array($item) && !empty($item['b64_json']) && is_string($item['b64_json'])) {
+                    $asset = $this->base64Asset($request, $item['b64_json']);
+                    if ($asset !== null) {
+                        $assets[] = $asset;
+                    }
+                } elseif (is_string($url) && $url !== '') {
+                    $assets[] = $this->urlAsset($request, $url);
+                }
             }
         }
 
@@ -311,15 +323,60 @@ final class MediaAssetService
     }
 
     /**
+     * Upstream media URLs expire (10 minutes to 24 hours). With
+     * MEDIA_PERSIST_REMOTE (default on) the file is downloaded right away
+     * through the outbound policy and kept in media storage; when the copy
+     * fails the URL is kept so the download endpoint can still try it.
+     *
      * @return array<string, mixed>
      */
     private function urlAsset(GatewayRequest $request, string $url, ?string $mimeType = null): array
     {
+        if (str_starts_with($url, 'data:')) {
+            $inline = $this->dataUrlAsset($request, $url);
+            if ($inline !== null) {
+                return $inline;
+            }
+        }
+        if (filter_var(env_value('MEDIA_PERSIST_REMOTE', true), FILTER_VALIDATE_BOOL) && preg_match('#^https?://#i', $url) === 1) {
+            $fetched = ($this->fetcher ?? new SafeRemoteFetcher())->get($url, OutboundUrlPolicy::PURPOSE_REMOTE_ASSET);
+            if (($fetched['ok'] ?? false) === true && (string) ($fetched['body'] ?? '') !== '') {
+                $type = strtolower(trim(explode(';', (string) ($fetched['content_type'] ?? ''))[0]));
+                $resolvedMime = $mimeType ?? (preg_match('#^(image|video|audio)/[a-z0-9.+-]+$#', $type) === 1 ? $type : $this->sniffMime((string) $fetched['body'], $request->capability));
+                try {
+                    $stored = $this->storage()->put((string) $fetched['body'], $this->extensionForMime($resolvedMime), $resolvedMime);
+
+                    return [
+                        'media_type' => $this->mediaTypeForMime($resolvedMime, $request->capability),
+                        'storage_path' => $stored['storage_path'],
+                        'mime_type' => $resolvedMime,
+                        'size_bytes' => $stored['size_bytes'],
+                    ];
+                } catch (\Throwable $throwable) {
+                    App::logger()->warning('media', 'media persist failed', ['error' => $throwable->getMessage()]);
+                }
+            } else {
+                App::logger()->warning('media', 'remote media copy failed, keeping upstream url', ['error' => $fetched['error'] ?? null]);
+            }
+        }
+
         return [
             'media_type' => $this->mediaTypeForCapability($request->capability),
             'storage_path' => $url,
             'mime_type' => $mimeType,
         ];
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    private function dataUrlAsset(GatewayRequest $request, string $url): ?array
+    {
+        if (preg_match('#^data:([a-z0-9.+/-]+)?(;[^,]*)?,(.*)$#is', $url, $m) !== 1 || !str_contains(strtolower((string) $m[2]), 'base64')) {
+            return null;
+        }
+
+        return $this->base64Asset($request, $m[3], $m[1] !== '' ? strtolower($m[1]) : null);
     }
 
     /**
@@ -332,26 +389,65 @@ final class MediaAssetService
             return null;
         }
 
-        $mimeType ??= $this->defaultMimeType($request->capability);
-        $dir = storage_path('media');
-        if (!is_dir($dir)) {
-            mkdir($dir, 0775, true);
-        }
-        $path = $dir . DIRECTORY_SEPARATOR . Crypto::token('media_') . $this->extensionForMime($mimeType);
-        file_put_contents($path, $binary);
+        $mimeType ??= $this->sniffMime($binary, $request->capability);
+        $stored = $this->storage()->put($binary, $this->extensionForMime($mimeType), $mimeType);
 
         return [
-            'media_type' => $this->mediaTypeForCapability($request->capability),
-            'storage_path' => $path,
+            'media_type' => $this->mediaTypeForMime($mimeType, $request->capability),
+            'storage_path' => $stored['storage_path'],
             'mime_type' => $mimeType,
-            'size_bytes' => strlen($binary),
+            'size_bytes' => $stored['size_bytes'],
         ];
+    }
+
+    /**
+     * Bytes stored as an asset by an adapter that downloaded them itself
+     * (authenticated content endpoints, hex/base64 audio, ...).
+     *
+     * @return array<string, mixed>
+     */
+    public function bytesAsset(GatewayRequest $request, string $bytes, ?string $mimeType = null): array
+    {
+        $mimeType ??= $this->sniffMime($bytes, $request->capability);
+        $stored = $this->storage()->put($bytes, $this->extensionForMime($mimeType), $mimeType);
+
+        return [
+            'media_type' => $this->mediaTypeForMime($mimeType, $request->capability),
+            'storage_path' => $stored['storage_path'],
+            'mime_type' => $mimeType,
+            'size_bytes' => $stored['size_bytes'],
+        ];
+    }
+
+    private function storage(): MediaStorage
+    {
+        return $this->storage ?? MediaStorageManager::driver();
+    }
+
+    private function sniffMime(string $bytes, string $capability): string
+    {
+        if (function_exists('finfo_open')) {
+            $finfo = finfo_open(FILEINFO_MIME_TYPE);
+            $type = $finfo !== false ? finfo_buffer($finfo, substr($bytes, 0, 65536)) : false;
+            if (is_string($type) && preg_match('#^(image|video|audio)/#', $type) === 1) {
+                return $type === 'audio/x-wav' ? 'audio/wav' : $type;
+            }
+        }
+
+        return $this->defaultMimeType($capability);
+    }
+
+    private function mediaTypeForMime(?string $mimeType, string $capability): string
+    {
+        $prefix = strtolower(explode('/', (string) $mimeType)[0]);
+
+        return in_array($prefix, ['image', 'video', 'audio'], true) ? $prefix : $this->mediaTypeForCapability($capability);
     }
 
     private function mediaTypeForCapability(string $capability): string
     {
         return match ($capability) {
-            'tts', 'asr' => 'audio',
+            'tts', 'asr', 'music_generation' => 'audio',
             'video_generation' => 'video',
             'image_generation', 'vision_understanding' => 'image',
             default => 'file',
@@ -361,7 +457,7 @@ final class MediaAssetService
     private function defaultMimeType(string $capability): string
     {
         return match ($capability) {
-            'tts', 'asr' => 'audio/mpeg',
+            'tts', 'asr', 'music_generation' => 'audio/mpeg',
             'video_generation' => 'video/mp4',
             'image_generation', 'vision_understanding' => 'image/png',
             default => 'application/octet-stream',
@@ -377,6 +473,13 @@ final class MediaAssetService
             'image/jpeg' => '.jpg',
             'image/webp' => '.webp',
             'image/png' => '.png',
+            'image/gif' => '.gif',
+            'video/webm' => '.webm',
+            'video/quicktime' => '.mov',
+            'audio/ogg', 'audio/opus' => '.ogg',
+            'audio/flac', 'audio/x-flac' => '.flac',
+            'audio/aac' => '.aac',
+            'audio/pcm', 'audio/l16' => '.pcm',
             default => '.bin',
         };
     }

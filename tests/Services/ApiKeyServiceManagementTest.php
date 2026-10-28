@@ -13,7 +13,7 @@ $service = new ApiKeyService();
 $plain = 'tkh_test_plaintext_secret';
 $hash = Crypto::hashKey($plain);
 
-assert_same('api_key:' . $hash, $service->cacheKey($hash), 'API key cache key should be derived from key hash.');
+assert_same('api_key:' . $hash . \TokenHub\Support\ConfigVersion::cacheSuffix(), $service->cacheKey($hash), 'API key cache key should be derived from key hash and the config generation.');
 
 $safe = $service->sanitizeForStorage([
     'name' => 'Test key',

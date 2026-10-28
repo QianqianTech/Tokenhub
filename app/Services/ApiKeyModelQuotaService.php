@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace TokenHub\Services;
 
 use TokenHub\Support\App;
+use TokenHub\Support\ConfigVersion;
 
 final class ApiKeyModelQuotaService
 {
@@ -93,6 +94,43 @@ final class ApiKeyModelQuotaService
     }
 
     /**
+     * Applies a later correction (task settlement: refund of a failed task,
+     * true-up to the measured usage) to the counters of the period in which
+     * the request was charged. Only counters that still exist are touched:
+     * an expired period needs no correction, and decrementing a missing key
+     * would create a stray negative counter.
+     *
+     * @param array<string, mixed> $apiKey id, user_id, department_id
+     * @param array<string, mixed> $route model row (id)
+     * @param array<string, int|float> $delta metric => signed amount
+     */
+    public function adjustUsage(array $apiKey, array $route, array $delta, int $chargedAt): void
+    {
+        foreach (($scope = $this->scope($apiKey, $route)) === null ? [] : $this->quotas($scope['api_key_id'], $scope['model_id']) as $item) {
+            $window = $this->periodWindow((string) ($item['period'] ?? 'day'), $chargedAt);
+            foreach (['input_tokens', 'output_tokens', 'total_tokens'] as $metric) {
+                $amount = (float) ($delta[$metric] ?? 0);
+                if ($amount == 0.0) {
+                    continue;
+                }
+                $key = $this->counterKey($item, $scope, $window, $metric);
+                try {
+                    if (!App::redis()->connection()->exists($key)) {
+                        continue;
+                    }
+                    if ($amount > 0) {
+                        App::redis()->incrementByFloat($key, $amount);
+                    } else {
+                        App::redis()->decrementBy($key, -$amount);
+                    }
+                } catch (\Throwable $throwable) {
+                    App::logger()->warning('quota', 'quota settlement adjustment failed', ['key' => $key, 'error' => $throwable->getMessage()]);
+                }
+            }
+        }
+    }
+
+    /**
      * @return array{bucket: string, ttl: int}
      */
     public function periodWindow(string $period, ?int $time = null): array
@@ -143,6 +181,60 @@ final class ApiKeyModelQuotaService
             . ':' . $window['bucket'];
     }
 
+    /**
+     * @param array<string, mixed> $apiKey
+     * @param array<string, mixed> $route
+     * @param array<string, int|float> $delta
+     * @return array{allowed: bool, code?: string, message?: string, status?: int, reservations?: list<list<array<string, mixed>>>}
+     */
+    public function reserveDelta(array $apiKey, array $route, array $delta): array
+    {
+        $scope = $this->scope($apiKey, $route);
+        if ($scope === null) {
+            return ['allowed' => true, 'reservations' => []];
+        }
+        $reservations = [];
+        foreach ($this->quotas($scope['api_key_id'], $scope['model_id']) as $quota) {
+            $window = $this->periodWindow((string) ($quota['period'] ?? 'day'));
+            $counters = [];
+            foreach ([
+                ['metric' => 'input_tokens', 'usage' => 'input_tokens', 'limit_field' => 'input_token_limit'],
+                ['metric' => 'output_tokens', 'usage' => 'output_tokens', 'limit_field' => 'output_token_limit'],
+                ['metric' => 'total_tokens', 'usage' => 'total_tokens', 'limit_field' => 'total_token_limit'],
+            ] as $definition) {
+                $amount = (int) ($delta[$definition['metric']] ?? 0);
+                if ($amount > 0) {
+                    $counters[] = [...$definition, 'amount' => $amount, 'key' => $this->counterKey($quota, $scope, $window, $definition['metric']), 'limit' => $quota[$definition['limit_field']] ?? null, 'ttl' => $window['ttl']];
+                }
+            }
+            if ($counters === []) {
+                continue;
+            }
+            $reserved = App::redis()->reserveCounters($counters);
+            if (($reserved['allowed'] ?? false) !== true) {
+                $this->rollbackReservations($reservations);
+                return ['allowed' => false, 'code' => 'MODEL_QUOTA_EXCEEDED', 'message' => (($counters[(int) ($reserved['rejected_index'] ?? 0)]['metric'] ?? 'quota') . ' exceeded'), 'status' => 429];
+            }
+            $reservations[] = $counters;
+        }
+
+        return ['allowed' => true, 'reservations' => $reservations];
+    }
+
+    /**
+     * @param list<list<array<string, mixed>>> $reservations
+     */
+    public function rollbackReservations(array $reservations): void
+    {
+        foreach ($reservations as $counters) {
+            foreach ($counters as $counter) {
+                if (isset($counter['key'], $counter['amount']) && (float) $counter['amount'] > 0) {
+                    App::redis()->decrementBy((string) $counter['key'], $counter['amount']);
+                }
+            }
+        }
+    }
+
     public function rollbackPreflight(array $increments): void
     {
         foreach ($increments as $increment) {
@@ -154,7 +246,7 @@ final class ApiKeyModelQuotaService
 
     public function quotaCacheKey(int $apiKeyId, int $modelId): string
     {
-        return 'api_key_model_quotas:' . $apiKeyId . ':' . $modelId;
+        return 'api_key_model_quotas:' . $apiKeyId . ':' . $modelId . ConfigVersion::cacheSuffix();
     }
 
     /**

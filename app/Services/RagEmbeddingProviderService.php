@@ -16,6 +16,7 @@ final class RagEmbeddingProviderService
     public function __construct(
         private readonly mixed $embedder = null,
         private readonly mixed $providerRequester = null,
+        private readonly ?RagEmbeddingMeter $meter = null,
     )
     {
     }
@@ -78,6 +79,7 @@ final class RagEmbeddingProviderService
         ];
         $attemptLimit = max(1, (int) ($route['retry_count'] ?? 1));
         $response = ['ok' => false, 'error_code' => 'PROVIDER_ERROR'];
+        $started = microtime(true);
         for ($attempt = 1; $attempt <= $attemptLimit; $attempt++) {
             $response = is_callable($this->providerRequester)
                 ? ($this->providerRequester)($route, '/v1/embeddings', $payload)
@@ -91,6 +93,7 @@ final class RagEmbeddingProviderService
                 usleep($backoffMs * 1000);
             }
         }
+        ($this->meter ?? new RagEmbeddingMeter())->record($route, $payload, $response, $started);
         if (($response['ok'] ?? false) !== true) {
             throw new RuntimeException((string) ($response['error_code'] ?? 'RAG_EMBEDDING_FAILED'));
         }

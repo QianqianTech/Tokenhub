@@ -17,6 +17,7 @@ final class ApiKeyManagementScopeService
         'api_keys:write',
         'rag:read',
         'rag:write',
+        'usage:read',
     ];
 
     /**
@@ -103,6 +104,121 @@ final class ApiKeyManagementScopeService
         ) !== null;
     }
 
+    /**
+     * True when the key holds at least one management scope and its
+     * delegation chain is active (any management key may read its own
+     * department profile).
+     */
+    public function hasAnyScope(int $apiKeyId): bool
+    {
+        if ($apiKeyId <= 0 || !$this->delegationActive($apiKeyId)) {
+            return false;
+        }
+
+        return $this->scopesFor($apiKeyId) !== [];
+    }
+
+    /**
+     * Whether $actorApiKeyId may change $targetApiKeyId through the
+     * management API: keys without management scopes, and keys the actor
+     * delegated to (directly or transitively). A child key can never act on
+     * its parent or on a sibling management key.
+     */
+    public function canManageKey(int $actorApiKeyId, int $targetApiKeyId): bool
+    {
+        if ($actorApiKeyId <= 0 || $targetApiKeyId <= 0) {
+            return false;
+        }
+        if ($this->scopesFor($targetApiKeyId) === []) {
+            return true;
+        }
+        $current = $targetApiKeyId;
+        $seen = [];
+        while ($current > 0 && !isset($seen[$current])) {
+            $seen[$current] = true;
+            $row = App::db()->first('SELECT parent_api_key_id FROM api_key_management_delegations WHERE child_api_key_id = ?', [$current]);
+            $current = (int) ($row['parent_api_key_id'] ?? 0);
+            if ($current === $actorApiKeyId) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * After a key's scopes were narrowed, drop from every delegated
+     * descendant the scopes its parent no longer holds (write implies read).
+     * Returns the number of descendant keys that changed.
+     */
+    public function pruneDescendants(int $apiKeyId): int
+    {
+        $changed = 0;
+        $queue = [$apiKeyId];
+        $seen = [];
+        while ($queue !== []) {
+            $parentId = array_shift($queue);
+            if (isset($seen[$parentId])) {
+                continue;
+            }
+            $seen[$parentId] = true;
+            $held = $this->scopesFor($parentId);
+            foreach ($held as $scope) {
+                if (str_ends_with($scope, ':write')) {
+                    $held[] = substr($scope, 0, -strlen(':write')) . ':read';
+                }
+            }
+            foreach (App::db()->select('SELECT child_api_key_id FROM api_key_management_delegations WHERE parent_api_key_id = ?', [$parentId]) as $child) {
+                $childId = (int) $child['child_api_key_id'];
+                $current = $this->scopesFor($childId);
+                $kept = array_values(array_intersect($current, $held));
+                if ($kept !== $current) {
+                    $this->replace($childId, $kept);
+                    $changed++;
+                }
+                $queue[] = $childId;
+            }
+        }
+
+        return $changed;
+    }
+
+    /**
+     * Whether $actorApiKeyId may change user $userId (status, password,
+     * name) through the management API. Disabling a user kills all of the
+     * user's keys, so the user must not own a management key outside the
+     * actor's delegated subtree (in particular not the actor's own key or an
+     * ancestor of it).
+     */
+    public function canManageUser(int $actorApiKeyId, int $userId): bool
+    {
+        $owned = App::db()->select('SELECT DISTINCT k.id FROM api_keys k JOIN api_key_management_scopes s ON s.api_key_id = k.id WHERE k.user_id = ? AND k.status != \'deleted\'', [$userId]);
+        foreach ($owned as $key) {
+            if (!$this->canManageKey($actorApiKeyId, (int) $key['id']) || (int) $key['id'] === $actorApiKeyId) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * Scopes in $scopes that the key's delegation parent does not hold.
+     *
+     * @param list<string> $scopes
+     * @return list<string>
+     */
+    public function scopesBeyondParent(int $apiKeyId, array $scopes): array
+    {
+        $row = App::db()->first('SELECT parent_api_key_id FROM api_key_management_delegations WHERE child_api_key_id = ?', [$apiKeyId]);
+        if ($row === null) {
+            return [];
+        }
+        $parentId = (int) $row['parent_api_key_id'];
+
+        return array_values(array_filter($scopes, fn (string $scope): bool => !$this->hasScope($parentId, $scope)));
+    }
+
     public function delegate(int $childApiKeyId, int $parentApiKeyId): void
     {
         if ($childApiKeyId <= 0 || $parentApiKeyId <= 0 || $childApiKeyId === $parentApiKeyId) {
@@ -132,8 +248,13 @@ final class ApiKeyManagementScopeService
         while ($current > 0) {
             if (isset($seen[$current])) return false;
             $seen[$current] = true;
-            $row = App::db()->first('SELECT k.status, d.parent_api_key_id FROM api_keys k LEFT JOIN api_key_management_delegations d ON d.child_api_key_id = k.id WHERE k.id = ?', [$current]);
-            if ($row === null || ($row['status'] ?? '') !== 'active') return false;
+            // Every key on the chain must still be able to authenticate: its
+            // own status and expiry and its owner user's and department's status
+            // (same rules as ApiKeyService::authenticate()).
+            $row = App::db()->first('SELECT k.status, k.expires_at, u.status AS user_status, dep.status AS department_status, d.parent_api_key_id FROM api_keys k JOIN users u ON u.id = k.user_id JOIN departments dep ON dep.id = k.department_id LEFT JOIN api_key_management_delegations d ON d.child_api_key_id = k.id WHERE k.id = ?', [$current]);
+            if ($row === null || ($row['status'] ?? '') !== 'active' || ($row['user_status'] ?? '') !== 'active' || ($row['department_status'] ?? '') !== 'active') return false;
+            // Same expiry rule as ApiKeyService::authenticate().
+            if (!empty($row['expires_at']) && strtotime((string) $row['expires_at']) < time()) return false;
             $current = (int) ($row['parent_api_key_id'] ?? 0);
         }
         return true;

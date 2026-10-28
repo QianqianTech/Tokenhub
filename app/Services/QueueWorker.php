@@ -65,38 +65,31 @@ final class QueueWorker
                 return;
             }
 
-            if ($reservedPayload !== '') {
-                $this->redis->ackReserved($processingQueue, $reservedPayload);
-            }
-            $this->redis->push((string) $this->config->get('queue.failed_name', 'tokenhub:failed'), $job);
+            // Atomic dead-letter move (same contract as Console\QueueWorker).
+            $this->redis->moveReserved($processingQueue, $reservedPayload, (string) $this->config->get('queue.failed_name', 'tokenhub:failed-jobs'), [
+                'job' => $job,
+                'failed_at' => gmdate('c'),
+                'error' => mb_substr($exception->getMessage(), 0, 1000),
+            ]);
         }
     }
 
     /**
+     * Legacy entry point kept for embedding; dispatch is shared with
+     * Console\QueueWorker through WorkerService so both accept the same jobs.
+     *
      * @param array<string, mixed> $job
      */
     private function handle(array $job): void
     {
-        $type = $job['type'] ?? null;
-
-        if ($type === 'health_check_test') {
+        if (($job['type'] ?? null) === 'health_check_test') {
             $this->logger->info('worker', 'Health check test job consumed.', [
                 'payload' => $job['payload'] ?? [],
             ]);
             return;
         }
 
-        if ($type === 'usage.write' && isset($job['record']) && is_array($job['record'])) {
-            (new UsageService())->write($job['record']);
-            return;
-        }
-
-        if ($type === 'export' && isset($job['export_id'])) {
-            (new ExportService())->process((string) $job['export_id']);
-            return;
-        }
-
-        throw new \RuntimeException('Unsupported job type.');
+        (new WorkerService())->handle($job);
     }
 
 }

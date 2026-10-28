@@ -31,7 +31,9 @@ assert_true(str_contains($appJs, 'ADMIN_DOMAIN_ICON_PATHS') && str_contains($app
 assert_true(str_contains($appJs, 'document.createElementNS') && str_contains($appJs, 'viewBox'), 'Sidebar icons should be rendered as inline SVG.');
 assert_true(!str_contains($appJs, 'ADMIN_DOMAIN_SYMBOLS'), 'Sidebar domains should not use one-character text symbols as icons.');
 assert_true(str_contains($navListSource, 'className: "nav-list"') && str_contains($navListSource, 'adminNavigateDomain(domain.key, item.key)'), 'Each domain should render navigable second-level items in the sidebar.');
-assert_true((bool) preg_match('/app\.js\?v=20260710-[A-Za-z0-9._-]+/', $index), 'Admin shell should load a cache-busted JavaScript entrypoint.');
+preg_match('/app\.js\?v=(\d{8}-[A-Za-z0-9._-]+)/', $index, $entryVersionMatch);
+$adminAssetVersion = $entryVersionMatch[1] ?? '';
+assert_true($adminAssetVersion !== '', 'Admin shell should load a cache-busted JavaScript entrypoint.');
 
 foreach (['.app-shell.sidebar-compact', '.sidebar-backdrop', '.sidebar-mobile-open', ':focus-visible', 'prefers-reduced-motion'] as $selector) {
     assert_true(str_contains($css, $selector), 'Sidebar CSS should define: ' . $selector);
@@ -43,7 +45,7 @@ assert_true(str_contains($css, 'width: 6px'), 'Sidebar scrollbar should stay vis
 assert_true(str_contains($css, '.nav-list-host::-webkit-scrollbar-track') && str_contains($css, 'background: transparent'), 'Sidebar scrollbar track should be transparent.');
 assert_true(str_contains($css, '.nav-list-host::-webkit-scrollbar-thumb') && str_contains($css, 'border: 0'), 'Sidebar scrollbar thumb should not have a border.');
 assert_true(str_contains($css, '.nav-list-host::-webkit-scrollbar-button') && str_contains($css, 'display: none'), 'Sidebar scrollbar should hide native arrow buttons.');
-assert_true((bool) preg_match('/app\.css\?v=20260710-[A-Za-z0-9._-]+/', $index), 'Admin shell should load a cache-busted stylesheet.');
+assert_true(str_contains($index, 'app.css?v=' . $adminAssetVersion . '"'), 'Admin shell should load a cache-busted stylesheet with the entrypoint version.');
 
 $assetSources = str_replace('http://www.w3.org/2000/svg', '', $index . $appJs . $resources . $css);
 assert_true(!preg_match('/https?:\/\//', $assetSources), 'Admin sidebar should not load external assets.');

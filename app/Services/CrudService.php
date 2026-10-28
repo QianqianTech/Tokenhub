@@ -5,13 +5,14 @@ declare(strict_types=1);
 namespace TokenHub\Services;
 
 use TokenHub\Support\App;
+use TokenHub\Support\SchemaInspector;
 
 final class CrudService
 {
     private const ALLOWED_TABLES = [
         'departments', 'users', 'providers', 'models', 'model_prices', 'api_keys', 'api_key_model_permissions', 'api_key_model_quotas', 'quota_policies', 'quota_bindings',
         'usage_records', 'multimodal_tasks', 'media_assets', 'usage_contents', 'export_tasks',
-        'dashboard_share_links', 'dashboard_share_access_logs', 'waf_rules', 'waf_rule_versions', 'waf_events',
+        'dashboard_share_links', 'dashboard_share_access_logs',
         'desensitization_policies', 'desensitization_events', 'log_retention_policies', 'log_archive_files', 'alert_events', 'audit_logs', 'system_settings',
         'rag_knowledge_bases', 'rag_knowledge_base_bindings', 'rag_vector_datasets', 'rag_dataset_bindings', 'rag_vector_configs', 'rag_import_templates',
         'rag_uploads', 'rag_upload_preview_items', 'rag_documents', 'rag_chunks', 'rag_image_assets', 'rag_embedding_jobs', 'rag_vector_records',
@@ -21,7 +22,6 @@ final class CrudService
         'providers',
         'models',
         'model_prices',
-        'waf_rules',
         'desensitization_policies',
         'log_retention_policies',
         'system_settings',
@@ -39,10 +39,12 @@ final class CrudService
         $limit = min(100, max(1, (int) ($query['limit'] ?? 50)));
         $offset = max(0, (int) ($query['offset'] ?? 0));
         [$select, $from] = $this->listSelectFrom($table);
-        return (new SensitiveDataService())->sanitizeRows(
+        $rows = (new SensitiveDataService())->sanitizeRows(
             $table,
             App::db()->select("SELECT {$select} FROM {$from}{$where} ORDER BY {$sortColumn} {$direction} LIMIT {$limit} OFFSET {$offset}", $bindings)
         );
+
+        return $table === 'models' ? (new ModelSupportPolicy())->annotate($rows) : $rows;
     }
 
     public function count(string $table, array $query): int
@@ -61,6 +63,8 @@ final class CrudService
         $this->requireSuperAdminForGlobalWrite($table);
         $this->requireWritePermission($table, $data);
         $this->assertUserRoleWriteAllowed($table, $data);
+        unset($data['expected_updated_at']);
+        $this->validateConfigWrite($table, $data, null);
         $data = $this->normalizeForWrite($table, $data);
         $columns = array_keys($data);
         $placeholders = implode(', ', array_fill(0, count($columns), '?'));
@@ -88,6 +92,9 @@ final class CrudService
         $this->assertExistingScope($table, $id);
         $this->requireWritePermission($table, $data);
         $this->assertUserRoleWriteAllowed($table, $data, $id);
+        $this->assertNotStale($table, $id, $data);
+        unset($data['expected_updated_at']);
+        $this->validateConfigWrite($table, $data, $id);
         $data = $this->normalizeForWrite($table, $data, false, $id);
         unset($data['id']);
         if ($data === []) {
@@ -139,6 +146,9 @@ final class CrudService
         if (!$model) {
             abort_json('ADMIN_NOT_FOUND', 'Model not found', 404);
         }
+        if ($this->hasUsageHistory([$id])) {
+            return $this->retireModels([$id], 'models', $id);
+        }
 
         $deleted = App::db()->transaction(function ($db) use ($id, $model): array {
             $counts = [
@@ -189,6 +199,13 @@ final class CrudService
         }
 
         if ($action === 'delete') {
+            $withHistory = array_values(array_filter($foundIds, fn (int $modelId): bool => $this->hasUsageHistory([$modelId])));
+            $retired = $withHistory !== [] ? $this->retireModels($withHistory, 'models', 0) : null;
+            $foundIds = array_values(array_diff($foundIds, $withHistory));
+            $models = array_values(array_filter($models, static fn (array $model): bool => in_array((int) $model['id'], $foundIds, true)));
+            if ($foundIds === []) {
+                return ['action' => 'delete', 'requested' => count($modelIds), 'matched' => count($withHistory), 'missing_ids' => $missingIds, 'deleted' => 0, 'retired_model_ids' => $withHistory, 'deleted_related' => []];
+            }
             $deleted = App::db()->transaction(function ($db) use ($foundIds, $missingIds, $models): array {
                 $counts = [
                     'model_prices' => $this->deleteByModelIds($foundIds, 'model_prices'),
@@ -214,6 +231,7 @@ final class CrudService
                 'matched' => count($foundIds),
                 'missing_ids' => $missingIds,
                 'deleted' => (int) ($deleted['models'] ?? 0),
+                'retired_model_ids' => $retired['retired_model_ids'] ?? [],
                 'deleted_related' => $deleted,
             ];
         }
@@ -250,6 +268,13 @@ final class CrudService
             abort_json('ADMIN_NOT_FOUND', 'Provider not found', 404);
         }
 
+        $providerModelIds = array_map(static fn (array $row): int => (int) $row['id'], App::db()->select('SELECT id FROM models WHERE provider_id = ?', [$id]));
+        if ($this->hasUsageHistory($providerModelIds)) {
+            $result = $this->retireModels($providerModelIds, 'providers', $id);
+            App::db()->execute('UPDATE providers SET status = "retired"' . (SchemaInspector::hasColumn('providers', 'retired_at') ? ', retired_at = UTC_TIMESTAMP()' : '') . ' WHERE id = ?', [$id]);
+            return [...$result, 'provider_retired' => true];
+        }
+
         $deleted = App::db()->transaction(function ($db) use ($id, $provider): array {
             $modelIds = array_map(
                 static fn (array $row): int => (int) $row['id'],
@@ -275,6 +300,81 @@ final class CrudService
         return ['id' => $id, 'deleted' => true, 'deleted_related' => $deleted];
     }
 
+    /**
+     * @param list<int> $modelIds
+     */
+    private function hasUsageHistory(array $modelIds): bool
+    {
+        if ($modelIds === [] || !SchemaInspector::hasColumn('models', 'retired_at')) {
+            return false;
+        }
+        $placeholders = implode(', ', array_fill(0, count($modelIds), '?'));
+
+        return App::db()->first("SELECT 1 AS present FROM usage_records WHERE model_id IN ({$placeholders}) LIMIT 1", $modelIds) !== null;
+    }
+
+    /**
+     * Retirement instead of physical deletion once a model has usage history:
+     * the row and its price versions stay so historical usage, costs and
+     * reconciliation remain explainable; grants and quotas are removed so the
+     * model can no longer be called.
+     *
+     * @param list<int> $modelIds
+     * @return array<string, mixed>
+     */
+    private function retireModels(array $modelIds, string $targetType, int $targetId): array
+    {
+        $placeholders = implode(', ', array_fill(0, count($modelIds), '?'));
+        $counts = App::db()->transaction(function ($db) use ($modelIds, $placeholders): array {
+            return [
+                'api_key_model_permissions' => $db->execute("DELETE FROM api_key_model_permissions WHERE model_id IN ({$placeholders})", $modelIds),
+                'api_key_model_quotas' => $db->execute("DELETE FROM api_key_model_quotas WHERE model_id IN ({$placeholders})", $modelIds),
+                'models' => $db->execute("UPDATE models SET status = 'retired', retired_at = UTC_TIMESTAMP() WHERE id IN ({$placeholders})", $modelIds),
+            ];
+        });
+        (new AuditService())->write('admin.delete', $targetType, $targetId, ['mode' => 'retired', 'model_ids' => $modelIds, 'related' => $counts]);
+
+        return ['id' => $targetId, 'deleted' => false, 'retired' => true, 'retired_model_ids' => $modelIds, 'related' => $counts];
+    }
+
+    /**
+     * Optimistic concurrency: a client that sends expected_updated_at (the
+     * value it loaded) gets 409 instead of silently overwriting a concurrent
+     * edit.
+     *
+     * @param array<string, mixed> $data
+     */
+    private function assertNotStale(string $table, int $id, array $data): void
+    {
+        if (!isset($data['expected_updated_at']) || (string) $data['expected_updated_at'] === '') {
+            return;
+        }
+        $row = App::db()->first("SELECT updated_at FROM {$table} WHERE id = ?", [$id]);
+        if ($row !== null && array_key_exists('updated_at', $row) && (string) $row['updated_at'] !== (string) $data['expected_updated_at']) {
+            abort_json('ADMIN_WRITE_CONFLICT', 'The record was changed by someone else; reload and apply your change again', 409);
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $data
+     */
+    private function validateConfigWrite(string $table, array $data, ?int $id): void
+    {
+        if ($table === 'model_prices' && array_key_exists('pricing_rules', $data)) {
+            $errors = (new \TokenHub\Services\Pricing\PricingRules())->validate($data['pricing_rules']);
+            if ($errors !== []) {
+                abort_json('ADMIN_VALIDATION_FAILED', 'pricing_rules: ' . implode('; ', $errors), 422);
+            }
+            return;
+        }
+        if (!in_array($table, ['providers', 'models'], true)) {
+            return;
+        }
+        $existing = $id !== null ? App::db()->first("SELECT * FROM {$table} WHERE id = ?", [$id]) : null;
+        $validator = new ConfigWriteValidator();
+        $validator->abortIfInvalid($table === 'providers' ? $validator->provider($data, $existing) : $validator->model($data, $existing));
+    }
+
     private function normalizeForWrite(string $table, array $data, bool $creating = true, ?int $id = null): array
     {
         if (in_array($table, ['rag_vector_configs', 'rag_knowledge_bases', 'rag_vector_datasets'], true)) {
@@ -297,6 +397,17 @@ final class CrudService
             $data['password_hash'] = password_hash((string) $data['password'], PASSWORD_DEFAULT);
             unset($data['password']);
         }
+        if ($table === 'providers' && array_key_exists('default_headers', $data)) {
+            $storedHeaders = null;
+            if (!$creating && $id !== null) {
+                $storedHeaders = App::db()->first('SELECT default_headers FROM providers WHERE id = ?', [$id])['default_headers'] ?? null;
+            }
+            $protected = (new ProviderHeaderVault())->protectForStorage(
+                is_array($data['default_headers']) || is_string($data['default_headers']) ? $data['default_headers'] : null,
+                is_string($storedHeaders) || is_array($storedHeaders) ? $storedHeaders : null
+            );
+            $data['default_headers'] = $protected === [] ? null : json_encode($protected, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        }
         if ($table === 'providers' && isset($data['secret'])) {
             if ((string) $data['secret'] !== '') {
                 $data['encrypted_secret'] = \TokenHub\Support\Crypto::encrypt((string) $data['secret']);
@@ -310,6 +421,12 @@ final class CrudService
                 $logType = (string) ($existing['log_type'] ?? '');
             }
             $data = (new LogRetentionPolicyService())->normalize($logType, $data);
+        }
+        if ($table === 'model_prices' && array_key_exists('pricing_rules', $data) && ($data['pricing_rules'] === '' || $data['pricing_rules'] === [])) {
+            $data['pricing_rules'] = null;
+        }
+        if ($table === 'model_prices' && is_string($data['pricing_rules'] ?? null)) {
+            $data['pricing_rules'] = json_decode($data['pricing_rules'], true);
         }
         if (in_array($table, ['quota_policies', 'api_key_model_quotas'], true)) {
             foreach (['request_limit', 'input_token_limit', 'output_token_limit', 'total_token_limit', 'audio_second_limit', 'tts_char_limit', 'image_limit', 'video_second_limit', 'cost_limit', 'concurrency_limit'] as $limitField) {
@@ -409,7 +526,7 @@ final class CrudService
 
     public function isReadOnlyTable(string $table): bool
     {
-        return in_array($table, ['usage_records', 'usage_contents', 'export_tasks', 'audit_logs', 'dashboard_share_access_logs', 'waf_rule_versions', 'waf_events', 'desensitization_events', 'log_archive_files', 'alert_events', 'rag_eval_runs', 'rag_eval_results'], true);
+        return in_array($table, ['usage_records', 'usage_contents', 'export_tasks', 'audit_logs', 'dashboard_share_access_logs', 'desensitization_events', 'log_archive_files', 'alert_events', 'rag_eval_runs', 'rag_eval_results'], true);
     }
 
     private function assertWritableTable(string $table): void
@@ -423,7 +540,7 @@ final class CrudService
     {
         $capability = match ($table) {
             'providers', 'models', 'model_prices' => 'api_catalog.manage',
-            'waf_rules', 'desensitization_policies' => 'security.manage',
+            'desensitization_policies' => 'security.manage',
             'log_retention_policies', 'system_settings' => 'system.manage',
             default => null,
         };
@@ -504,9 +621,6 @@ final class CrudService
                 'status' => 'status',
                 'capability' => 'export_type',
             ],
-            'waf_events' => [
-                'status' => 'action',
-            ],
             'desensitization_events' => [
                 'status' => 'action',
             ],
@@ -547,6 +661,26 @@ final class CrudService
             $pattern = '%' . $keyword . '%';
             $conditions[] = "(api_keys.name LIKE ? ESCAPE '\\\\' OR api_keys.key_prefix LIKE ? ESCAPE '\\\\' OR api_keys.key_suffix LIKE ? ESCAPE '\\\\' OR EXISTS (SELECT 1 FROM users WHERE users.id = api_keys.user_id AND users.username LIKE ? ESCAPE '\\\\'))";
             array_push($bindings, $pattern, $pattern, $pattern, $pattern);
+        }
+
+        if ($table === 'models') {
+            // The console lists only models the gateway can serve unless the
+            // caller asks for support=unsupported|all (ModelSupportPolicy).
+            $support = (string) ($query['support'] ?? 'supported');
+            if (!in_array($support, ['supported', 'unsupported', 'all'], true)) {
+                abort_json('ADMIN_INVALID_PAYLOAD', 'support must be supported, unsupported or all', 422);
+            }
+            if ($support !== 'all') {
+                // Evaluated in PHP (vendor adapters are matched by host and
+                // header), then applied as an id filter so paging stays exact.
+                $ids = (new ModelSupportPolicy())->modelIds($support === 'supported');
+                if ($ids === []) {
+                    $conditions[] = '1 = 0';
+                } else {
+                    $conditions[] = 'models.id IN (' . implode(', ', array_fill(0, count($ids), '?')) . ')';
+                    array_push($bindings, ...$ids);
+                }
+            }
         }
 
         if ($table === 'model_prices' && isset($query['effective_at']) && (string) $query['effective_at'] !== '') {
@@ -628,8 +762,7 @@ final class CrudService
         if ($table === 'providers') {
             unset($data['encrypted_secret'], $data['secret']);
             if (isset($data['default_headers'])) {
-                $headers = is_string($data['default_headers']) ? json_decode($data['default_headers'], true) : $data['default_headers'];
-                $data['default_headers'] = \TokenHub\Support\Logger::sanitize(is_array($headers) ? $headers : $data['default_headers']);
+                $data['default_headers'] = (new ProviderHeaderVault())->maskForDisplay(is_string($data['default_headers']) || is_array($data['default_headers']) ? $data['default_headers'] : null);
             }
         }
 

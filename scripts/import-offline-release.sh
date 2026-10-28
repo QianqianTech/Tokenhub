@@ -1,33 +1,27 @@
 #!/usr/bin/env sh
+# Load the images of an offline bundle (shipped as load-images.sh in the bundle root).
+#
+#   ./load-images.sh [BUNDLE_DIRECTORY]
+#
+# Then install:  cd tokenhub && ./install.sh --site <domain-or-IP>
+# Data is never touched here; to move an existing installation use tokenhub/restore.sh with a backup.
 set -eu
 
-bundle_root=${1:?usage: CONFIRM_RESTORE=1 ./import-offline-release.sh BUNDLE_DIRECTORY}
-test "${CONFIRM_RESTORE:-}" = 1 || { echo 'Set CONFIRM_RESTORE=1 before restoring volumes.' >&2; exit 64; }
+bundle_root=${1:-$(cd "$(dirname "$0")" && pwd)}
+cd "$bundle_root"
+
 case "$(docker version --format '{{.Server.Arch}}')" in
   amd64|x86_64) architecture=amd64 ;;
   arm64|aarch64) architecture=arm64 ;;
   *) echo 'Unsupported Docker architecture.' >&2; exit 64 ;;
 esac
-cd "$bundle_root"
-sha256sum -c SHA256SUMS
-find "images/$architecture" -name '*.tar' -print | sort | while IFS= read -r image; do docker load --input "$image"; done
-tag=$(sed -n "s/.*\"$architecture\": \"\([^\"]*\)\".*/\1/p" manifest.json)
-test -n "$tag" || { echo 'Release tag missing from manifest.' >&2; exit 65; }
-cp .env .runtime.env
-printf '\nTOKENHUB_RELEASE_TAG=%s\nCOMPOSE_PROJECT_NAME=%s\n' "$tag" "${COMPOSE_PROJECT_NAME:-tokenhub}" >> .runtime.env
-docker compose --env-file .runtime.env -f compose.offline.yml down --volumes --remove-orphans
-docker compose --env-file .runtime.env -f compose.offline.yml up -d mysql redis qdrant
-sleep 10
-docker compose --env-file .runtime.env -f compose.offline.yml exec -T mysql sh -lc 'mysql -uroot -p"$MYSQL_ROOT_PASSWORD" "$MYSQL_DATABASE"' < data/mysql.sql
-docker compose --env-file .runtime.env -f compose.offline.yml up -d --no-build
-deadline=$(( $(date +%s) + 120 ))
-while test "$(date +%s)" -lt "$deadline"; do
-  port=$(docker compose --env-file .runtime.env -f compose.offline.yml port caddy 80)
-  if curl -fsS "http://$port/health" >/dev/null; then
-    echo 'Offline release restored and healthy.'
-    exit 0
-  fi
-  sleep 3
+test -d "images/$architecture" || { echo "This bundle has no images for $architecture." >&2; exit 65; }
+
+echo '==> Verifying checksums'
+if command -v sha256sum >/dev/null 2>&1; then sha256sum -c --quiet SHA256SUMS; else shasum -a 256 -c SHA256SUMS >/dev/null; fi
+
+find "images/$architecture" -name '*.tar' -print | sort | while IFS= read -r image; do
+  echo "==> docker load $image"
+  docker load --input "$image"
 done
-echo 'Offline release did not become healthy within 120 seconds.' >&2
-exit 1
+echo "Images loaded. Next: cd tokenhub && ./install.sh --site <domain-or-IP>"

@@ -40,13 +40,3 @@ assert_same(
     'Windows NIC IP discovery should skip Docker virtual adapters and keep physical private adapter IPs.'
 );
 
-$procRouteOutput = implode("\n", [
-    "Iface\tDestination\tGateway\tFlags\tRefCnt\tUse\tMetric\tMask\tMTU\tWindow\tIRTT",
-    "eth0\t00000000\t010012AC\t0003\t0\t0\t0\t00000000\t0\t0\t0",
-    "eth0\t000012AC\t00000000\t0001\t0\t0\t0\t0000FFFF\t0\t0\t0",
-]);
-assert_same(
-    ['172.18.0.1'],
-    $service->parseProcNetRouteOutput($procRouteOutput),
-    'WAF local access discovery should decode the container default gateway from /proc/net/route.'
-);

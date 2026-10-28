@@ -100,8 +100,8 @@ final class RagImageProcessingService
             return $decoded;
         }
         if (preg_match('/^https?:\/\//', $source) === 1) {
-            $body = @file_get_contents($source);
-            return is_string($body) ? $body : null;
+            $fetched = (new SafeRemoteFetcher())->get($source, OutboundUrlPolicy::PURPOSE_REMOTE_ASSET);
+            return $fetched['ok'] ? (string) $fetched['body'] : null;
         }
         $path = $baseDir . DIRECTORY_SEPARATOR . basename(str_replace('\\', '/', $source));
         if (is_file($path)) {

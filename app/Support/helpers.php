@@ -44,9 +44,15 @@ if (!function_exists('env_value')) {
 }
 
 if (!function_exists('abort_json')) {
+    /**
+     * Abort the current request with a JSON error.
+     *
+     * Throws instead of calling exit so request-scoped cleanup (quota
+     * reservations, concurrency slots, usage records) can run. The front
+     * controller renders the exception as the same JSON error response.
+     */
     function abort_json(string $code, string $message, int $status = 400): never
     {
-        \TokenHub\Support\Response::error($code, $message, $status)->send();
-        exit;
+        throw new \TokenHub\Support\HttpAbortException($code, $message, $status);
     }
 }

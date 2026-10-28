@@ -22,8 +22,6 @@ final class WorkerService
             'test.log' => App::logger()->info('worker', 'Test queue job', ['payload' => $job['payload'] ?? []]),
             'usage.write' => (new UsageService())->write($job['record'] ?? []),
             'export' => $this->runExport((string) ($job['export_id'] ?? '')),
-            'waf.import' => (new WafService())->ingestSecurityLog(isset($job['file']) ? (string) $job['file'] : null, is_array($job['options'] ?? null) ? $job['options'] : []),
-            'waf.auto_disposition' => (new WafService())->autoDisposition(is_array($job['options'] ?? null) ? $job['options'] : []),
             'cleanup.retention' => $this->cleanupRetention(),
             'cleanup.exports' => $this->cleanupExports(),
             'cleanup.media' => $this->cleanupMedia(),
@@ -38,7 +36,16 @@ final class WorkerService
             'rag.vectorize' => $this->runRagVectorize($job),
             'rag.index' => $this->runRagVectorize($job),
             'rag.cleanup' => $this->runRagCleanup(),
-            default => App::logger()->warning('worker', 'Unknown job type', $job),
+            'alerts.notify' => (new AlertNotifier())->deliverDue(),
+            'tasks.poll' => (new MultimodalTaskService())->pollProcessing((int) ($job['limit'] ?? 20)),
+            'tasks.expire' => (new MultimodalTaskService())->expireStale(),
+            // Refunds / true-ups of finished asynchronous tasks (TaskBillingService).
+            'tasks.settle' => (new \TokenHub\Services\Billing\TaskBillingService())->settlePending((int) ($job['limit'] ?? 50)),
+            'usage.reconcile' => (new UsageReconciliationService())->reconcileRecent((int) ($job['minutes'] ?? 60)),
+            'openrouter.reconcile' => (new OpenRouterGenerationService())->reconcilePending((int) ($job['limit'] ?? 50)),
+            'catalog.sync' => (new ProviderModelSyncService())->syncProvider((int) ($job['provider_id'] ?? 0), (bool) ($job['apply'] ?? false)),
+            // Unknown jobs are dead-lettered instead of silently acknowledged.
+            default => throw new \RuntimeException('Unsupported job type: ' . (string) ($job['type'] ?? '')),
         };
     }
 

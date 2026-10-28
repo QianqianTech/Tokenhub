@@ -11,7 +11,8 @@ final class AnthropicRequestParser
     public function parse(Request $request): GatewayRequest
     {
         $payload = $request->json();
-        $input = max(1, (int) ceil(strlen(json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '') / 4));
+        unset($payload[MultipartUpload::FILES_KEY]);
+        $input = MediaPayload::estimate($payload)['tokens'];
         $imageCount = $this->countImages($payload);
 
         return new GatewayRequest(
@@ -40,7 +41,9 @@ final class AnthropicRequestParser
         }
 
         $count = 0;
-        if (($value['type'] ?? null) === 'image' || isset($value['source']['media_type'])) {
+        // Image blocks only: document (PDF/text) blocks also carry
+        // source.media_type but are neither images nor billed as images.
+        if (($value['type'] ?? null) === 'image') {
             $count++;
         }
 

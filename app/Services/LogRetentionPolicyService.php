@@ -39,7 +39,7 @@ final class LogRetentionPolicyService
     {
         return match ($logType) {
             'audit', 'security' => 180,
-            'caddy-security', 'export' => 90,
+            'export' => 90,
             default => 30,
         };
     }

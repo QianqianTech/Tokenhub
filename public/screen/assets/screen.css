@@ -628,121 +628,6 @@ input:focus {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
-.firewall-hero {
-  display: grid;
-  grid-template-columns: minmax(420px, 0.85fr) minmax(560px, 1.15fr);
-  gap: 16px;
-  margin-top: 16px;
-}
-
-.firewall-summary-panel,
-.firewall-events-panel {
-  min-height: 320px;
-}
-
-.firewall-summary-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.firewall-summary-card {
-  min-height: 124px;
-  display: grid;
-  align-content: space-between;
-  gap: 8px;
-  border: 1px solid rgba(251, 113, 133, 0.2);
-  border-radius: 8px;
-  padding: 14px;
-  background: rgba(15, 23, 42, 0.58);
-}
-
-.firewall-summary-card.accent-1 {
-  border-color: rgba(251, 191, 36, 0.22);
-}
-
-.firewall-summary-card.accent-2 {
-  border-color: rgba(45, 212, 191, 0.2);
-}
-
-.firewall-summary-label,
-.firewall-summary-hint {
-  color: #9fb3c8;
-  font-size: var(--font-size-content);
-}
-
-.firewall-summary-value {
-  color: #f8fbff;
-  font-size: clamp(24px, 2vw, 38px);
-  line-height: 1.06;
-}
-
-.firewall-grid {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-.firewall-event-list,
-.firewall-rank-list {
-  display: grid;
-  gap: 10px;
-}
-
-.firewall-event-row,
-.firewall-rank-row {
-  position: relative;
-  overflow: hidden;
-  display: grid;
-  grid-template-columns: 44px minmax(0, 1fr) auto;
-  gap: 8px 10px;
-  align-items: center;
-  border: 1px solid rgba(148, 163, 184, 0.12);
-  border-radius: 8px;
-  padding: 10px 12px;
-  background: rgba(3, 11, 21, 0.44);
-}
-
-.firewall-event-type,
-.firewall-rank-index {
-  border-radius: 6px;
-  padding: 5px 7px;
-  background: rgba(251, 113, 133, 0.12);
-  color: #fda4af;
-  font-size: var(--font-size-content);
-  font-weight: 900;
-  text-align: center;
-}
-
-.firewall-event-title,
-.firewall-rank-name {
-  min-width: 0;
-  overflow: hidden;
-  color: #f8fbff;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.firewall-event-meta {
-  grid-column: 2 / 4;
-  overflow: hidden;
-  color: #8fa7bd;
-  font-size: var(--font-size-content);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.firewall-event-count,
-.firewall-rank-count {
-  color: #fbbf24;
-  font-weight: 900;
-}
-
-.firewall-rank-fill {
-  grid-column: 1 / 4;
-  height: 7px;
-  border-radius: 999px;
-  background: linear-gradient(90deg, #fb7185, #fbbf24);
-}
-
 .performance-card {
   min-height: 118px;
   display: grid;
@@ -784,11 +669,6 @@ input:focus {
   .screen-secondary-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-
-  .firewall-hero,
-  .firewall-grid {
-    grid-template-columns: 1fr;
-  }
 }
 
 @media (max-width: 760px) {
@@ -809,9 +689,6 @@ input:focus {
   .screen-overview,
   .screen-grid,
   .screen-secondary-grid,
-  .firewall-hero,
-  .firewall-summary-grid,
-  .firewall-grid,
   .performance-grid {
     grid-template-columns: 1fr;
   }
