@@ -1,0 +1,62 @@
+<?php
+
+declare(strict_types=1);
+
+require __DIR__ . '/../bootstrap.php';
+
+$adminCss = file_get_contents(__DIR__ . '/../../public/admin/assets/css/app.css') ?: '';
+$tableSource = file_get_contents(__DIR__ . '/../../public/admin/assets/js/table.js') ?: '';
+
+assert_true(str_contains($tableSource, 'className: "panel table-panel"'), 'Generic admin tables should render inside a dedicated table-panel.');
+assert_true(substr_count($tableSource, 'className: "panel table-panel"') >= 2, 'Specialized table hosts should also use table-panel.');
+assert_true(str_contains($adminCss, '.table-panel'), 'Admin CSS should define a table-panel overflow boundary.');
+assert_true(str_contains($adminCss, 'max-width: 100%'), 'Table panels should cap their rendered width to the workspace.');
+assert_true(str_contains($adminCss, 'overflow-x: auto'), 'Table panels should scroll horizontally within the panel, not the page.');
+assert_true(str_contains($adminCss, '.filters > button'), 'Filter action buttons should have explicit grid sizing.');
+assert_true(str_contains($adminCss, 'justify-self: start'), 'Filter action buttons should not stretch to full grid-column width.');
+assert_true(str_contains($adminCss, 'grid-template-columns: 260px minmax(0, 1fr)'), 'Admin shell should keep the workspace column shrinkable instead of letting wide content expand the page.');
+assert_true(str_contains($tableSource, 'resource-table'), 'Resource tables should expose a stable class for layout tuning.');
+assert_true(str_contains($tableSource, 'resource-table--${resourceKey}'), 'Resource tables should expose the resource key for page-specific column layout.');
+assert_true(str_contains($tableSource, 'table-cell--${column}'), 'Resource table cells should expose column-specific classes.');
+assert_true(str_contains($adminCss, '.resource-table--dashboard-share-links'), 'Dashboard share links should have dedicated wide-table layout rules.');
+assert_true(!str_contains($adminCss, 'min-width: 1480px'), 'Dashboard share table should not force a fixed oversized page width.');
+assert_true(str_contains($adminCss, 'white-space: nowrap'), 'Wide admin tables should prevent Chinese headers from collapsing into vertical text.');
+assert_true(str_contains($adminCss, '.resource-table--dashboard-share-links .row-actions'), 'Dashboard share row actions should have a stable action-column layout.');
+assert_true(str_contains($adminCss, '.resource-table--api-keys'), 'API key table should have dedicated compact layout rules for the dedicated API Keys page.');
+assert_true(str_contains($adminCss, '.resource-table--api-keys .table-cell--name'), 'API key name cells should have a stable readable width.');
+assert_true(str_contains($adminCss, '.resource-table--api-keys .table-cell--created_at'), 'API key created-at cells should keep a stable readable width.');
+assert_true(str_contains($adminCss, '.resource-table--api-keys .table-cell--key'), 'API key masked key cells should keep a stable readable width.');
+assert_true(str_contains($tableSource, 'className: "api-key-table-wrap api-key-table-panel"'), 'API key table wrapper should use the dedicated horizontal overflow boundary.');
+$apiKeyCssStart = strpos($adminCss, '.resource-table--api-keys');
+$apiKeyCssEnd = strpos($adminCss, '.api-key-detail-modal', $apiKeyCssStart);
+assert_true($apiKeyCssStart !== false && $apiKeyCssEnd !== false, 'API key CSS block should be inspectable.');
+$apiKeyCss = substr($adminCss, $apiKeyCssStart, $apiKeyCssEnd - $apiKeyCssStart);
+assert_true(str_contains($apiKeyCss, 'var(--font-size-title)'), 'API key page title should use the shared title font variable.');
+assert_true(str_contains($apiKeyCss, 'var(--font-size-content)'), 'API key table and controls should use the shared content font variable.');
+assert_true(!preg_match('/font-size:\s*(?:20|24|28)px/', $apiKeyCss), 'API key page should not hard-code oversized font sizes outside the shared typography scale.');
+assert_true(str_contains($apiKeyCss, 'min-width: 920px'), 'API key table should preserve readable columns and scroll inside its panel on narrow workspaces.');
+assert_true(!str_contains($apiKeyCss, '#020817'), 'API key page text should inherit the active theme color instead of a light-theme-only black.');
+assert_true(!str_contains($apiKeyCss, '#f2f2f2'), 'API key safety notice should inherit the active theme surface instead of a light-theme-only background.');
+assert_true(!str_contains($apiKeyCss, '#151515'), 'API key action icons should inherit the active theme text color.');
+$apiKeyBulkCssStart = strpos($adminCss, '.api-key-bulk-actions');
+$apiKeyBulkCssEnd = strpos($adminCss, '.table-cell--select', $apiKeyBulkCssStart);
+assert_true($apiKeyBulkCssStart !== false && $apiKeyBulkCssEnd !== false, 'API key bulk action CSS block should be inspectable.');
+$apiKeyBulkCss = substr($adminCss, $apiKeyBulkCssStart, $apiKeyBulkCssEnd - $apiKeyBulkCssStart);
+assert_true(str_contains($apiKeyBulkCss, 'background: var(--surface-soft);'), 'API key bulk actions should use the active theme surface.');
+assert_true(str_contains($apiKeyBulkCss, 'color: var(--muted);'), 'API key bulk-action labels should use the active theme muted color.');
+assert_true(str_contains($tableSource, 'className: "waf-overview stack"'), 'WAF attack records page should lead with a dedicated WAF overview section.');
+assert_true(str_contains($tableSource, 'className: "waf-statistics-grid"'), 'WAF overview panels should not reuse the generic dashboard grid.');
+assert_true(str_contains($tableSource, 'className: "panel dashboard-panel waf-statistics-panel"'), 'WAF overview panels should expose a dedicated layout class.');
+assert_true(str_contains($tableSource, 'className: "panel table-panel waf-attack-list"'), 'WAF attack records should render in a dedicated attack-list section.');
+assert_true(str_contains($tableSource, 'WAF 概述'), 'WAF overview should be named explicitly.');
+assert_true(str_contains($tableSource, '攻击列表'), 'WAF records should be presented as the attack list.');
+assert_true(str_contains($adminCss, '.waf-statistics-grid'), 'Admin CSS should define the WAF statistics grid.');
+assert_true(str_contains($adminCss, 'grid-template-columns: minmax(0, 1fr)'), 'WAF statistics grid should render as a single readable column.');
+assert_true(str_contains($tableSource, 'className: "rag-summary-list"'), 'RAG dashboard summaries should render as compact lists instead of cramped wide tables.');
+assert_true(str_contains($tableSource, 'className: "rag-summary-chip"'), 'RAG dashboard summaries should expose compact key-value chips.');
+assert_true(str_contains($adminCss, 'grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr))'), 'RAG dashboard columns should never force the page wider than the workspace.');
+assert_true(str_contains($adminCss, '.rag-dashboard-panel,'), 'RAG dashboard panels should share a shrinkable overflow boundary.');
+assert_true(str_contains($adminCss, '.rag-summary-panel'), 'RAG summary panels should share a shrinkable overflow boundary.');
+assert_true(str_contains($adminCss, '.rag-dashboard-cards > *'), 'RAG dashboard card grid children should be shrinkable.');
+assert_true(str_contains($adminCss, '.rag-metric-card strong') && str_contains($adminCss, 'overflow-wrap: anywhere'), 'RAG metric values should wrap long alert codes instead of widening the page.');
+assert_true(str_contains($adminCss, '.rag-summary-chip-row') && str_contains($adminCss, 'flex-wrap: wrap'), 'RAG summary details should wrap as chips instead of collapsing into vertical table text.');

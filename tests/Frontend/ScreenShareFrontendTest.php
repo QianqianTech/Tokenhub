@@ -1,0 +1,169 @@
+<?php
+
+declare(strict_types=1);
+
+require __DIR__ . '/../bootstrap.php';
+
+$screenJs = file_get_contents(__DIR__ . '/../../public/screen/assets/screen.js');
+$screenHtml = file_get_contents(__DIR__ . '/../../public/screen/index.html');
+$screenCss = file_get_contents(__DIR__ . '/../../public/screen/assets/screen.css');
+$adminAppJs = file_get_contents(__DIR__ . '/../../public/admin/assets/js/app.js');
+$adminDashboardJs = file_get_contents(__DIR__ . '/../../public/admin/assets/js/dashboard.js');
+$adminTableJs = file_get_contents(__DIR__ . '/../../public/admin/assets/js/table.js');
+$resourcesJs = file_get_contents(__DIR__ . '/../../public/admin/assets/js/resources.js');
+$caddyfile = file_get_contents(__DIR__ . '/../../docker/caddy/Caddyfile');
+$kernel = file_get_contents(__DIR__ . '/../../app/Bootstrap/Kernel.php');
+
+assert_true(is_string($screenJs), 'Screen JS source should be readable.');
+assert_true(is_string($screenHtml), 'Screen HTML source should be readable.');
+assert_true(is_string($screenCss), 'Screen CSS source should be readable.');
+assert_true(is_string($adminAppJs), 'Admin app source should be readable.');
+assert_true(is_string($adminDashboardJs), 'Admin dashboard source should be readable.');
+assert_true(is_string($adminTableJs), 'Admin table JS source should be readable.');
+assert_true(is_string($resourcesJs), 'Admin resources source should be readable.');
+assert_true(is_string($caddyfile), 'Caddyfile should be readable.');
+assert_true(is_string($kernel), 'Kernel source should be readable.');
+
+foreach ([$screenJs, $adminTableJs, $resourcesJs] as $source) {
+    assert_true(!str_contains($source, 'localStorage'), 'Share frontends must not use localStorage.');
+    assert_true(!str_contains($source, 'sessionStorage'), 'Share frontends must not use sessionStorage.');
+    assert_true(!str_contains($source, 'console.'), 'Share frontends must not print sensitive responses to console.');
+    assert_true(!preg_match('/\.innerHTML\s*=/i', $source), 'Share frontends must not assign dynamic content through innerHTML.');
+}
+
+assert_true(str_contains($screenJs, 'shareCodeFromPath'), 'Screen JS should derive share_code from /screen/{share_code}.');
+assert_true(!str_contains($screenHtml, 'id="share_code"'), 'Screen login form should not ask users to type the link code manually.');
+assert_true(str_contains($screenHtml, 'id="username"'), 'Screen root page should allow username login when no share code is present.');
+assert_true(str_contains($screenHtml, 'id="password"'), 'Screen root page should allow password login when no share code is present.');
+assert_true(str_contains($screenJs, '/screen-api/auth/share-login'), 'Screen JS should login by share code without credentials.');
+assert_true(str_contains($screenJs, 'enterByCredentials'), 'Screen JS should support credential login when no share code is present.');
+assert_true(str_contains($screenJs, 'username: $("username").value'), 'Screen JS should submit username credentials on the root screen page.');
+assert_true(str_contains($screenJs, 'password: $("password").value'), 'Screen JS should submit password credentials on the root screen page.');
+assert_true(str_contains($screenHtml, 'class="screen-shell"'), 'Screen page should expose a polished shell class.');
+assert_true(str_contains($screenHtml, '<title>白云区智慧政务 运营大屏</title>'), 'Screen page title should be localized Chinese.');
+assert_true(str_contains($screenHtml, '白云区智慧政务 运营大屏'), 'Screen top-line title should expose the district government screen name.');
+assert_true(!str_contains($screenHtml . $screenJs, '运营中枢'), 'Screen frontend should not duplicate the operating-center title.');
+assert_true(str_contains($screenHtml, 'Token 消耗、调用、生成任务与性能状态一屏掌握'), 'Screen subtitle should describe the optimized token dashboard.');
+assert_true(str_contains($screenHtml, 'class="screen-topline"'), 'Screen page should expose a top-line layout class.');
+assert_true(str_contains($screenHtml, 'class="screen-stage"'), 'Screen page should expose a full dashboard stage.');
+assert_true(str_contains($screenHtml, 'class="screen-overview"'), 'Screen page should expose a token overview area.');
+assert_true(str_contains($screenHtml, 'class="screen-clock"'), 'Screen page should expose a local clock.');
+assert_true(str_contains($screenHtml, 'class="screen-status"'), 'Screen page should expose a refresh status indicator.');
+assert_true(str_contains($screenHtml, 'id="fullscreen-toggle"'), 'Screen page should expose a fullscreen toggle.');
+assert_true(str_contains($screenHtml, 'class="screen-grid screen-primary-grid"'), 'Screen page should expose an optimized primary panel grid.');
+foreach (['id="token-summary"', 'id="token-details"', 'id="model-share-chart"', 'id="model-usage"', 'id="period-totals"', 'id="live-generations"'] as $requiredScreenNode) {
+    assert_true(str_contains($screenHtml, $requiredScreenNode), "Screen page should expose {$requiredScreenNode}.");
+}
+assert_true(!str_contains($screenHtml, 'class="screen-view-nav"'), 'Independent screen pages should not expose an in-screen view switcher.');
+assert_true(str_contains($screenHtml, 'data-screen-view="overview"'), 'Screen page should expose an overview view.');
+assert_true(str_contains($screenHtml, 'data-screen-view="operations"'), 'Screen page should expose an operations view.');
+assert_true(str_contains($screenHtml, 'data-screen-view="firewall"'), 'Screen page should expose a firewall screen 3 view.');
+assert_true(!str_contains($screenHtml, 'data-view-target="overview"'), 'Independent screen pages should not expose an overview switch button.');
+assert_true(!str_contains($screenHtml, 'data-view-target="operations"'), 'Independent screen pages should not expose an operations switch button.');
+assert_true(str_contains($screenHtml, 'id="rankings"'), 'Operations screen should expose a rankings panel.');
+foreach (['id="firewall-summary"', 'id="firewall-rules"', 'id="firewall-sources"', 'id="firewall-events"'] as $requiredFirewallNode) {
+    assert_true(str_contains($screenHtml, $requiredFirewallNode), "Firewall screen 3 should expose {$requiredFirewallNode}.");
+}
+assert_true(str_contains($screenCss, '.screen-shell'), 'Screen CSS should style the screen shell.');
+assert_true(
+    str_contains($screenCss, '.screen-login[hidden]') || str_contains($screenCss, 'body [hidden]'),
+    'Screen CSS should preserve hidden attribute semantics for login and dashboard panels.'
+);
+assert_true(str_contains($screenCss, '.screen-topline'), 'Screen CSS should style the top-line header.');
+assert_true(str_contains($screenCss, '.screen-stage'), 'Screen CSS should style the dashboard stage.');
+assert_true(str_contains($screenCss, '.metric-card'), 'Screen CSS should style metric cards.');
+assert_true(str_contains($screenCss, '.trend-bars'), 'Screen CSS should style local trend bars.');
+assert_true(str_contains($screenCss, '.rank-list'), 'Screen CSS should style local ranking lists.');
+assert_true(str_contains($screenCss, '.performance-grid'), 'Screen CSS should style performance panels.');
+assert_true(str_contains($screenCss, '.model-chart'), 'Screen CSS should style the local model usage pie chart.');
+assert_true(str_contains($screenCss, '.period-grid'), 'Screen CSS should style period token totals.');
+assert_true(str_contains($screenCss, '.live-list'), 'Screen CSS should style live generation rows.');
+assert_true(str_contains($screenCss, '.screen-view'), 'Screen CSS should style routed screen views.');
+assert_true(str_contains($screenCss, '.screen-view.active'), 'Screen CSS should expose only the active routed screen view.');
+assert_true(!str_contains($screenCss, '.screen-view-nav'), 'Independent screen CSS should not keep switcher styles.');
+assert_true(!preg_match('/https?:\/\//i', $screenHtml . $screenCss . $screenJs), 'Screen frontend must not reference remote assets.');
+assert_true(!preg_match('/@import/i', $screenCss), 'Screen CSS must not import external styles.');
+assert_true(str_contains($screenJs, 'SCREEN_LINK_DISABLED') || str_contains($screenJs, 'SCREEN_UNAUTHENTICATED'), 'Screen JS should handle forced offline auth failures.');
+assert_true(str_contains($screenJs, 'screenErrorMessage'), 'Screen frontend should expose localized error messages.');
+assert_true(str_contains($screenJs, 'SCREEN_NETWORK_ERROR'), 'Screen frontend should surface network/API connection failures distinctly.');
+assert_true(str_contains($screenJs, 'SCREEN_REQUEST_FAILED'), 'Screen frontend should retain a stable code for unknown screen API failures.');
+assert_true(str_contains($screenJs, 'payload.error?.code || payload.code ||'), 'Screen API errors should preserve backend error codes even if the envelope shape changes.');
+assert_true(str_contains($screenJs, '大屏请求失败'), 'Screen generic request errors should be localized Chinese.');
+assert_true(!str_contains($screenJs, 'Invalid JSON response'), 'Screen frontend should not expose English JSON parse errors.');
+assert_true(!str_contains($screenJs, 'Request failed'), 'Screen frontend should not expose English request errors.');
+assert_true(str_contains($screenJs, 'renderMetricCards'), 'Screen JS should render metrics with dedicated cards.');
+assert_true(str_contains($screenJs, 'formatTokenMillions'), 'Screen JS should render token totals in M units.');
+assert_true(str_contains($screenJs, 'SCREEN_REFRESH_INTERVAL_MS = 10000'), 'Screen JS should refresh often enough for realtime screen feedback.');
+assert_true(str_contains($screenJs, 'toggleFullscreen'), 'Screen JS should support fullscreen toggle.');
+assert_true(str_contains($screenJs, 'document.exitFullscreen'), 'Screen JS should support exiting fullscreen.');
+assert_true(str_contains($screenJs, 'requestFullscreen'), 'Screen JS should support entering fullscreen.');
+assert_true(str_contains($screenJs, '/screen-api/dashboard/overview'), 'Screen JS should request the overview dashboard metric.');
+assert_true(str_contains($screenJs, '/screen-api/dashboard/rankings'), 'Screen JS should request rankings for the operations screen.');
+assert_true(!str_contains($screenJs, 'SCREEN_VIEW_ROTATE_INTERVAL_MS'), 'Independent screen pages should not auto-rotate between views.');
+assert_true(str_contains($screenJs, 'screenViewFromPath'), 'Screen JS should derive the active screen view from the path.');
+assert_true(!str_contains($screenJs, 'screenPathForView'), 'Independent screen pages should not rewrite URLs for in-screen view switching.');
+assert_true(str_contains($screenJs, 'SCREEN_VIEW_KEYS.has(parts[1])'), 'Screen JS should not mistake built-in view names for share codes.');
+assert_true(str_contains($screenJs, 'SCREEN_VIEW_ORDER = ["overview", "operations", "firewall"]'), 'Screen JS should route firewall as screen 3.');
+assert_true(str_contains($screenJs, 'renderOverview'), 'Screen JS should render the overview payload.');
+assert_true(str_contains($screenJs, 'renderModelShare'), 'Screen JS should render model token share as a local pie chart.');
+assert_true(str_contains($screenJs, 'renderPeriodTotals'), 'Screen JS should render day/week/month/quarter/year token totals.');
+assert_true(str_contains($screenJs, 'overviewTotalsForDisplay'), 'Screen JS should fall back to the nearest non-empty period when today is empty.');
+assert_true(str_contains($screenCss, '.metric-period'), 'Screen CSS should style the metric period marker.');
+assert_true(str_contains($screenJs, 'renderLiveGenerations'), 'Screen JS should render the latest live generation rows.');
+assert_true(str_contains($screenJs, 'renderTrendBars'), 'Screen JS should render trend data without remote chart libraries.');
+assert_true(str_contains($screenJs, 'renderRankingList'), 'Screen JS should render rankings as a local list.');
+assert_true(str_contains($screenJs, 'renderSecurityPanel'), 'Screen JS should render security events as a local panel.');
+assert_true(str_contains($screenJs, 'renderFirewallScreen'), 'Screen JS should render the firewall screen 3 view.');
+assert_true(str_contains($screenJs, 'renderPerformancePanel'), 'Screen JS should render performance buckets as local cards.');
+assert_true(str_contains($screenJs, 'formatNumber'), 'Screen JS should format large values for big-screen readability.');
+assert_true(str_contains($screenJs, 'animateMetricValue'), 'Screen JS should animate metric values between refreshes.');
+assert_true(str_contains($screenJs, 'metric-trend-up'), 'Screen JS should show an upward trend marker when metric values increase.');
+assert_true(str_contains($screenCss, '.metric-trend-up'), 'Screen CSS should style the upward metric trend marker.');
+assert_true(str_contains($screenJs, 'updateClock'), 'Screen JS should update the local dashboard clock.');
+assert_true(str_contains($screenJs, 'screenApplyBrandIdentity'), 'Screen JS should apply configured screen title and brand settings.');
+assert_true(str_contains($screenJs, '/screen-api/system/brand-identity'), 'Screen JS should load public brand settings from the screen API.');
+assert_true(str_contains($screenJs, 'document.title = screenTitle'), 'Screen JS should apply the configured screen title to the document title.');
+assert_true(str_contains($screenJs, 'querySelector(".screen-title")'), 'Screen JS should apply the configured screen title to the visible screen heading.');
+assert_true(str_contains($screenJs, '总 Token'), 'Screen metrics should label total token usage.');
+assert_true(str_contains($screenJs, '总输入'), 'Screen metrics should label total input tokens.');
+assert_true(str_contains($screenJs, '总输出'), 'Screen metrics should label total output tokens.');
+assert_true(str_contains($screenJs, '总缓存'), 'Screen metrics should label total cache tokens.');
+assert_true(str_contains($screenJs, '总调用次数'), 'Screen metrics should label total request count.');
+assert_true(str_contains($screenJs, 'row.user_name'), 'Live generation rows should render the user name.');
+assert_true(str_contains($screenJs, 'row.department_name'), 'Live generation rows should render the department name.');
+assert_true(str_contains($screenJs, 'formatTokenMillions(tokens)'), 'Token detail rows should render model token totals in M units.');
+assert_true(str_contains($screenJs, 'type: "防火墙"'), 'Screen security event type should localize WAF.');
+assert_true(!str_contains($screenJs, 'type: "WAF"'), 'Screen security event type should not display WAF in English.');
+assert_true(str_contains($adminTableJs, 'reset-password'), 'Admin table should expose share-link password reset action.');
+assert_true(str_contains($adminTableJs, 'showShareLinkPasswordResetResult(result.data || {})'), 'Share-link password reset should render a dedicated one-time password result.');
+assert_true(!str_contains($adminTableJs, 'showModal("reset-password", el("pre", { text: JSON.stringify(result.data, null, 2) }))'), 'Share-link password reset must not render the full API payload as JSON.');
+assert_true(str_contains($adminTableJs, 'revoke-sessions'), 'Admin table should expose share-link session revoke action.');
+assert_true(str_contains($adminTableJs, 'allow-client-ip'), 'Admin table should expose share-link IP allow action.');
+assert_true(str_contains($adminTableJs, 'showAllowClientIp'), 'Admin table should expose a dedicated allow-client-IP modal.');
+$allowIpModalStart = strpos($adminTableJs, 'function showAllowClientIp');
+$allowIpModalEnd = strpos($adminTableJs, 'function showUserPasswordReset', $allowIpModalStart);
+assert_true($allowIpModalStart !== false && $allowIpModalEnd !== false, 'Admin table should keep allow-client-IP modal isolated.');
+$allowIpModalSource = substr($adminTableJs, $allowIpModalStart, $allowIpModalEnd - $allowIpModalStart);
+assert_true(!str_contains($allowIpModalSource, 'form.append(output);'), 'Allow-client-IP modal should not display the raw JSON result panel.');
+assert_true(str_contains($adminTableJs, '/overview'), 'Admin table should expose a screen 1 share-link open action.');
+assert_true(str_contains($adminTableJs, '/operations'), 'Admin table should expose a screen 2 share-link open action.');
+assert_true(str_contains($adminTableJs, '/firewall'), 'Admin table should expose a screen 3 firewall share-link open action.');
+assert_true(!str_contains($adminAppJs, 'dashboard-screen-1'), 'Admin app should not expose dashboard screen 1 as a direct admin page.');
+assert_true(!str_contains($adminAppJs, 'dashboard-screen-2'), 'Admin app should not expose dashboard screen 2 as a direct admin page.');
+assert_true(!str_contains($adminAppJs, 'dashboard-screen-3'), 'Admin app should not expose dashboard screen 3 as a direct admin page.');
+assert_true(str_contains($adminAppJs, 'renderDashboardPage(content, adminNavigate)'), 'Admin app should keep dashboard rendering scoped to the analysis page.');
+assert_true(!str_contains($adminDashboardJs, 'dashboard-screen-1'), 'Admin dashboard should not render screen 1 as an admin analysis page.');
+assert_true(!str_contains($adminDashboardJs, 'dashboard-screen-2'), 'Admin dashboard should not render screen 2 as an admin analysis page.');
+assert_true(!str_contains($adminDashboardJs, 'dashboard-screen-3'), 'Admin dashboard should not render screen 3 as an admin analysis page.');
+assert_true(str_contains($resourcesJs, '"dashboard-share-access-logs"'), 'Admin resources should expose screen share access logs.');
+assert_true(!str_contains($resourcesJs, '"dashboard-screen-1"'), 'Admin resources should not expose dashboard screen 1 in the sidebar.');
+assert_true(!str_contains($resourcesJs, '"dashboard-screen-2"'), 'Admin resources should not expose dashboard screen 2 in the sidebar.');
+assert_true(!str_contains($resourcesJs, '"dashboard-screen-3"'), 'Admin resources should not expose dashboard screen 3 in the sidebar.');
+assert_true(str_contains($resourcesJs, 'type: "cidr-list"'), 'Admin resources should expose CIDR lists as operator-friendly fields.');
+assert_true(str_contains($caddyfile, '@screen path /screen /screen/*'), 'Caddy should route /screen/* to the static screen app.');
+assert_true(str_contains($caddyfile, '@php path /health /ready /admin-api/* /screen-api/* /v1/* /download/*'), 'Caddy should forward /screen-api/* to PHP.');
+assert_true(!str_contains($screenJs, '/screen-api/dashboard/multimodal'), '09 screen frontend should only request required dashboard metrics.');
+assert_true(!str_contains($screenHtml, 'id="multimodal"'), '09 screen page should not expose a multimodal panel.');
+assert_true(str_contains($kernel, '/screen-api/system/brand-identity'), 'Screen API should expose public brand identity settings for the screen shell.');
+assert_true(str_contains($kernel, "['overview', 'realtime', 'trends', 'rankings', 'security', 'performance', 'multimodal']"), 'Screen dashboard routes should expose overview and multimodal metrics for authorized shares.');
+assert_true(str_contains($kernel, '/screen-api/assets/{id}/download-url'), 'Screen API should expose scoped media asset download URLs.');

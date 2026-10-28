@@ -1,0 +1,249 @@
+{"kind":"deck","id":"pr/2g2vir","name":"Deck"}
+{"kind":"layout","layoutId":"90fc08e7-9a5d-4209-af59-bd81e5105a5f","name":"Master","type":"master"}
+{"kind":"layout","layoutId":"9f5f2c94-9420-4124-9a49-b6d38ceaa9b3","name":"Title Slide","type":"title"}
+{"kind":"slide","id":"sl/mfkrpk","slide":1,"title":"政务智能办公平台建设方案","textShapes":7}
+{"kind":"shape","id":"sh/gredsfil","slide":1,"bbox":[0,0,650,720]}
+{"kind":"shape","id":"sh/hcnul0j6","slide":1,"bbox":[0,0,650,720]}
+{"kind":"textbox","id":"sh/6lcvml0j","slide":1,"text":"政务智能办公平台建设方案","textPreview":"政务智能办公平台建设方案","textChars":12,"textLines":1,"bbox":[74,122,490,120]}
+{"kind":"shape","id":"sh/7mlcfq14","slide":1,"bbox":[78,264,96,6]}
+{"kind":"textbox","id":"sh/8nudovip","slide":1,"text":"TokenHub + 黔前 AI 助手","textPreview":"TokenHub + 黔前 AI 助手","textChars":19,"textLines":1,"bbox":[78,291,450,34]}
+{"kind":"textbox","id":"sh/to3uh0ja","slide":1,"text":"以统一 AI 能力底座，支撑安全可控的政务办公智能化","textPreview":"以统一 AI 能力底座，支撑安全可控的政务办公智能化","textChars":26,"textLines":1,"bbox":[78,350,425,92]}
+{"kind":"shape","id":"sh/yhsvil0n","slide":1,"bbox":[78,500,116,34]}
+{"kind":"textbox","id":"sh/jilcbq18","slide":1,"text":"数字政府","textPreview":"数字政府","textChars":4,"textLines":1,"bbox":[78,507,116,18]}
+{"kind":"shape","id":"sh/ru9wf6xg","slide":1,"bbox":[206,500,126,34]}
+{"kind":"textbox","id":"sh/qt0v61wb","slide":1,"text":"安全可控","textPreview":"安全可控","textChars":4,"textLines":1,"bbox":[206,507,126,18]}
+{"kind":"shape","id":"sh/dgrehgfm","slide":1,"bbox":[344,500,126,34]}
+{"kind":"textbox","id":"sh/svid8be1","slide":1,"text":"集约建设","textPreview":"集约建设","textChars":4,"textLines":1,"bbox":[344,507,126,18]}
+{"kind":"textbox","id":"sh/zitwjqxs","slide":1,"text":"2026 年 7 月","textPreview":"2026 年 7 月","textChars":10,"textLines":1,"bbox":[78,630,260,24]}
+{"kind":"image","id":"im/ytsbqdk7","slide":1,"name":"","geometry":"roundRect","alt":"政务智能办公主视觉","bbox":[0,0,1280,720]}
+{"kind":"notes","id":"nt/mfkrpk","slide":1,"text":""}
+{"kind":"slide","id":"sl/7y7fc5","slide":2,"title":"政务智能办公平台建设方案","textShapes":16}
+{"kind":"shape","id":"sh/5c3ud8fe","slide":2,"bbox":[0,0,1280,7]}
+{"kind":"textbox","id":"sh/ipcv2dgn","slide":2,"text":"政务智能办公平台建设方案","textPreview":"政务智能办公平台建设方案","textChars":12,"textLines":1,"bbox":[68,31,620,20]}
+{"kind":"textbox","id":"sh/jqlcbix8","slide":2,"text":"02","textPreview":"02","textChars":2,"textLines":1,"bbox":[1150,31,60,20]}
+{"kind":"shape","id":"sh/sfed8nyp","slide":2,"bbox":[68,678,1144,1]}
+{"kind":"textbox","id":"sh/tgnuhsfa","slide":2,"text":"TokenHub + 黔前 AI 助手","textPreview":"TokenHub + 黔前 AI 助手","textChars":19,"textLines":1,"bbox":[68,690,350,16]}
+{"kind":"textbox","id":"sh/6dcv6dgj","slide":2,"name":"slide-title","text":"政务办公的关键矛盾：事务密集，知识分散，安全边界刚性","textPreview":"政务办公的关键矛盾：事务密集，知识分散，安全边界刚性","textChars":26,"textLines":1,"bbox":[68,74,1110,64]}
+{"kind":"textbox","id":"sh/7elcfix4","slide":2,"text":"建设目标不是增加一个聊天窗口，而是把 AI 纳入可管理的政务工作流。","textPreview":"建设目标不是增加一个聊天窗口，而是把 AI 纳入可管理的政务工作流。","textChars":34,"textLines":1,"bbox":[70,143,1040,34]}
+{"kind":"shape","id":"sh/8jadwjyl","slide":2,"bbox":[70,187,80,6]}
+{"kind":"textbox","id":"sh/9kju5of6","slide":2,"text":"01","textPreview":"01","textChars":2,"textLines":1,"bbox":[86,230,46,38]}
+{"kind":"textbox","id":"sh/tsbetgvm","slide":2,"text":"材料工作高频且规范","textPreview":"材料工作高频且规范","textChars":9,"textLines":1,"bbox":[138,231,278,30]}
+{"kind":"textbox","id":"sh/8r2x0beh","slide":2,"text":"公文、汇报、纪要、信息报送等任务耗时，质量依赖经验人员。","textPreview":"公文、汇报、纪要、信息报送等任务耗时，质量依赖经验人员。","textChars":28,"textLines":1,"bbox":[138,266,278,74]}
+{"kind":"textbox","id":"sh/7q9w76dw","slide":2,"text":"02","textPreview":"02","textChars":2,"textLines":1,"bbox":[472,230,46,38]}
+{"kind":"textbox","id":"sh/650fy1wb","slide":2,"text":"知识资产难以复用","textPreview":"知识资产难以复用","textChars":8,"textLines":1,"bbox":[524,231,278,30]}
+{"kind":"textbox","id":"sh/hwbexgvy","slide":2,"text":"制度、政策、案例和流程资料分散，检索和口径核对成本高。","textPreview":"制度、政策、案例和流程资料分散，检索和口径核对成本高。","textChars":27,"textLines":1,"bbox":[524,266,278,74]}
+{"kind":"textbox","id":"sh/gv2x4bed","slide":2,"text":"03","textPreview":"03","textChars":2,"textLines":1,"bbox":[858,230,46,38]}
+{"kind":"textbox","id":"sh/vutwv6ds","slide":2,"text":"安全与责任不可缺席","textPreview":"安全与责任不可缺席","textChars":9,"textLines":1,"bbox":[910,231,278,30]}
+{"kind":"textbox","id":"sh/utkf21w7","slide":2,"text":"政务资料、使用权限、输出内容和运行过程都必须可控、可审计。","textPreview":"政务资料、使用权限、输出内容和运行过程都必须可控、可审计。","textChars":29,"textLines":1,"bbox":[910,266,278,74]}
+{"kind":"shape","id":"sh/50vy10vu","slide":2,"bbox":[86,465,1098,122]}
+{"kind":"textbox","id":"sh/4zmx8ve9","slide":2,"text":"建设判断","textPreview":"建设判断","textChars":4,"textLines":1,"bbox":[118,494,130,26]}
+{"kind":"textbox","id":"sh/ofupk36x","slide":2,"text":"需要以统一底座把模型、知识、权限与审计集中管理；以政务工作台把能力封装为可用、可核、可推广的具体场景。","textPreview":"需要以统一底座把模型、知识、权限与审计集中管理；以政务工作台把能力封装为可用、可核、可推广的具体场景。","textChars":51,"textLines":1,"bbox":[272,486,836,62]}
+{"kind":"notes","id":"nt/7y7fc5","slide":2,"text":""}
+{"kind":"slide","id":"sl/m521do","slide":3,"title":"政务智能办公平台建设方案","textShapes":14}
+{"kind":"shape","id":"sh/sf6pkr29","slide":3,"bbox":[0,0,1280,7]}
+{"kind":"textbox","id":"sh/rexorm1o","slide":3,"text":"政务智能办公平台建设方案","textPreview":"政务智能办公平台建设方案","textChars":12,"textLines":1,"bbox":[68,31,620,20]}
+{"kind":"textbox","id":"sh/6do7ihk3","slide":3,"text":"03","textPreview":"03","textChars":2,"textLines":1,"bbox":[1150,31,60,20]}
+{"kind":"shape","id":"sh/5cf6pcji","slide":3,"bbox":[68,678,1144,1]}
+{"kind":"textbox","id":"sh/4b6pg72x","slide":3,"text":"TokenHub + 黔前 AI 助手","textPreview":"TokenHub + 黔前 AI 助手","textChars":19,"textLines":1,"bbox":[68,690,350,16]}
+{"kind":"textbox","id":"sh/jaxon21s","slide":3,"name":"slide-title","text":"双层分工：黔前 AI 助手服务工作人员，TokenHub 治理 AI 能力","textPreview":"双层分工：黔前 AI 助手服务工作人员，TokenHub 治理 AI 能力","textChars":37,"textLines":1,"bbox":[68,74,1110,64]}
+{"kind":"textbox","id":"sh/i9onexk7","slide":3,"text":"前台重体验与场景，后台重模型、知识、安全与运营，避免能力重复建设。","textPreview":"前台重体验与场景，后台重模型、知识、安全与运营，避免能力重复建设。","textChars":33,"textLines":1,"bbox":[70,143,1040,34]}
+{"kind":"shape","id":"sh/h8v6lcjm","slide":3,"bbox":[72,220,470,312]}
+{"kind":"textbox","id":"sh/w7m5c721","slide":3,"text":"黔前 AI 助手","textPreview":"黔前 AI 助手","textChars":8,"textLines":1,"bbox":[112,260,350,42]}
+{"kind":"textbox","id":"sh/apofytwv","slide":3,"text":"政务工作台","textPreview":"政务工作台","textChars":5,"textLines":1,"bbox":[112,312,280,28]}
+{"kind":"textbox","id":"sh/bqxgryxg","slide":3,"text":"• 公文与材料辅助\n• 政策制度问答\n• 会议纪要与信息报送\n• 数字员工与自动化任务","textPreview":"• 公文与材料辅助 | • 政策制度问答 | • 会议纪要与信息报送 | • 数字员工与自动化任务","textChars":43,"textLines":4,"bbox":[114,359,340,130]}
+{"kind":"textbox","id":"sh/wrqx0je1","slide":3,"text":"受控 API 调用","textPreview":"受控 API 调用","textChars":9,"textLines":1,"bbox":[556,345,170,26]}
+{"kind":"textbox","id":"sh/xszytofm","slide":3,"text":"→","textPreview":"→","textChars":1,"textLines":1,"bbox":[576,385,130,60]}
+{"kind":"shape","id":"sh/mlofu9wj","slide":3,"bbox":[738,220,470,312]}
+{"kind":"textbox","id":"sh/nmxgnex4","slide":3,"text":"TokenHub","textPreview":"TokenHub","textChars":8,"textLines":1,"bbox":[778,260,350,42]}
+{"kind":"textbox","id":"sh/on6xwjep","slide":3,"text":"统一 AI 能力底座","textPreview":"统一 AI 能力底座","textChars":10,"textLines":1,"bbox":[778,312,330,28]}
+{"kind":"textbox","id":"sh/9ofypofa","slide":3,"text":"• 多模型接入与路由\n• RAG 知识库与文件处理\n• API Key 权限与审计\n• 用量、配额与运行治理","textPreview":"• 多模型接入与路由 | • RAG 知识库与文件处理 | • API Key 权限与审计 | • 用量、配额与运行治理","textChars":54,"textLines":4,"bbox":[780,359,355,130]}
+{"kind":"textbox","id":"sh/ex4fq9gn","slide":3,"text":"核心价值：场景快速落地，同时保留组织级统一治理能力。","textPreview":"核心价值：场景快速落地，同时保留组织级统一治理能力。","textChars":26,"textLines":1,"bbox":[182,592,916,34]}
+{"kind":"notes","id":"nt/m521do","slide":3,"text":""}
+{"kind":"slide","id":"sl/v0r8rb","slide":4,"title":"TokenHub 核心价值","textShapes":17}
+{"kind":"shape","id":"sh/u9wru5sz","slide":4,"bbox":[0,0,1280,7]}
+{"kind":"textbox","id":"sh/hwnapkbq","slide":4,"text":"TokenHub 核心价值","textPreview":"TokenHub 核心价值","textChars":13,"textLines":1,"bbox":[68,31,620,20]}
+{"kind":"textbox","id":"sh/gve9wfa5","slide":4,"text":"04","textPreview":"04","textChars":2,"textLines":1,"bbox":[1150,31,60,20]}
+{"kind":"shape","id":"sh/3ypsrutg","slide":4,"bbox":[68,678,1144,1]}
+{"kind":"textbox","id":"sh/2xgbypsb","slide":4,"text":"TokenHub + 黔前 AI 助手","textPreview":"TokenHub + 黔前 AI 助手","textChars":19,"textLines":1,"bbox":[68,690,350,16]}
+{"kind":"textbox","id":"sh/p07atkbm","slide":4,"name":"slide-title","text":"TokenHub 不是单一接口，而是政务 AI 服务的统一控制面","textPreview":"TokenHub 不是单一接口，而是政务 AI 服务的统一控制面","textChars":32,"textLines":1,"bbox":[68,74,1110,64]}
+{"kind":"textbox","id":"sh/4zyt0za1","slide":4,"text":"它把原本分散在各类模型、知识库和应用中的治理工作集中到一个底座。 ","textPreview":"它把原本分散在各类模型、知识库和应用中的治理工作集中到一个底座。","textChars":33,"textLines":1,"bbox":[70,143,1040,34]}
+{"kind":"shape","id":"sh/i1crmlsr","slide":4,"bbox":[80,218,558,66]}
+{"kind":"textbox","id":"sh/4bahwr69","slide":4,"text":"01","textPreview":"01","textChars":2,"textLines":1,"bbox":[101,236,48,24]}
+{"kind":"textbox","id":"sh/5cjypwnu","slide":4,"text":"模型服务","textPreview":"模型服务","textChars":4,"textLines":1,"bbox":[160,231,130,26]}
+{"kind":"textbox","id":"sh/i9szuhoj","slide":4,"text":"统一接入不同模型，应用不直接绑定具体厂商。","textPreview":"统一接入不同模型，应用不直接绑定具体厂商。","textChars":21,"textLines":1,"bbox":[298,232,309,36]}
+{"kind":"shape","id":"sh/ja1gnm5o","slide":4,"bbox":[80,305,558,66]}
+{"kind":"textbox","id":"sh/szuh0b6l","slide":4,"text":"02","textPreview":"02","textChars":2,"textLines":1,"bbox":[101,323,48,24]}
+{"kind":"textbox","id":"sh/t03itwn6","slide":4,"text":"知识服务","textPreview":"知识服务","textChars":4,"textLines":1,"bbox":[160,318,130,26]}
+{"kind":"textbox","id":"sh/6dszy1of","slide":4,"text":"将文件、问答与向量检索沉淀为可复用的 RAG 服务。","textPreview":"将文件、问答与向量检索沉淀为可复用的 RAG 服务。","textChars":26,"textLines":1,"bbox":[298,319,309,36]}
+{"kind":"shape","id":"sh/re10r650","slide":4,"bbox":[80,392,558,66]}
+{"kind":"textbox","id":"sh/8jqho761","slide":4,"text":"03","textPreview":"03","textChars":2,"textLines":1,"bbox":[101,410,48,24]}
+{"kind":"textbox","id":"sh/94zyhcnm","slide":4,"text":"权限服务","textPreview":"权限服务","textChars":4,"textLines":1,"bbox":[160,405,130,26]}
+{"kind":"textbox","id":"sh/po7654be","slide":4,"text":"按应用/API Key 授权可调用模型与可访问知识资源。","textPreview":"按应用/API Key 授权可调用模型与可访问知识资源。","textChars":28,"textLines":1,"bbox":[298,406,309,36]}
+{"kind":"shape","id":"sh/ony5wzut","slide":4,"bbox":[80,479,558,66]}
+{"kind":"textbox","id":"sh/3mpo3ut8","slide":4,"text":"04","textPreview":"04","textChars":2,"textLines":1,"bbox":[101,497,48,24]}
+{"kind":"textbox","id":"sh/2lgnupcn","slide":4,"text":"运营服务","textPreview":"运营服务","textChars":4,"textLines":1,"bbox":[160,492,130,26]}
+{"kind":"textbox","id":"sh/xsr69oba","slide":4,"text":"对用量、配额、日志和异常进行集中管理。","textPreview":"对用量、配额、日志和异常进行集中管理。","textChars":19,"textLines":1,"bbox":[298,493,309,36]}
+{"kind":"image","id":"im/mh4zexoz","slide":4,"name":"","geometry":"roundRect","alt":"统一 AI 能力底座示意","bbox":[720,208,486,365]}
+{"kind":"notes","id":"nt/v0r8rb","slide":4,"text":""}
+{"kind":"slide","id":"sl/qwdxcb","slide":5,"title":"TokenHub 核心价值","textShapes":15}
+{"kind":"shape","id":"sh/psja1s7e","slide":5,"bbox":[0,0,1280,7]}
+{"kind":"textbox","id":"sh/2psr6x8n","slide":5,"text":"TokenHub 核心价值","textPreview":"TokenHub 核心价值","textChars":13,"textLines":1,"bbox":[68,31,620,20]}
+{"kind":"textbox","id":"sh/3q1sz2p8","slide":5,"text":"05","textPreview":"05","textChars":2,"textLines":1,"bbox":[1150,31,60,20]}
+{"kind":"shape","id":"sh/gnq94nqx","slide":5,"bbox":[68,678,1144,1]}
+{"kind":"textbox","id":"sh/hojaxs72","slide":5,"text":"TokenHub + 黔前 AI 助手","textPreview":"TokenHub + 黔前 AI 助手","textChars":19,"textLines":1,"bbox":[68,690,350,16]}
+{"kind":"textbox","id":"sh/ul8r2d8r","slide":5,"name":"slide-title","text":"模型网关让政务应用“面向能力”而不是“绑定厂商”","textPreview":"模型网关让政务应用“面向能力”而不是“绑定厂商”","textChars":24,"textLines":1,"bbox":[68,74,1110,64]}
+{"kind":"textbox","id":"sh/fmhsvipc","slide":5,"text":"一个工作台可以在受控策略下调用适合不同任务的模型，而无需反复改造业务系统。 ","textPreview":"一个工作台可以在受控策略下调用适合不同任务的模型，而无需反复改造业务系统。","textChars":38,"textLines":1,"bbox":[70,143,1040,34]}
+{"kind":"textbox","id":"sh/0jutg761","slide":5,"text":"政务工作台","textPreview":"政务工作台","textChars":5,"textLines":1,"bbox":[80,248,260,36]}
+{"kind":"shape","id":"sh/1k3a9c7m","slide":5,"bbox":[93,308,230,106]}
+{"kind":"textbox","id":"sh/xk7apkfu","slide":5,"text":"公文 / 问答 / 纪要\n专题材料 / 自动化任务","textPreview":"公文 / 问答 / 纪要 | 专题材料 / 自动化任务","textChars":25,"textLines":2,"bbox":[112,331,190,60]}
+{"kind":"textbox","id":"sh/wjytgfe9","slide":5,"text":"→","textPreview":"→","textChars":1,"textLines":1,"bbox":[355,329,110,62]}
+{"kind":"shape","id":"sh/bipsnuxo","slide":5,"bbox":[482,232,314,256]}
+{"kind":"textbox","id":"sh/axgbepw3","slide":5,"text":"TokenHub\n模型网关","textPreview":"TokenHub | 模型网关","textChars":13,"textLines":2,"bbox":[525,274,228,74]}
+{"kind":"textbox","id":"sh/9wnalkfi","slide":5,"text":"路由策略 · 可用性 · 权限\n用量计量 · 异常治理","textPreview":"路由策略 · 可用性 · 权限 | 用量计量 · 异常治理","textChars":27,"textLines":2,"bbox":[530,378,218,50]}
+{"kind":"textbox","id":"sh/ovetcfed","slide":5,"text":"→","textPreview":"→","textChars":1,"textLines":1,"bbox":[826,329,110,62]}
+{"kind":"shape","id":"sh/nu5sjaxs","slide":5,"bbox":[960,238,220,58]}
+{"kind":"textbox","id":"sh/mtwba5w7","slide":5,"text":"文本生成","textPreview":"文本生成","textChars":4,"textLines":1,"bbox":[960,255,220,24]}
+{"kind":"shape","id":"sh/tsruh4f2","slide":5,"bbox":[960,320,220,58]}
+{"kind":"textbox","id":"sh/8ritozeh","slide":5,"text":"长文理解","textPreview":"长文理解","textChars":4,"textLines":1,"bbox":[960,337,220,24]}
+{"kind":"shape","id":"sh/svqdknmt","slide":5,"bbox":[960,402,220,58]}
+{"kind":"textbox","id":"sh/twzetsny","slide":5,"text":"向量检索","textPreview":"向量检索","textChars":4,"textLines":1,"bbox":[960,419,220,24]}
+{"kind":"shape","id":"sh/6t8vid4n","slide":5,"bbox":[154,562,968,64]}
+{"kind":"textbox","id":"sh/ruhcri58","slide":5,"text":"对政府的价值：模型可替换、调用可约束、故障可处置，新增场景不再重复做模型接入。","textPreview":"对政府的价值：模型可替换、调用可约束、故障可处置，新增场景不再重复做模型接入。","textChars":39,"textLines":1,"bbox":[188,582,900,28]}
+{"kind":"notes","id":"nt/qwdxcb","slide":5,"text":""}
+{"kind":"slide","id":"sl/ac2ot3","slide":6,"title":"TokenHub 核心价值","textShapes":21}
+{"kind":"shape","id":"sh/0nmdsb2h","slide":6,"bbox":[0,0,1280,7]}
+{"kind":"textbox","id":"sh/zmdcjq1c","slide":6,"text":"TokenHub 核心价值","textPreview":"TokenHub 核心价值","textChars":13,"textLines":1,"bbox":[68,31,620,20]}
+{"kind":"textbox","id":"sh/el4bqlkr","slide":6,"text":"06","textPreview":"06","textChars":2,"textLines":1,"bbox":[1150,31,60,20]}
+{"kind":"shape","id":"sh/dkbuhgj6","slide":6,"bbox":[68,678,1144,1]}
+{"kind":"textbox","id":"sh/cj2tob2l","slide":6,"text":"TokenHub + 黔前 AI 助手","textPreview":"TokenHub + 黔前 AI 助手","textChars":19,"textLines":1,"bbox":[68,690,350,16]}
+{"kind":"textbox","id":"sh/ritcf610","slide":6,"name":"slide-title","text":"RAG 知识服务把“文件堆”转化为可管理、可追溯的政务知识能力","textPreview":"RAG 知识服务把“文件堆”转化为可管理、可追溯的政务知识能力","textChars":31,"textLines":1,"bbox":[68,74,1110,64]}
+{"kind":"textbox","id":"sh/qhkbm1kf","slide":6,"text":"知识库不只是上传文档，而是由权限、处理、检索、引用和持续更新共同构成的服务。 ","textPreview":"知识库不只是上传文档，而是由权限、处理、检索、引用和持续更新共同构成的服务。","textChars":39,"textLines":1,"bbox":[70,143,1040,34]}
+{"kind":"shape","id":"sh/xgfut0ja","slide":6,"bbox":[84,275,210,214]}
+{"kind":"textbox","id":"sh/wf6d0v2p","slide":6,"text":"01","textPreview":"01","textChars":2,"textLines":1,"bbox":[104,300,50,30]}
+{"kind":"textbox","id":"sh/i9oji9s3","slide":6,"text":"资料入库","textPreview":"资料入库","textChars":4,"textLines":1,"bbox":[104,346,170,28]}
+{"kind":"textbox","id":"sh/3uxkreto","slide":6,"text":"制度、政策、流程、案例与专题材料按范围进入知识空间。","textPreview":"制度、政策、流程、案例与专题材料按范围进入知识空间。","textChars":26,"textLines":1,"bbox":[104,390,166,76]}
+{"kind":"textbox","id":"sh/4v6lkja9","slide":6,"text":"→","textPreview":"→","textChars":1,"textLines":1,"bbox":[295,347,42,42]}
+{"kind":"shape","id":"sh/5wf2tobe","slide":6,"bbox":[337,275,210,214]}
+{"kind":"textbox","id":"sh/u54je9sr","slide":6,"text":"02","textPreview":"02","textChars":2,"textLines":1,"bbox":[357,300,50,30]}
+{"kind":"textbox","id":"sh/v6dknetc","slide":6,"text":"智能处理","textPreview":"智能处理","textChars":4,"textLines":1,"bbox":[357,346,170,28]}
+{"kind":"textbox","id":"sh/g7m1gzax","slide":6,"text":"文件解析、切分与向量化，形成适配问答和材料辅助的检索基础。","textPreview":"文件解析、切分与向量化，形成适配问答和材料辅助的检索基础。","textChars":29,"textLines":1,"bbox":[357,390,166,76]}
+{"kind":"textbox","id":"sh/h8f2p4bi","slide":6,"text":"→","textPreview":"→","textChars":1,"textLines":1,"bbox":[548,347,42,42]}
+{"kind":"shape","id":"sh/e183qtsb","slide":6,"bbox":[590,275,210,214]}
+{"kind":"textbox","id":"sh/f2hkzytw","slide":6,"text":"03","textPreview":"03","textChars":2,"textLines":1,"bbox":[610,300,50,30]}
+{"kind":"textbox","id":"sh/bup8v65w","slide":6,"text":"受控检索","textPreview":"受控检索","textChars":4,"textLines":1,"bbox":[610,346,170,28]}
+{"kind":"textbox","id":"sh/qtg7214b","slide":6,"text":"按用户、部门、应用与知识空间限制检索范围并返回依据。","textPreview":"按用户、部门、应用与知识空间限制检索范围并返回依据。","textChars":26,"textLines":1,"bbox":[610,390,166,76]}
+{"kind":"textbox","id":"sh/xwrqxwn2","slide":6,"text":"→","textPreview":"→","textChars":1,"textLines":1,"bbox":[801,347,42,42]}
+{"kind":"shape","id":"sh/cvi94rmh","slide":6,"bbox":[843,275,210,214]}
+{"kind":"textbox","id":"sh/zy98z658","slide":6,"text":"04","textPreview":"04","textChars":2,"textLines":1,"bbox":[863,300,50,30]}
+{"kind":"textbox","id":"sh/yx0r614n","slide":6,"text":"场景交付","textPreview":"场景交付","textChars":4,"textLines":1,"bbox":[863,346,170,28]}
+{"kind":"textbox","id":"sh/l0rq1gny","slide":6,"text":"在制度问答、材料起草、会议整理等场景中呈现可复核结果。","textPreview":"在制度问答、材料起草、会议整理等场景中呈现可复核结果。","textChars":27,"textLines":1,"bbox":[863,390,166,76]}
+{"kind":"textbox","id":"sh/kzi98bmd","slide":6,"text":"知识价值不在于“存得更多”，而在于让授权人员更快获得有依据、可复核的答案与材料。","textPreview":"知识价值不在于“存得更多”，而在于让授权人员更快获得有依据、可复核的答案与材料。","textChars":40,"textLines":1,"bbox":[126,559,1020,36]}
+{"kind":"notes","id":"nt/ac2ot3","slide":6,"text":""}
+{"kind":"slide","id":"sl/cd5dha","slide":7,"title":"TokenHub 核心价值","textShapes":15}
+{"kind":"shape","id":"sh/p4zedsrq","slide":7,"bbox":[0,0,1280,7]}
+{"kind":"textbox","id":"sh/21ovidsz","slide":7,"text":"TokenHub 核心价值","textPreview":"TokenHub 核心价值","textChars":13,"textLines":1,"bbox":[68,31,620,20]}
+{"kind":"textbox","id":"sh/32hwbi9k","slide":7,"text":"07","textPreview":"07","textChars":2,"textLines":1,"bbox":[1150,31,60,20]}
+{"kind":"shape","id":"sh/gz6dg3a9","slide":7,"bbox":[68,678,1144,1]}
+{"kind":"textbox","id":"sh/h0fe98ru","slide":7,"text":"TokenHub + 黔前 AI 助手","textPreview":"TokenHub + 黔前 AI 助手","textChars":19,"textLines":1,"bbox":[68,690,350,16]}
+{"kind":"textbox","id":"sh/udovets3","slide":7,"name":"slide-title","text":"权限、审计与运营，让 AI 应用具备政务所需的可控性","textPreview":"权限、审计与运营，让 AI 应用具备政务所需的可控性","textChars":26,"textLines":1,"bbox":[68,74,1110,64]}
+{"kind":"textbox","id":"sh/fexw7y9o","slide":7,"text":"TokenHub 将“谁能调用、能调用什么、调用了多少、发生了什么”固化为统一治理能力。 ","textPreview":"TokenHub 将“谁能调用、能调用什么、调用了多少、发生了什么”固化为统一治理能力。","textChars":45,"textLines":1,"bbox":[70,143,1040,34]}
+{"kind":"shape","id":"sh/sb6dc3ax","slide":7,"bbox":[82,253,332,276]}
+{"kind":"textbox","id":"sh/tcfe58ri","slide":7,"text":"01","textPreview":"01","textChars":2,"textLines":1,"bbox":[116,288,48,30]}
+{"kind":"textbox","id":"sh/tcf2tsv2","slide":7,"text":"最小授权","textPreview":"最小授权","textChars":4,"textLines":1,"bbox":[116,343,240,34]}
+{"kind":"textbox","id":"sh/8b610nex","slide":7,"text":"按应用/API Key 授予模型与知识库访问范围，避免业务侧直接持有上游厂商密钥。","textPreview":"按应用/API Key 授予模型与知识库访问范围，避免业务侧直接持有上游厂商密钥。","textChars":41,"textLines":1,"bbox":[116,403,256,82]}
+{"kind":"shape","id":"sh/7adkr2dc","slide":7,"bbox":[459,253,332,276]}
+{"kind":"textbox","id":"sh/6p4jyxwr","slide":7,"text":"02","textPreview":"02","textChars":2,"textLines":1,"bbox":[493,288,48,30]}
+{"kind":"textbox","id":"sh/lov2psv6","slide":7,"text":"全程留痕","textPreview":"全程留痕","textChars":4,"textLines":1,"bbox":[493,343,240,34]}
+{"kind":"textbox","id":"sh/knm1wnel","slide":7,"text":"记录调用来源、模型、知识范围、用量与异常，支撑问题排查和责任追溯。","textPreview":"记录调用来源、模型、知识范围、用量与异常，支撑问题排查和责任追溯。","textChars":33,"textLines":1,"bbox":[493,403,256,82]}
+{"kind":"shape","id":"sh/jmdknid0","slide":7,"bbox":[836,253,332,276]}
+{"kind":"textbox","id":"sh/yl4judwf","slide":7,"text":"03","textPreview":"03","textChars":2,"textLines":1,"bbox":[870,288,48,30]}
+{"kind":"textbox","id":"sh/xkv2l8fa","slide":7,"text":"资源运营","textPreview":"资源运营","textChars":4,"textLines":1,"bbox":[870,343,240,34]}
+{"kind":"textbox","id":"sh/wjm1s3ep","slide":7,"text":"按部门、应用、场景观察消耗与配额，为推广、预算和质量优化提供依据。","textPreview":"按部门、应用、场景观察消耗与配额，为推广、预算和质量优化提供依据。","textChars":33,"textLines":1,"bbox":[870,403,256,82]}
+{"kind":"textbox","id":"sh/o3618nml","slide":7,"text":"安全不是事后补丁，而是 AI 服务底座从接入开始就具备的运行规则。","textPreview":"安全不是事后补丁，而是 AI 服务底座从接入开始就具备的运行规则。","textChars":33,"textLines":1,"bbox":[174,588,932,36]}
+{"kind":"notes","id":"nt/cd5dha","slide":7,"text":""}
+{"kind":"slide","id":"sl/3a22jm","slide":8,"title":"政务智能办公平台建设方案","textShapes":14}
+{"kind":"shape","id":"sh/t8fe9o3e","slide":8,"bbox":[0,0,1280,7]}
+{"kind":"textbox","id":"sh/654vetk3","slide":8,"text":"政务智能办公平台建设方案","textPreview":"政务智能办公平台建设方案","textChars":12,"textLines":1,"bbox":[68,31,620,20]}
+{"kind":"textbox","id":"sh/76dw7yl8","slide":8,"text":"08","textPreview":"08","textChars":2,"textLines":1,"bbox":[1150,31,60,20]}
+{"kind":"shape","id":"sh/gb6xk325","slide":8,"bbox":[68,678,1144,1]}
+{"kind":"textbox","id":"sh/hcfed83q","slide":8,"text":"TokenHub + 黔前 AI 助手","textPreview":"TokenHub + 黔前 AI 助手","textChars":19,"textLines":1,"bbox":[68,690,350,16]}
+{"kind":"textbox","id":"sh/u9ovitkz","slide":8,"name":"slide-title","text":"先从高频、边界清晰的政务场景开始，让价值可感知、可评估","textPreview":"先从高频、边界清晰的政务场景开始，让价值可感知、可评估","textChars":27,"textLines":1,"bbox":[68,74,1110,64]}
+{"kind":"textbox","id":"sh/faxwbylk","slide":8,"text":"建议以“文稿、知识、会议、报送”四类任务作为首批试点，形成可复制的场景包。 ","textPreview":"建议以“文稿、知识、会议、报送”四类任务作为首批试点，形成可复制的场景包。","textChars":38,"textLines":1,"bbox":[70,143,1040,34]}
+{"kind":"textbox","id":"sh/xgve1436","slide":8,"text":"公文与材料","textPreview":"公文与材料","textChars":5,"textLines":1,"bbox":[760,226,250,27]}
+{"kind":"textbox","id":"sh/1c7ahof6","slide":8,"text":"提纲、初稿、润色、要点核对","textPreview":"提纲、初稿、润色、要点核对","textChars":13,"textLines":1,"bbox":[760,261,350,26]}
+{"kind":"shape","id":"sh/0be9o3yl","slide":8,"bbox":[718,230,22,22]}
+{"kind":"textbox","id":"sh/za5sfyxg","slide":8,"text":"政策制度问答","textPreview":"政策制度问答","textChars":6,"textLines":1,"bbox":[760,312,250,27]}
+{"kind":"textbox","id":"sh/e9wrmtgv","slide":8,"text":"检索依据、统一口径、流程导航","textPreview":"检索依据、统一口径、流程导航","textChars":14,"textLines":1,"bbox":[760,347,350,26]}
+{"kind":"shape","id":"sh/907al8fi","slide":8,"bbox":[718,316,22,22]}
+{"kind":"textbox","id":"sh/ofy9s3yx","slide":8,"text":"会议智能协同","textPreview":"会议智能协同","textChars":6,"textLines":1,"bbox":[760,398,250,27]}
+{"kind":"textbox","id":"sh/nepsjyxc","slide":8,"text":"转写、纪要、待办、责任分工","textPreview":"转写、纪要、待办、责任分工","textChars":13,"textLines":1,"bbox":[760,433,350,26]}
+{"kind":"shape","id":"sh/mdgrqtgr","slide":8,"bbox":[718,402,22,22]}
+{"kind":"textbox","id":"sh/x4rapsfe","slide":8,"text":"信息报送","textPreview":"信息报送","textChars":4,"textLines":1,"bbox":[760,484,250,27]}
+{"kind":"textbox","id":"sh/w3i9wnyt","slide":8,"text":"专题归纳、简报、材料汇总","textPreview":"专题归纳、简报、材料汇总","textChars":12,"textLines":1,"bbox":[760,519,350,26]}
+{"kind":"shape","id":"sh/gjql8bqh","slide":8,"bbox":[718,488,22,22]}
+{"kind":"textbox","id":"sh/hkz21gr2","slide":8,"text":"统一底座保障每个场景共享模型、知识、权限和审计能力，而非各自建设。","textPreview":"统一底座保障每个场景共享模型、知识、权限和审计能力，而非各自建设。","textChars":33,"textLines":1,"bbox":[710,584,450,54]}
+{"kind":"image","id":"im/pwzm10nm","slide":8,"name":"","geometry":"roundRect","alt":"政务智能办公应用场景","bbox":[70,220,625,348]}
+{"kind":"notes","id":"nt/3a22jm","slide":8,"text":""}
+{"kind":"slide","id":"sl/3dy86o","slide":9,"title":"政务智能办公平台建设方案","textShapes":14}
+{"kind":"shape","id":"sh/pwn2h87q","slide":9,"bbox":[0,0,1280,7]}
+{"kind":"textbox","id":"sh/2twjmtof","slide":9,"text":"政务智能办公平台建设方案","textPreview":"政务智能办公平台建设方案","textChars":12,"textLines":1,"bbox":[68,31,620,20]}
+{"kind":"textbox","id":"sh/nu50fyp0","slide":9,"text":"09","textPreview":"09","textChars":2,"textLines":1,"bbox":[1150,31,60,20]}
+{"kind":"shape","id":"sh/cje1sn6h","slide":9,"bbox":[68,678,1144,1]}
+{"kind":"textbox","id":"sh/xk72ls72","slide":9,"text":"TokenHub + 黔前 AI 助手","textPreview":"TokenHub + 黔前 AI 助手","textChars":19,"textLines":1,"bbox":[68,690,350,16]}
+{"kind":"textbox","id":"sh/ahwjqdob","slide":9,"name":"slide-title","text":"安全与信创适配应成为建设前提，而不是项目后期补项","textPreview":"安全与信创适配应成为建设前提，而不是项目后期补项","textChars":24,"textLines":1,"bbox":[68,74,1110,64]}
+{"kind":"textbox","id":"sh/bi5kjipw","slide":9,"text":"具体部署方式和适配清单应在调研阶段与现网环境、安全规范、采购要求共同确认。 ","textPreview":"具体部署方式和适配清单应在调研阶段与现网环境、安全规范、采购要求共同确认。","textChars":38,"textLines":1,"bbox":[70,143,1040,34]}
+{"kind":"shape","id":"sh/kny1wn6t","slide":9,"bbox":[88,236,500,132]}
+{"kind":"textbox","id":"sh/lo72ps7y","slide":9,"text":"私有化/专有环境","textPreview":"私有化/专有环境","textChars":8,"textLines":1,"bbox":[116,260,300,28]}
+{"kind":"textbox","id":"sh/p4zet8zq","slide":9,"text":"按单位要求部署模型、知识库、文件处理与运行服务，明确数据处理边界。","textPreview":"按单位要求部署模型、知识库、文件处理与运行服务，明确数据处理边界。","textChars":33,"textLines":1,"bbox":[116,301,430,48]}
+{"kind":"shape","id":"sh/o3qxk3y5","slide":9,"bbox":[660,236,500,132]}
+{"kind":"textbox","id":"sh/32hwryhk","slide":9,"text":"知识分级隔离","textPreview":"知识分级隔离","textChars":6,"textLines":1,"bbox":[688,260,300,28]}
+{"kind":"textbox","id":"sh/218fitgz","slide":9,"text":"按组织、部门、专题或密级规划知识空间与资料准入、检索、更新规则。","textPreview":"按组织、部门、专题或密级规划知识空间与资料准入、检索、更新规则。","textChars":32,"textLines":1,"bbox":[688,301,430,48]}
+{"kind":"shape","id":"sh/d8jyx8zm","slide":9,"bbox":[88,415,500,132]}
+{"kind":"textbox","id":"sh/c7axo3y1","slide":9,"text":"信创兼容策略","textPreview":"信创兼容策略","textChars":6,"textLines":1,"bbox":[116,439,300,28]}
+{"kind":"textbox","id":"sh/b61wvyhw","slide":9,"text":"优先适配现有国产软硬件和办公环境，模型与基础组件按项目要求选型。","textPreview":"优先适配现有国产软硬件和办公环境，模型与基础组件按项目要求选型。","textChars":32,"textLines":1,"bbox":[116,480,430,48]}
+{"kind":"shape","id":"sh/q58fmtgb","slide":9,"bbox":[660,415,500,132]}
+{"kind":"textbox","id":"sh/tcfelozi","slide":9,"text":"人工审核机制","textPreview":"人工审核机制","textChars":6,"textLines":1,"bbox":[688,439,300,28]}
+{"kind":"textbox","id":"sh/sb6xcjyx","slide":9,"text":"重要材料、对外发布与关键结论继续沿用现行审批、校核和留痕流程。","textPreview":"重要材料、对外发布与关键结论继续沿用现行审批、校核和留痕流程。","textChars":31,"textLines":1,"bbox":[688,480,430,48]}
+{"kind":"textbox","id":"sh/kfaxsj6t","slide":9,"text":"以“数据不越界、人员不越权、内容可复核、过程可追溯”构建政务 AI 使用底线。","textPreview":"以“数据不越界、人员不越权、内容可复核、过程可追溯”构建政务 AI 使用底线。","textChars":39,"textLines":1,"bbox":[120,591,1040,32]}
+{"kind":"notes","id":"nt/3dy86o","slide":9,"text":""}
+{"kind":"slide","id":"sl/r1efrm","slide":10,"title":"政务智能办公平台建设方案","textShapes":20}
+{"kind":"shape","id":"sh/bmhgf6l4","slide":10,"bbox":[0,0,1280,7]}
+{"kind":"textbox","id":"sh/cnahobmp","slide":10,"text":"政务智能办公平台建设方案","textPreview":"政务智能办公平台建设方案","textChars":12,"textLines":1,"bbox":[68,31,620,20]}
+{"kind":"textbox","id":"sh/xojyhg3a","slide":10,"text":"10","textPreview":"10","textChars":2,"textLines":1,"bbox":[1150,31,60,20]}
+{"kind":"shape","id":"sh/ypszql4v","slide":10,"bbox":[68,678,1144,1]}
+{"kind":"textbox","id":"sh/zq1gjql0","slide":10,"text":"TokenHub + 黔前 AI 助手","textPreview":"TokenHub + 黔前 AI 助手","textChars":19,"textLines":1,"bbox":[68,690,350,16]}
+{"kind":"textbox","id":"sh/krahsvml","slide":10,"name":"slide-title","text":"分三步推进：试点验证、部门推广、协同深化","textPreview":"分三步推进：试点验证、部门推广、协同深化","textChars":20,"textLines":1,"bbox":[68,74,1110,64]}
+{"kind":"textbox","id":"sh/lsjyl036","slide":10,"text":"以可用、可核、可控为每一阶段的共同验收原则。 ","textPreview":"以可用、可核、可控为每一阶段的共同验收原则。","textChars":23,"textLines":1,"bbox":[70,143,1040,34]}
+{"kind":"shape","id":"sh/mtszu5kr","slide":10,"bbox":[83,236,334,320]}
+{"kind":"textbox","id":"sh/7u1gnqlc","slide":10,"text":"01","textPreview":"01","textChars":2,"textLines":1,"bbox":[115,270,54,30]}
+{"kind":"textbox","id":"sh/bupkny5g","slide":10,"text":"试点验证","textPreview":"试点验证","textChars":4,"textLines":1,"bbox":[115,322,230,34]}
+{"kind":"textbox","id":"sh/atgjetov","slide":10,"text":"2—3 个高频场景","textPreview":"2—3 个高频场景","textChars":9,"textLines":1,"bbox":[115,370,250,25]}
+{"kind":"textbox","id":"sh/xw7298nm","slide":10,"text":"工作台、知识空间、基础权限与审计","textPreview":"工作台、知识空间、基础权限与审计","textChars":16,"textLines":1,"bbox":[115,421,256,42]}
+{"kind":"shape","id":"sh/wvy1g361","slide":10,"bbox":[115,483,260,1]}
+{"kind":"textbox","id":"sh/nq5kje5k","slide":10,"text":"验证安全可用、回答有依据、流程能衔接","textPreview":"验证安全可用、回答有依据、流程能衔接","textChars":18,"textLines":1,"bbox":[115,500,256,38]}
+{"kind":"shape","id":"sh/mpwjatoz","slide":10,"bbox":[462,236,334,320]}
+{"kind":"textbox","id":"sh/9s72lona","slide":10,"text":"02","textPreview":"02","textChars":2,"textLines":1,"bbox":[494,270,54,30]}
+{"kind":"textbox","id":"sh/ore1cj65","slide":10,"text":"部门推广","textPreview":"部门推广","textChars":4,"textLines":1,"bbox":[494,322,230,34]}
+{"kind":"textbox","id":"sh/7m9kfi5o","slide":10,"text":"场景包与模板沉淀","textPreview":"场景包与模板沉淀","textChars":8,"textLines":1,"bbox":[494,370,250,25]}
+{"kind":"textbox","id":"sh/6l0jmdo3","slide":10,"text":"分部门知识库、数字员工、培训与运营","textPreview":"分部门知识库、数字员工、培训与运营","textChars":17,"textLines":1,"bbox":[494,421,256,42]}
+{"kind":"shape","id":"sh/2t4vulcn","slide":10,"bbox":[494,483,260,1]}
+{"kind":"textbox","id":"sh/3udw36t8","slide":10,"text":"验证使用习惯、知识质量与资源治理","textPreview":"验证使用习惯、知识质量与资源治理","textChars":16,"textLines":1,"bbox":[494,500,256,38]}
+{"kind":"shape","id":"sh/ovmdwbut","slide":10,"bbox":[841,236,334,320]}
+{"kind":"textbox","id":"sh/pwfe5gbe","slide":10,"text":"03","textPreview":"03","textChars":2,"textLines":1,"bbox":[873,270,54,30]}
+{"kind":"textbox","id":"sh/qxovylcj","slide":10,"text":"协同深化","textPreview":"协同深化","textChars":4,"textLines":1,"bbox":[873,322,230,34]}
+{"kind":"textbox","id":"sh/byxw7qt4","slide":10,"text":"按需对接既有系统","textPreview":"按需对接既有系统","textChars":8,"textLines":1,"bbox":[873,370,250,25]}
+{"kind":"textbox","id":"sh/cz6d0vup","slide":10,"text":"标准接口、自动化任务、组织级治理","textPreview":"标准接口、自动化任务、组织级治理","textChars":16,"textLines":1,"bbox":[873,421,256,42]}
+{"kind":"shape","id":"sh/d0fe90ba","slide":10,"bbox":[873,483,260,1]}
+{"kind":"textbox","id":"sh/61kv21cf","slide":10,"text":"验证跨系统协同和能力复用","textPreview":"验证跨系统协同和能力复用","textChars":12,"textLines":1,"bbox":[873,500,256,38]}
+{"kind":"notes","id":"nt/r1efrm","slide":10,"text":""}
+{"kind":"slide","id":"sl/wa00qv","slide":11,"title":"建设建议","textShapes":7}
+{"kind":"textbox","id":"sh/3el0jmd0","slide":11,"text":"建设建议","textPreview":"建设建议","textChars":4,"textLines":1,"bbox":[78,85,280,28]}
+{"kind":"textbox","id":"sh/4fuhc7el","slide":11,"text":"以统一 AI 能力底座\n支撑安全、专业、可运营的政务智能办公","textPreview":"以统一 AI 能力底座 | 支撑安全、专业、可运营的政务智能办公","textChars":30,"textLines":2,"bbox":[78,142,790,138]}
+{"kind":"shape","id":"sh/pg3ilcv6","slide":11,"bbox":[82,314,96,6]}
+{"kind":"textbox","id":"sh/u9sz6xwj","slide":11,"text":"建议立即确定试点单位、试点部门和首批场景，\n同步完成部署边界、知识资料与审核流程调研。","textPreview":"建议立即确定试点单位、试点部门和首批场景， | 同步完成部署边界、知识资料与审核流程调研。","textChars":43,"textLines":2,"bbox":[82,354,690,72]}
+{"kind":"shape","id":"sh/fa10f2d4","slide":11,"bbox":[852,168,310,298]}
+{"kind":"textbox","id":"sh/gbuh87ep","slide":11,"text":"首批试点建议","textPreview":"首批试点建议","textChars":6,"textLines":1,"bbox":[890,208,230,32]}
+{"kind":"textbox","id":"sh/hc3ihcva","slide":11,"text":"① 公文与材料辅助\n\n② 政策制度问答\n\n③ 会议纪要与信息报送","textPreview":"① 公文与材料辅助 |  | ② 政策制度问答 |  | ③ 会议纪要与信息报送","textChars":32,"textLines":5,"bbox":[900,275,210,145]}
+{"kind":"textbox","id":"sh/6lsz2xwn","slide":11,"text":"TokenHub + 黔前 AI 助手","textPreview":"TokenHub + 黔前 AI 助手","textChars":19,"textLines":1,"bbox":[80,640,420,24]}
+{"kind":"textbox","id":"sh/7m10b2ds","slide":11,"text":"政务智能办公平台建设方案","textPreview":"政务智能办公平台建设方案","textChars":12,"textLines":1,"bbox":[890,640,290,24]}
+{"kind":"notes","id":"nt/wa00qv","slide":11,"text":""}

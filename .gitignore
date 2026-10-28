@@ -1,0 +1,20 @@
+# Local configuration and credentials
+.env
+.env.*
+!.env.example
+!.env.*.example
+
+# Dependencies and runtime data
+/vendor/
+/node_modules/
+/storage/
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Operating system files and accidental command output
+.DS_Store
+Thumbs.db
+/$a

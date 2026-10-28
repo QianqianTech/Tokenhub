@@ -1,0 +1,26 @@
+{
+  "name": "tokenhub/tokenhub",
+  "description": "Native PHP TokenHub gateway and admin platform.",
+  "type": "project",
+  "require": {
+    "php": "^8.2",
+    "ext-json": "*",
+    "ext-pdo": "*",
+    "ext-pdo_mysql": "*",
+    "ext-redis": "*",
+    "phpoffice/phpspreadsheet": "^2.2"
+  },
+  "autoload": {
+    "psr-4": {
+      "TokenHub\\": "app/"
+    },
+    "files": [
+      "app/Support/helpers.php"
+    ]
+  },
+  "scripts": {
+    "test": "php bin/run-tests.php",
+    "migrate": "php bin/migrate.php",
+    "worker": "php bin/queue-worker.php"
+  }
+}

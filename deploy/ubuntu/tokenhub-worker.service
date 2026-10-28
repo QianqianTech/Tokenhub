@@ -1,0 +1,21 @@
+[Unit]
+Description=TokenHub Redis queue worker
+After=network-online.target mysql.service redis-server.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/var/www/tokenhub
+EnvironmentFile=/etc/tokenhub/tokenhub.env
+ExecStart=/usr/bin/php /var/www/tokenhub/scripts/worker.php
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ReadWritePaths=/var/log/tokenhub /var/lib/tokenhub /var/www/tokenhub/storage
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,4 @@
+mysql-connector-python==9.1.0
+redis==5.2.1
+requests==2.32.3
+Pillow==11.0.0

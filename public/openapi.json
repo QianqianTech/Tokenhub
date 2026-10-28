@@ -1,0 +1,3346 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "TokenHub External API",
+    "version": "1.2.0",
+    "description": "API-key-only external API for model gateway, Seedance video generation, user sync, files, usage, webhooks, and RAG knowledge-base workflows."
+  },
+  "security": [
+    {
+      "BearerApiKey": []
+    }],
+  "x-agent-management-contract": {
+    "/v1/management/users": {"get":{"tags":["Agent Management"],"operationId":"listManagedUsers","summary":"List ordinary users in the management key department","responses":{"200":{"description":"OK"},"401":{"$ref":"#/components/responses/Error"},"403":{"$ref":"#/components/responses/Error"},"429":{"$ref":"#/components/responses/RateLimited"}}},"post":{"tags":["Agent Management"],"operationId":"createManagedUser","summary":"Create an ordinary user","requestBody":{"required":true,"content":{"application/json":{"schema":{"type":"object","required":["username","password"],"properties":{"username":{"type":"string"},"password":{"type":"string"},"status":{"type":"string"}}}}}},"responses":{"201":{"description":"Created"},"401":{"$ref":"#/components/responses/Error"},"403":{"$ref":"#/components/responses/Error"},"422":{"$ref":"#/components/responses/Error"},"429":{"$ref":"#/components/responses/RateLimited"}}}},
+    "/v1/management/users/{id}": {"patch":{"tags":["Agent Management"],"operationId":"updateManagedUser","summary":"Update an ordinary user","requestBody":{"required":true,"content":{"application/json":{"schema":{"type":"object"}}}},"responses":{"200":{"description":"OK"},"403":{"$ref":"#/components/responses/Error"},"404":{"$ref":"#/components/responses/Error"},"422":{"$ref":"#/components/responses/Error"}}},"delete":{"tags":["Agent Management"],"operationId":"disableManagedUser","summary":"Disable an ordinary user","responses":{"200":{"description":"OK"},"403":{"$ref":"#/components/responses/Error"},"404":{"$ref":"#/components/responses/Error"}}}},
+    "/v1/management/api-keys": {"get":{"tags":["Agent Management"],"operationId":"listManagedApiKeys","summary":"List department API keys","responses":{"200":{"description":"OK"},"403":{"$ref":"#/components/responses/Error"}}},"post":{"tags":["Agent Management"],"operationId":"createManagedApiKey","summary":"Create an API key for a department user","requestBody":{"required":true,"content":{"application/json":{"schema":{"type":"object","required":["user_id"],"properties":{"user_id":{"type":"integer"},"name":{"type":"string"},"model_ids":{"type":"array","items":{"type":"integer"}},"management_scopes":{"type":"array","items":{"type":"string"}}}}}}},"responses":{"201":{"description":"Created; plaintext key is returned once"},"403":{"$ref":"#/components/responses/Error"},"404":{"$ref":"#/components/responses/Error"},"422":{"$ref":"#/components/responses/Error"}}}},
+    "/v1/management/api-keys/{id}/models": {"put":{"tags":["Agent Management"],"operationId":"replaceManagedApiKeyModels","summary":"Replace allowed models for an API key","requestBody":{"required":true,"content":{"application/json":{"schema":{"type":"object","required":["model_ids"],"properties":{"model_ids":{"type":"array","items":{"type":"integer"}}}}}}},"responses":{"200":{"description":"OK"},"403":{"$ref":"#/components/responses/Error"},"404":{"$ref":"#/components/responses/Error"}}}},
+    "/v1/management/api-keys/{id}": {"delete":{"tags":["Agent Management"],"operationId":"deleteManagedApiKey","summary":"Soft-delete an API key","responses":{"200":{"description":"OK"},"403":{"$ref":"#/components/responses/Error"},"404":{"$ref":"#/components/responses/Error"}}}},
+    "/v1/management/rag/knowledge-bases": {"get":{"tags":["Agent Management"],"operationId":"listManagedKnowledgeBases","summary":"List department knowledge bases","responses":{"200":{"description":"OK"},"403":{"$ref":"#/components/responses/Error"}}},"post":{"tags":["Agent Management"],"operationId":"createManagedKnowledgeBase","summary":"Create a department knowledge base","requestBody":{"required":true,"content":{"application/json":{"schema":{"type":"object","required":["name"],"properties":{"name":{"type":"string"},"description":{"type":"string"},"visibility":{"type":"string"}}}}}},"responses":{"201":{"description":"Created"},"403":{"$ref":"#/components/responses/Error"},"422":{"$ref":"#/components/responses/Error"}}}},
+    "/v1/management/rag/knowledge-bases/{id}": {"patch":{"tags":["Agent Management"],"operationId":"updateManagedKnowledgeBase","summary":"Update a knowledge base","requestBody":{"required":true,"content":{"application/json":{"schema":{"type":"object"}}}},"responses":{"200":{"description":"OK"},"403":{"$ref":"#/components/responses/Error"},"404":{"$ref":"#/components/responses/Error"}}},"delete":{"tags":["Agent Management"],"operationId":"deleteManagedKnowledgeBase","summary":"Soft-delete a knowledge base","responses":{"200":{"description":"OK"},"403":{"$ref":"#/components/responses/Error"},"404":{"$ref":"#/components/responses/Error"}}}},
+    "/v1/management/rag/datasets": {"get":{"tags":["Agent Management"],"operationId":"listManagedRagDatasets","summary":"List department RAG datasets","responses":{"200":{"description":"OK"},"403":{"$ref":"#/components/responses/Error"}}},"post":{"tags":["Agent Management"],"operationId":"createManagedRagDataset","summary":"Create a dataset in a department knowledge base","requestBody":{"required":true,"content":{"application/json":{"schema":{"type":"object","required":["kb_id","name"],"properties":{"kb_id":{"type":"integer"},"name":{"type":"string"},"dataset_type":{"type":"string"}}}}}},"responses":{"201":{"description":"Created"},"403":{"$ref":"#/components/responses/Error"},"404":{"$ref":"#/components/responses/Error"},"422":{"$ref":"#/components/responses/Error"}}}},
+    "/v1/management/rag/datasets/{id}": {"patch":{"tags":["Agent Management"],"operationId":"updateManagedRagDataset","summary":"Update a RAG dataset","requestBody":{"required":true,"content":{"application/json":{"schema":{"type":"object"}}}},"responses":{"200":{"description":"OK"},"403":{"$ref":"#/components/responses/Error"},"404":{"$ref":"#/components/responses/Error"}}},"delete":{"tags":["Agent Management"],"operationId":"deleteManagedRagDataset","summary":"Soft-delete a RAG dataset","responses":{"200":{"description":"OK"},"403":{"$ref":"#/components/responses/Error"},"404":{"$ref":"#/components/responses/Error"}}}}
+  },
+  "components": {
+    "securitySchemes": {
+      "BearerApiKey": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "tkh_xxx"
+      }
+    },
+    "schemas": {
+      "Envelope": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "data": {
+            "type": "object"
+          },
+          "request_id": {
+            "type": "string"
+          }
+        }
+      },
+      "AnthropicMessageRequest": {
+        "type": "object",
+        "required": [
+          "model",
+          "max_tokens",
+          "messages"
+        ],
+        "properties": {
+          "model": {
+            "type": "string"
+          },
+          "max_tokens": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "messages": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "role",
+                "content"
+              ],
+              "properties": {
+                "role": {
+                  "type": "string",
+                  "enum": [
+                    "user",
+                    "assistant"
+                  ]
+                },
+                "content": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/AnthropicMessageContentBlock"
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "system": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/AnthropicMessageContentBlock"
+                }
+              }
+            ]
+          },
+          "tools": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AnthropicTool"
+            }
+          },
+          "tool_choice": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "auto",
+                  "any",
+                  "tool",
+                  "none"
+                ]
+              },
+              "name": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": true
+          },
+          "stream": {
+            "type": "boolean"
+          },
+          "temperature": {
+            "type": "number"
+          },
+          "top_p": {
+            "type": "number"
+          },
+          "top_k": {
+            "type": "integer"
+          },
+          "stop_sequences": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "metadata": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "additionalProperties": true,
+        "examples": [
+          {
+            "model": "claude-compatible-model",
+            "max_tokens": 1024,
+            "messages": [
+              {
+                "role": "user",
+                "content": "hello"
+              }
+            ]
+          },
+          {
+            "model": "claude-compatible-model",
+            "max_tokens": 1024,
+            "tools": [
+              {
+                "name": "get_weather",
+                "description": "Get weather by city",
+                "input_schema": {
+                  "type": "object",
+                  "properties": {
+                    "city": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "city"
+                  ]
+                }
+              }
+            ],
+            "messages": [
+              {
+                "role": "user",
+                "content": "weather in Shanghai"
+              }
+            ]
+          }
+        ]
+      },
+      "AnthropicMessageContentBlock": {
+        "type": "object",
+        "required": [
+          "type"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "text",
+              "image",
+              "tool_use",
+              "tool_result"
+            ]
+          },
+          "text": {
+            "type": "string"
+          },
+          "source": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "base64",
+                  "url"
+                ]
+              },
+              "media_type": {
+                "type": "string"
+              },
+              "data": {
+                "type": "string"
+              },
+              "url": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": true
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "input": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "tool_use_id": {
+            "type": "string"
+          },
+          "content": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/AnthropicMessageContentBlock"
+                }
+              }
+            ]
+          },
+          "is_error": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": true
+      },
+      "AnthropicTool": {
+        "type": "object",
+        "required": [
+          "name",
+          "input_schema"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "input_schema": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "type": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": true
+      },
+      "AnthropicToolUseBlock": {
+        "type": "object",
+        "required": [
+          "type",
+          "id",
+          "name",
+          "input"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "tool_use"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "input": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        }
+      },
+      "AnthropicToolResultBlock": {
+        "type": "object",
+        "required": [
+          "type",
+          "tool_use_id",
+          "content"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "tool_result"
+          },
+          "tool_use_id": {
+            "type": "string"
+          },
+          "content": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/AnthropicMessageContentBlock"
+                }
+              }
+            ]
+          },
+          "is_error": {
+            "type": "boolean"
+          }
+        }
+      },
+      "AnthropicMessageResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "const": "message"
+          },
+          "role": {
+            "type": "string",
+            "const": "assistant"
+          },
+          "model": {
+            "type": "string"
+          },
+          "content": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AnthropicMessageContentBlock"
+            }
+          },
+          "stop_reason": {
+            "type": "string"
+          },
+          "stop_sequence": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "usage": {
+            "type": "object",
+            "properties": {
+              "input_tokens": {
+                "type": "integer"
+              },
+              "output_tokens": {
+                "type": "integer"
+              },
+              "cache_creation_input_tokens": {
+                "type": "integer"
+              },
+              "cache_read_input_tokens": {
+                "type": "integer"
+              }
+            },
+            "additionalProperties": true
+          }
+        },
+        "additionalProperties": true
+      },
+      "AnthropicStreamEvent": {
+        "type": "object",
+        "required": [
+          "type"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "message_start",
+              "content_block_start",
+              "content_block_delta",
+              "content_block_stop",
+              "message_delta",
+              "message_stop",
+              "ping",
+              "error"
+            ]
+          },
+          "message": {
+            "$ref": "#/components/schemas/AnthropicMessageResponse"
+          },
+          "index": {
+            "type": "integer"
+          },
+          "content_block": {
+            "$ref": "#/components/schemas/AnthropicMessageContentBlock"
+          },
+          "delta": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "text_delta",
+                  "input_json_delta",
+                  "thinking_delta",
+                  "signature_delta"
+                ]
+              },
+              "text": {
+                "type": "string"
+              },
+              "partial_json": {
+                "type": "string"
+              },
+              "thinking": {
+                "type": "string"
+              },
+              "signature": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": true
+          },
+          "usage": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "error": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "additionalProperties": true
+      },
+      "AnthropicCountTokensResponse": {
+        "type": "object",
+        "required": [
+          "input_tokens"
+        ],
+        "properties": {
+          "input_tokens": {
+            "type": "integer"
+          }
+        },
+        "additionalProperties": true
+      },
+      "ErrorEnvelope": {
+        "type": "object",
+        "required": [
+          "ok",
+          "error",
+          "request_id"
+        ],
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "const": false
+          },
+          "error": {
+            "type": "object",
+            "required": [
+              "code",
+              "message"
+            ],
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              }
+            }
+          },
+          "request_id": {
+            "type": "string"
+          }
+        }
+      },
+      "ChatCompletionRequest": {
+        "type": "object",
+        "required": [
+          "model",
+          "messages"
+        ],
+        "properties": {
+          "model": {
+            "type": "string"
+          },
+          "messages": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          },
+          "stream": {
+            "type": "boolean"
+          },
+          "temperature": {
+            "type": "number"
+          },
+          "rag": {
+            "$ref": "#/components/schemas/RagOptions"
+          }
+        },
+        "additionalProperties": true
+      },
+      "ResponseRequest": {
+        "type": "object",
+        "required": [
+          "model",
+          "input"
+        ],
+        "properties": {
+          "model": {
+            "type": "string"
+          },
+          "input": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array"
+              }
+            ]
+          },
+          "stream": {
+            "type": "boolean"
+          },
+          "rag": {
+            "$ref": "#/components/schemas/RagOptions"
+          }
+        },
+        "additionalProperties": true
+      },
+      "EmbeddingRequest": {
+        "type": "object",
+        "required": [
+          "model",
+          "input"
+        ],
+        "properties": {
+          "model": {
+            "type": "string"
+          },
+          "input": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            ]
+          }
+        },
+        "additionalProperties": true
+      },
+      "VideoGenerationRequest": {
+        "type": "object",
+        "required": [
+          "model",
+          "prompt"
+        ],
+        "properties": {
+          "model": {
+            "type": "string",
+            "example": "seedance-video"
+          },
+          "prompt": {
+            "type": "string"
+          },
+          "duration": {
+            "type": "integer",
+            "example": 8
+          },
+          "resolution": {
+            "type": "string",
+            "example": "720p"
+          },
+          "ratio": {
+            "type": "string",
+            "example": "16:9"
+          },
+          "image_url": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "url": {
+                    "type": "string"
+                  }
+                }
+              }
+            ]
+          },
+          "metadata": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "additionalProperties": true
+      },
+      "TaskStatus": {
+        "type": "object",
+        "properties": {
+          "task_id": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "processing",
+              "succeeded",
+              "failed"
+            ]
+          },
+          "task_type": {
+            "type": "string"
+          },
+          "provider_task_id": {
+            "type": "string"
+          },
+          "progress": {
+            "type": "integer"
+          },
+          "assets": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          },
+          "error_code": {
+            "type": "string"
+          },
+          "error_message": {
+            "type": "string"
+          }
+        }
+      },
+      "SyncRecordUpsertRequest": {
+        "type": "object",
+        "required": [
+          "payload"
+        ],
+        "properties": {
+          "device_id": {
+            "type": "string"
+          },
+          "payload": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "client_updated_at": {
+            "type": "string"
+          },
+          "base_sync_version": {
+            "type": "integer"
+          }
+        }
+      },
+      "FileUploadRequest": {
+        "type": "object",
+        "required": [
+          "file_name",
+          "b64_data"
+        ],
+        "properties": {
+          "file_name": {
+            "type": "string"
+          },
+          "mime_type": {
+            "type": "string"
+          },
+          "b64_data": {
+            "type": "string"
+          },
+          "metadata": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        }
+      },
+      "WebhookCreateRequest": {
+        "type": "object",
+        "required": [
+          "url",
+          "event_types"
+        ],
+        "properties": {
+          "url": {
+            "type": "string"
+          },
+          "event_types": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "RagOptions": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "required": {
+            "type": "boolean"
+          },
+          "dataset_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "dataset_names": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "knowledge_base_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "top_k": {
+            "type": "integer"
+          },
+          "query_modality": {
+            "type": "string",
+            "enum": [
+              "text",
+              "image",
+              "multimodal"
+            ]
+          }
+        },
+        "additionalProperties": true
+      },
+      "RagUploadRequest": {
+        "type": "object",
+        "required": [
+          "filename",
+          "content_base64"
+        ],
+        "properties": {
+          "filename": {
+            "type": "string"
+          },
+          "content_type": {
+            "type": "string",
+            "enum": [
+              "excel",
+              "text",
+              "qa",
+              "image",
+              "zip"
+            ]
+          },
+          "mime_type": {
+            "type": "string"
+          },
+          "content_base64": {
+            "type": "string"
+          },
+          "device_id": {
+            "type": "string"
+          },
+          "metadata": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "processing": {
+            "type": "object",
+            "properties": {
+              "template": {
+                "type": "string",
+                "enum": [
+                  "text",
+                  "qa",
+                  "image",
+                  "image_package"
+                ]
+              },
+              "target_dataset_id": {
+                "type": "string"
+              },
+              "confirm_required": {
+                "type": "boolean"
+              },
+              "auto_vectorize": {
+                "type": "boolean"
+              },
+              "package_mode": {
+                "type": "string",
+                "enum": [
+                  "manifest_zip"
+                ]
+              }
+            }
+          }
+        }
+      },
+      "RagUploadStatus": {
+        "type": "object",
+        "properties": {
+          "upload_id": {
+            "type": "string"
+          },
+          "kb_id": {
+            "type": "integer"
+          },
+          "dataset_id": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "status": {
+            "type": "string"
+          },
+          "preview_status": {
+            "type": "string"
+          },
+          "vectorize_status": {
+            "type": "string"
+          },
+          "review_status": {
+            "type": "string"
+          },
+          "stage": {
+            "type": "string"
+          },
+          "progress": {
+            "type": "number"
+          },
+          "summary": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        }
+      },
+      "RagPreviewPage": {
+        "type": "object",
+        "properties": {
+          "upload_id": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "page": {
+            "type": "integer"
+          },
+          "page_size": {
+            "type": "integer"
+          },
+          "total": {
+            "type": "integer"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          }
+        }
+      },
+      "RagRetrieval": {
+        "type": "object",
+        "properties": {
+          "retrieval_id": {
+            "type": "string"
+          },
+          "request_id": {
+            "type": "string"
+          },
+          "dataset_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "sources": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          },
+          "hit_count": {
+            "type": "integer"
+          },
+          "fallback_used": {
+            "type": "boolean"
+          }
+        }
+      },
+      "RagFeedbackRequest": {
+        "type": "object",
+        "required": [
+          "retrieval_id",
+          "rating"
+        ],
+        "properties": {
+          "retrieval_id": {
+            "type": "string"
+          },
+          "rating": {
+            "type": "string",
+            "enum": [
+              "good",
+              "bad",
+              "outdated",
+              "wrong_source",
+              "missing_context"
+            ]
+          },
+          "reason": {
+            "type": "string"
+          },
+          "expected_answer": {
+            "type": "string"
+          },
+          "selected_source_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "metadata": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        }
+      },
+      "ModelHealth": {
+        "type": "object",
+        "properties": {
+          "summary": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "models": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          }
+        }
+      },
+      "AssetList": {
+        "type": "object",
+        "properties": {
+          "files": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          }
+        }
+      },
+      "WebhookDelivery": {
+        "type": "object",
+        "properties": {
+          "delivery_id": {
+            "type": "string"
+          },
+          "event_type": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "attempt_count": {
+            "type": "integer"
+          },
+          "response_status": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "error_summary": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "RagKnowledgeBaseList": {
+        "type": "object",
+        "properties": {
+          "knowledge_bases": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          }
+        }
+      },
+      "RagDatasetList": {
+        "type": "object",
+        "properties": {
+          "kb_id": {
+            "type": "string"
+          },
+          "datasets": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          }
+        }
+      }
+    },
+    "responses": {
+      "Error": {
+        "description": "Error response",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorEnvelope"
+            }
+          }
+        }
+      },
+      "RateLimited": {
+        "description": "Rate limited; retry after the response header delay",
+        "headers": {
+          "Retry-After": {"schema": {"type": "integer", "minimum": 1}}
+        },
+        "content": {
+          "application/json": {
+            "schema": {"$ref": "#/components/schemas/ErrorEnvelope"}
+          }
+        }
+      }
+    }
+  },
+  "paths": {
+    "/v1/chat/completions": {
+      "post": {
+        "tags": [
+          "Gateway"
+        ],
+        "summary": "OpenAI-compatible chat completions proxy",
+        "security": [
+          {
+            "BearerApiKey": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatCompletionRequest"
+              },
+              "examples": {
+                "default": {
+                  "value": {
+                    "model": "gpt-compatible-model",
+                    "messages": [
+                      {
+                        "role": "user",
+                        "content": "hello"
+                      }
+                    ],
+                    "rag": {
+                      "enabled": true,
+                      "dataset_ids": [
+                        "ds_faq"
+                      ],
+                      "top_k": 5
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/responses": {
+      "post": {
+        "tags": [
+          "Gateway"
+        ],
+        "summary": "OpenAI-compatible responses proxy",
+        "security": [
+          {
+            "BearerApiKey": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResponseRequest"
+              },
+              "examples": {
+                "default": {
+                  "value": {
+                    "model": "gpt-compatible-model",
+                    "input": "Summarize my settings",
+                    "rag": {
+                      "enabled": true,
+                      "dataset_ids": [
+                        "ds_docs"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/embeddings": {
+      "post": {
+        "tags": [
+          "Gateway"
+        ],
+        "summary": "OpenAI-compatible embeddings proxy",
+        "security": [
+          {
+            "BearerApiKey": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmbeddingRequest"
+              },
+              "examples": {
+                "default": {
+                  "value": {
+                    "model": "embed-model",
+                    "input": [
+                      "hello",
+                      "world"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/messages": {
+      "post": {
+        "summary": "Anthropic-compatible messages proxy",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AnthropicMessageRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Anthropic message response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnthropicMessageResponse"
+                }
+              },
+              "text/event-stream": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnthropicStreamEvent"
+                },
+                "examples": {
+                  "textDelta": {
+                    "summary": "Anthropic SSE text delta",
+                    "value": "event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"hello\"}}\n\n"
+                  },
+                  "toolUseDelta": {
+                    "summary": "Anthropic SSE tool input delta",
+                    "value": "event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"{\\\"city\\\":\\\"Sh\"}}\n\n"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "No enabled provider route for model"
+          },
+          "429": {
+            "description": "Quota exceeded"
+          },
+          "502": {
+            "description": "Provider rejected or failed"
+          }
+        }
+      }
+    },
+    "/v1/messages/count_tokens": {
+      "post": {
+        "summary": "Anthropic-compatible message token counting proxy",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AnthropicMessageRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Token count response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnthropicCountTokensResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "No enabled provider route for model"
+          },
+          "429": {
+            "description": "Quota exceeded"
+          },
+          "502": {
+            "description": "Provider rejected or failed"
+          }
+        }
+      }
+    },
+    "/v1/audio/transcriptions": {
+      "post": {
+        "summary": "ASR transcription proxy",
+        "responses": {
+          "200": {
+            "description": "Transcription result"
+          },
+          "202": {
+            "description": "Asynchronous task accepted"
+          },
+          "403": {
+            "description": "No enabled provider route for model"
+          },
+          "429": {
+            "description": "Quota exceeded"
+          },
+          "502": {
+            "description": "Provider rejected or failed"
+          }
+        }
+      }
+    },
+    "/v1/audio/speech": {
+      "post": {
+        "summary": "TTS speech proxy",
+        "responses": {
+          "200": {
+            "description": "Speech result"
+          },
+          "202": {
+            "description": "Asynchronous task accepted"
+          },
+          "403": {
+            "description": "No enabled provider route for model"
+          },
+          "429": {
+            "description": "Quota exceeded"
+          },
+          "502": {
+            "description": "Provider rejected or failed"
+          }
+        }
+      }
+    },
+    "/v1/images/generations": {
+      "post": {
+        "summary": "Image generation proxy",
+        "responses": {
+          "200": {
+            "description": "Image generation result"
+          },
+          "202": {
+            "description": "Asynchronous task accepted"
+          },
+          "403": {
+            "description": "No enabled provider route for model"
+          },
+          "429": {
+            "description": "Quota exceeded"
+          },
+          "502": {
+            "description": "Provider rejected or failed"
+          }
+        }
+      }
+    },
+    "/v1/videos/generations": {
+      "post": {
+        "tags": [
+          "Multimodal"
+        ],
+        "summary": "Video generation proxy, including Volcengine Ark Seedance routes",
+        "security": [
+          {
+            "BearerApiKey": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VideoGenerationRequest"
+              },
+              "examples": {
+                "default": {
+                  "value": {
+                    "model": "seedance-video",
+                    "prompt": "A cinematic product video",
+                    "duration": 8,
+                    "resolution": "720p",
+                    "ratio": "16:9",
+                    "image_url": "https://example.com/product.png"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskStatus"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskStatus"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskStatus"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/tasks/{id}": {
+      "get": {
+        "tags": [
+          "Multimodal"
+        ],
+        "summary": "Multimodal task status",
+        "security": [
+          {
+            "BearerApiKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskStatus"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/assets/{id}/download-url": {
+      "get": {
+        "tags": [
+          "Multimodal"
+        ],
+        "summary": "Create a generated asset download URL",
+        "security": [
+          {
+            "BearerApiKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/me": {
+      "get": {
+        "summary": "Current API key identity",
+        "responses": {
+          "200": {
+            "description": "Identity envelope"
+          }
+        }
+      }
+    },
+    "/v1/models": {
+      "get": {
+        "summary": "Authorized models",
+        "responses": {
+          "200": {
+            "description": "OpenAI-compatible model list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["data"],
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": ["id"],
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "description": "TokenHub model name to use in model requests"
+                          }
+                        },
+                        "additionalProperties": true
+                      }
+                    }
+                  }
+                },
+                "examples": {
+                  "authorizedModels": {
+                    "value": {
+                      "data": [
+                        {"id": "deepseek-v4-flash"}
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/quota": {
+      "get": {
+        "summary": "Quota policies and usage",
+        "responses": {
+          "200": {
+            "description": "Quota snapshot"
+          }
+        }
+      }
+    },
+    "/v1/usage/summary": {
+      "get": {
+        "summary": "Usage summary for current API key",
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "model_id",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "provider_id",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "capability",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Usage summary"
+          }
+        }
+      }
+    },
+    "/v1/usage/trends": {
+      "get": {
+        "summary": "Usage trend buckets for current API key",
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "bucket",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "hour",
+                "day"
+              ]
+            }
+          },
+          {
+            "name": "model_id",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "provider_id",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "capability",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Usage trend buckets"
+          }
+        }
+      }
+    },
+    "/v1/usage/records": {
+      "get": {
+        "summary": "Usage records for current API key",
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "model_id",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "error_code",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "capability",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "maximum": 500
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Usage record page"
+          }
+        }
+      }
+    },
+    "/v1/requests/{request_id}": {
+      "get": {
+        "summary": "Request troubleshooting detail",
+        "parameters": [
+          {
+            "name": "request_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Request detail"
+          },
+          "404": {
+            "description": "Not found in current API key scope"
+          }
+        }
+      }
+    },
+    "/v1/sync/devices": {
+      "get": {
+        "summary": "List sync devices",
+        "responses": {
+          "200": {
+            "description": "Device list"
+          }
+        }
+      },
+      "post": {
+        "summary": "Register sync device",
+        "responses": {
+          "201": {
+            "description": "Registered device"
+          }
+        }
+      }
+    },
+    "/v1/sync/devices/{device_id}": {
+      "delete": {
+        "summary": "Disable sync device",
+        "parameters": [
+          {
+            "name": "device_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Disabled device"
+          }
+        }
+      }
+    },
+    "/v1/sync/manifest": {
+      "get": {
+        "tags": [
+          "Sync"
+        ],
+        "summary": "Sync manifest",
+        "security": [
+          {
+            "BearerApiKey": []
+          }
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/sync/namespaces": {
+      "get": {
+        "summary": "Namespace statistics",
+        "responses": {
+          "200": {
+            "description": "Namespace stats"
+          }
+        }
+      }
+    },
+    "/v1/sync/records": {
+      "get": {
+        "tags": [
+          "Sync"
+        ],
+        "summary": "List sync records",
+        "security": [
+          {
+            "BearerApiKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "maximum": 500
+            }
+          },
+          {
+            "name": "namespace",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "include_deleted",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/sync/records:batch": {
+      "post": {
+        "tags": [
+          "Sync"
+        ],
+        "summary": "Batch upsert sync records",
+        "security": [
+          {
+            "BearerApiKey": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "records"
+                ],
+                "properties": {
+                  "device_id": {
+                    "type": "string"
+                  },
+                  "records": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/SyncRecordUpsertRequest"
+                    }
+                  }
+                }
+              },
+              "examples": {
+                "default": {
+                  "value": {
+                    "device_id": "desktop-001",
+                    "records": [
+                      {
+                        "namespace": "settings",
+                        "client_record_id": "default",
+                        "payload": {
+                          "theme": "dark"
+                        },
+                        "base_sync_version": 0
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/sync/records/{namespace}/{client_record_id}": {
+      "get": {
+        "summary": "Read one sync record",
+        "parameters": [
+          {
+            "name": "namespace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "client_record_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Sync record"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Sync"
+        ],
+        "summary": "Upsert one sync record",
+        "security": [
+          {
+            "BearerApiKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "namespace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "client_record_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SyncRecordUpsertRequest"
+              },
+              "examples": {
+                "default": {
+                  "value": {
+                    "device_id": "desktop-001",
+                    "payload": {
+                      "theme": "dark"
+                    },
+                    "base_sync_version": 0
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Upserted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete one sync record",
+        "responses": {
+          "200": {
+            "description": "Delete result"
+          }
+        }
+      }
+    },
+    "/v1/sync/records/{namespace}/{client_record_id}:resolve-conflict": {
+      "post": {
+        "summary": "Resolve one sync conflict",
+        "responses": {
+          "200": {
+            "description": "Resolved conflict"
+          }
+        }
+      }
+    },
+    "/v1/files": {
+      "post": {
+        "tags": [
+          "Files"
+        ],
+        "summary": "Upload a small base64 file",
+        "security": [
+          {
+            "BearerApiKey": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FileUploadRequest"
+              },
+              "examples": {
+                "default": {
+                  "value": {
+                    "file_name": "settings.json",
+                    "mime_type": "application/json",
+                    "b64_data": "eyJvayI6dHJ1ZX0="
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/files/{file_id}/download-url": {
+      "get": {
+        "summary": "Create file download URL",
+        "parameters": [
+          {
+            "name": "file_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Download URL"
+          }
+        }
+      }
+    },
+    "/v1/files/{file_id}": {
+      "delete": {
+        "summary": "Soft delete file",
+        "parameters": [
+          {
+            "name": "file_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted file"
+          }
+        }
+      }
+    },
+    "/v1/rag/import-templates": {
+      "get": {
+        "tags": [
+          "RAG"
+        ],
+        "summary": "List RAG import templates",
+        "security": [
+          {
+            "BearerApiKey": []
+          }
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "description": "Includes tpl_image_package_v1 for manifest_zip image packages."
+      }
+    },
+    "/v1/rag/import-templates/{template_id}/download": {
+      "get": {
+        "tags": [
+          "RAG"
+        ],
+        "summary": "Download RAG import template",
+        "security": [
+          {
+            "BearerApiKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "template_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "tpl_text_v1",
+                "tpl_qa_v1",
+                "tpl_image_v1",
+                "tpl_image_package_v1"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/rag/knowledge-bases/{kb_id}/uploads": {
+      "post": {
+        "tags": [
+          "RAG"
+        ],
+        "summary": "Upload RAG knowledge content for preview",
+        "security": [
+          {
+            "BearerApiKey": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RagUploadRequest"
+              },
+              "examples": {
+                "default": {
+                  "value": {
+                    "filename": "faq.csv",
+                    "content_type": "qa",
+                    "content_base64": "cXVlc3Rpb24sYW5zd2VyCg==",
+                    "processing": {
+                      "template": "qa",
+                      "target_dataset_id": "ds_product_faq",
+                      "confirm_required": true
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RagUploadStatus"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RagUploadStatus"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RagUploadStatus"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "parameters": [
+          {
+            "name": "kb_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "description": "Package errors: RAG_PACKAGE_INVALID, RAG_PACKAGE_MANIFEST_MISSING, RAG_PACKAGE_MANIFEST_CONFLICT, RAG_PACKAGE_PATH_INVALID. Row errors: RAG_PACKAGE_IMAGE_MISSING, RAG_IMAGE_UNSUPPORTED_FORMAT, RAG_IMAGE_ANNOTATION_REQUIRED, RAG_AI_ANNOTATION_FAILED, RAG_MODEL_NOT_CONFIGURED. Evaluation errors: RAG_EVAL_NO_CASES. Vectorization warnings/errors: RAG_IMAGE_EMBEDDING_FAILED, RAG_MULTIMODAL_EMBEDDING_FAILED, RAG_VECTOR_SUCCESS_RATE_LOW."
+      }
+    },
+    "/v1/rag/uploads/{upload_id}": {
+      "get": {
+        "tags": [
+          "RAG"
+        ],
+        "summary": "Get RAG upload status",
+        "security": [
+          {
+            "BearerApiKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "upload_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RagUploadStatus"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/rag/uploads/{upload_id}/preview": {
+      "get": {
+        "tags": [
+          "RAG"
+        ],
+        "summary": "Preview parsed RAG upload rows",
+        "security": [
+          {
+            "BearerApiKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "upload_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "type",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "all",
+                "text",
+                "image",
+                "error"
+              ]
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "maximum": 100
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RagPreviewPage"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/rag/uploads/{upload_id}/confirm-vectorization": {
+      "post": {
+        "tags": [
+          "RAG"
+        ],
+        "summary": "Confirm RAG preview and start vectorization",
+        "security": [
+          {
+            "BearerApiKey": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "dataset_id": {
+                    "type": "string"
+                  }
+                }
+              },
+              "examples": {
+                "default": {
+                  "value": {
+                    "dataset_id": "ds_product_faq"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RagUploadStatus"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RagUploadStatus"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RagUploadStatus"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "parameters": [
+          {
+            "name": "upload_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "description": "Package errors: RAG_PACKAGE_INVALID, RAG_PACKAGE_MANIFEST_MISSING, RAG_PACKAGE_MANIFEST_CONFLICT, RAG_PACKAGE_PATH_INVALID. Row errors: RAG_PACKAGE_IMAGE_MISSING, RAG_IMAGE_UNSUPPORTED_FORMAT, RAG_IMAGE_ANNOTATION_REQUIRED, RAG_AI_ANNOTATION_FAILED, RAG_MODEL_NOT_CONFIGURED. Evaluation errors: RAG_EVAL_NO_CASES. Vectorization warnings/errors: RAG_IMAGE_EMBEDDING_FAILED, RAG_MULTIMODAL_EMBEDDING_FAILED, RAG_VECTOR_SUCCESS_RATE_LOW."
+      }
+    },
+    "/v1/rag/retrievals/{retrieval_id}": {
+      "get": {
+        "tags": [
+          "RAG"
+        ],
+        "summary": "Get RAG retrieval sources for a model call",
+        "security": [
+          {
+            "BearerApiKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "retrieval_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RagRetrieval"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/rag/feedback": {
+      "post": {
+        "tags": [
+          "RAG"
+        ],
+        "summary": "Submit RAG retrieval feedback",
+        "security": [
+          {
+            "BearerApiKey": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RagFeedbackRequest"
+              },
+              "examples": {
+                "default": {
+                  "value": {
+                    "retrieval_id": "rtr_xxx",
+                    "rating": "outdated",
+                    "reason": "The source is expired.",
+                    "selected_source_ids": [
+                      "src_1"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/capabilities": {
+      "get": {
+        "summary": "Service capabilities and limits",
+        "responses": {
+          "200": {
+            "description": "Capabilities"
+          }
+        }
+      }
+    },
+    "/v1/openapi.json": {
+      "get": {
+        "summary": "OpenAPI 3.1 document",
+        "responses": {
+          "200": {
+            "description": "OpenAPI JSON"
+          }
+        }
+      }
+    },
+    "/v1/events": {
+      "get": {
+        "summary": "External event page",
+        "parameters": [
+          {"name": "limit", "in": "query", "schema": {"type": "integer", "minimum": 1, "maximum": 500}},
+          {"name": "cursor", "in": "query", "description": "Stable outbox cursor: evt_<id>", "schema": {"type": "string", "pattern": "^evt_[0-9]+$"}}
+        ],
+        "responses": {
+          "200": {
+            "description": "Event page"
+          }
+        }
+      }
+    },
+    "/v1/webhooks": {
+      "get": {
+        "summary": "List webhooks",
+        "responses": {
+          "200": {
+            "description": "Webhook list"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Webhooks"
+        ],
+        "summary": "Create webhook",
+        "parameters": [
+          {"name": "Idempotency-Key", "in": "header", "required": false, "description": "Replay a previous mutation response when method, path, API key, and payload match", "schema": {"type": "string", "maxLength": 120}}
+        ],
+        "security": [
+          {
+            "BearerApiKey": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WebhookCreateRequest"
+              },
+              "examples": {
+                "default": {
+                  "value": {
+                    "url": "https://example.com/tokenhub/webhook",
+                    "event_types": [
+                      "request.failed",
+                      "task.succeeded",
+                      "sync.record.upsert"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/webhooks/{id}": {
+      "delete": {
+        "summary": "Delete webhook",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted webhook"
+          }
+        }
+      }
+    },
+    "/v1/feedback": {
+      "post": {
+        "summary": "Submit request feedback",
+        "responses": {
+          "201": {
+            "description": "Stored feedback"
+          }
+        }
+      }
+    },
+    "/v1/tasks/{id}:refresh": {
+      "post": {
+        "tags": [
+          "Tasks"
+        ],
+        "summary": "Refresh async task from supported upstream provider",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/models/{model}": {
+      "get": {
+        "tags": [
+          "Models"
+        ],
+        "summary": "Get authorized model detail and health",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "model",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/model-health": {
+      "get": {
+        "tags": [
+          "Models"
+        ],
+        "summary": "List authorized model route health",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelHealth"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/assets": {
+      "get": {
+        "tags": [
+          "Files"
+        ],
+        "summary": "List generated assets and uploaded files",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "description": "Asset page cursor: id_<id>",
+            "schema": {"type": "string", "pattern": "^id_[0-9]+$"}
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssetList"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/webhooks/{id}:rotate-secret": {
+      "post": {
+        "tags": ["Webhooks"],
+        "summary": "Rotate webhook signing secret",
+        "security": [{"BearerApiKey": []}],
+        "parameters": [{"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}],
+        "responses": {
+          "200": {"description": "New secret returned once; prior secret remains valid for 24 hours"},
+          "404": {"$ref": "#/components/responses/Error"},
+          "429": {"$ref": "#/components/responses/RateLimited"}
+        }
+      }
+    },
+    "/v1/webhooks/{id}/deliveries": {
+      "get": {
+        "tags": [
+          "Webhooks"
+        ],
+        "summary": "List webhook delivery attempts",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/webhooks/{id}:test": {
+      "post": {
+        "tags": [
+          "Webhooks"
+        ],
+        "summary": "Create webhook.test diagnostic delivery",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/webhook-deliveries/{delivery_id}:retry": {
+      "post": {
+        "tags": [
+          "Webhooks"
+        ],
+        "summary": "Retry failed webhook delivery",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "delivery_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/rag/knowledge-bases": {
+      "get": {
+        "tags": [
+          "RAG"
+        ],
+        "summary": "List authorized RAG knowledge bases",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RagKnowledgeBaseList"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/rag/knowledge-bases/{kb_id}/datasets": {
+      "get": {
+        "tags": [
+          "RAG"
+        ],
+        "summary": "List authorized RAG datasets",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "kb_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RagDatasetList"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/management/users": {"$ref":"#/x-agent-management-contract/~1v1~1management~1users"},
+    "/v1/management/users/{id}": {"$ref":"#/x-agent-management-contract/~1v1~1management~1users~1{id}"},
+    "/v1/management/api-keys": {"$ref":"#/x-agent-management-contract/~1v1~1management~1api-keys"},
+    "/v1/management/api-keys/{id}/models": {"$ref":"#/x-agent-management-contract/~1v1~1management~1api-keys~1{id}~1models"},
+    "/v1/management/api-keys/{id}": {"$ref":"#/x-agent-management-contract/~1v1~1management~1api-keys~1{id}"},
+    "/v1/management/rag/knowledge-bases": {"$ref":"#/x-agent-management-contract/~1v1~1management~1rag~1knowledge-bases"},
+    "/v1/management/rag/knowledge-bases/{id}": {"$ref":"#/x-agent-management-contract/~1v1~1management~1rag~1knowledge-bases~1{id}"},
+    "/v1/management/rag/datasets": {"$ref":"#/x-agent-management-contract/~1v1~1management~1rag~1datasets"},
+    "/v1/management/rag/datasets/{id}": {"$ref":"#/x-agent-management-contract/~1v1~1management~1rag~1datasets~1{id}"}
+  },
+  "servers": [
+    {
+      "url": "https://your-tokenhub.example.com",
+      "description": "Production"
+    },
+    {
+      "url": "http://localhost:8080",
+      "description": "Local development"
+    }
+  ],
+  "tags": [
+    {
+      "name": "Identity"
+    },
+    {
+      "name": "Models"
+    },
+    {
+      "name": "Gateway"
+    },
+    {
+      "name": "Multimodal"
+    },
+    {
+      "name": "Sync"
+    },
+    {
+      "name": "Files"
+    },
+    {
+      "name": "Usage"
+    },
+    {
+      "name": "Webhooks"
+    },
+    {
+      "name": "RAG"
+    }
+  ]
+}

@@ -1,0 +1,72 @@
+{
+	admin off
+}
+
+:80 {
+	root * /srv/app/public
+
+	header {
+		X-Content-Type-Options nosniff
+		X-Frame-Options DENY
+		Referrer-Policy no-referrer
+		Permissions-Policy "geolocation=(), microphone=(), camera=()"
+		Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+		-Server
+		-X-Powered-By
+	}
+
+	request_body {
+		max_size 32MB
+	}
+
+	log {
+		output file /srv/app/storage/logs/caddy-access.jsonl
+		format filter {
+			wrap json
+			fields {
+				request>headers>Authorization replace "****"
+				request>headers>Cookie replace "****"
+				request>headers>X-Api-Key replace "****"
+				request>headers>Api-Key replace "****"
+				request>uri delete
+			}
+		}
+	}
+
+	log caddy-security {
+		output file /srv/app/storage/logs/caddy-security.jsonl
+		format filter {
+			wrap json
+			fields {
+				request>headers>Authorization replace "****"
+				request>headers>Cookie replace "****"
+				request>headers>X-Api-Key replace "****"
+				request>headers>Api-Key replace "****"
+				request>uri delete
+			}
+		}
+	}
+
+	import /srv/app/storage/caddy/waf-current.caddy
+
+	@admin path /admin /admin/*
+	handle @admin {
+		try_files {path} /admin/index.html
+		file_server
+	}
+
+	@screen path /screen /screen/*
+	handle @screen {
+		try_files {path} /screen/index.html
+		file_server
+	}
+
+	@php path /health /ready /admin-api/* /screen-api/* /v1/* /download/*
+	handle @php {
+		php_fastcgi php:9000
+	}
+
+	handle {
+		respond "Not Found" 404
+	}
+}

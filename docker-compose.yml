@@ -1,0 +1,203 @@
+services:
+  php:
+    image: tokenhub-php:latest
+    build:
+      context: .
+      dockerfile: docker/php/Dockerfile
+    container_name: tokenhub-php
+    working_dir: /srv/app
+    volumes:
+      - ./:/srv/app
+      - caddy_data:/srv/caddy-data:ro
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+    environment:
+      APP_ENV: local
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD must be set}
+      CADDY_DATA_PATH: /srv/caddy-data
+      QDRANT_URL: ${QDRANT_URL:-http://qdrant:6333}
+      QDRANT_API_KEY: ${QDRANT_API_KEY:-}
+      QDRANT_COLLECTION_PREFIX: ${QDRANT_COLLECTION_PREFIX:-tokenhub_rag}
+    healthcheck:
+      test: ["CMD", "php", "-v"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  queue-worker:
+    image: tokenhub-php:latest
+    build:
+      context: .
+      dockerfile: docker/php/Dockerfile
+    working_dir: /srv/app
+    command: php bin/queue-worker.php
+    volumes:
+      - ./:/srv/app
+      - caddy_data:/srv/caddy-data:ro
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD must be set}
+      CADDY_DATA_PATH: /srv/caddy-data
+      QDRANT_URL: ${QDRANT_URL:-http://qdrant:6333}
+      QDRANT_API_KEY: ${QDRANT_API_KEY:-}
+      QDRANT_COLLECTION_PREFIX: ${QDRANT_COLLECTION_PREFIX:-tokenhub_rag}
+    healthcheck:
+      test: ["CMD", "php", "-v"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  rag-worker:
+    build:
+      context: ./python-rag-worker
+    container_name: tokenhub-rag-worker
+    working_dir: /worker
+    command: python -m tokenhub_rag_worker
+    volumes:
+      - ./storage:/srv/app/storage
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+    environment:
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_DATABASE: ${DB_DATABASE:-tokenhub}
+      DB_USERNAME: ${DB_USERNAME:-tokenhub}
+      DB_PASSWORD: ${DB_PASSWORD:-tokenhub_secret}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD must be set}
+      QDRANT_URL: ${QDRANT_URL:-http://qdrant:6333}
+      QDRANT_API_KEY: ${QDRANT_API_KEY:-}
+      QDRANT_COLLECTION_PREFIX: ${QDRANT_COLLECTION_PREFIX:-tokenhub_rag}
+      RAG_WORKER_POLL_INTERVAL_SECONDS: ${RAG_WORKER_POLL_INTERVAL_SECONDS:-2}
+      RAG_WORKER_BATCH_SIZE: ${RAG_WORKER_BATCH_SIZE:-5}
+      RAG_WORKER_ENABLE_LOCAL_FALLBACK: ${RAG_WORKER_ENABLE_LOCAL_FALLBACK:-true}
+      RAG_WORKER_STORAGE_ROOT: /srv/app/storage
+    healthcheck:
+      test: ["CMD", "python", "-m", "tokenhub_rag_worker", "--healthcheck"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    restart: unless-stopped
+
+  worker-autoscaler:
+    profiles: ["autoscaling"]
+    build:
+      context: .
+      dockerfile: docker/worker-autoscaler/Dockerfile
+    working_dir: /srv/app
+    command: sh scripts/worker-autoscaler.sh
+    volumes:
+      - ./:/srv/app:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      redis:
+        condition: service_healthy
+      queue-worker:
+        condition: service_healthy
+    environment:
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD must be set}
+      QUEUE_NAME: ${QUEUE_NAME:-tokenhub:jobs}
+      WORKER_AUTOSCALE_MIN: ${WORKER_AUTOSCALE_MIN:-2}
+      WORKER_AUTOSCALE_MAX: ${WORKER_AUTOSCALE_MAX:-8}
+      WORKER_AUTOSCALE_TASKS_PER_WORKER: ${WORKER_AUTOSCALE_TASKS_PER_WORKER:-50}
+      WORKER_AUTOSCALE_INTERVAL_SECONDS: ${WORKER_AUTOSCALE_INTERVAL_SECONDS:-15}
+      WORKER_AUTOSCALE_COOLDOWN_SECONDS: ${WORKER_AUTOSCALE_COOLDOWN_SECONDS:-300}
+      TOKENHUB_COMPOSE_PROJECT_DIR: ${TOKENHUB_COMPOSE_PROJECT_DIR:-/srv/app}
+      TOKENHUB_COMPOSE_FILE: ${TOKENHUB_COMPOSE_FILE:-/srv/app/docker-compose.yml}
+      TOKENHUB_COMPOSE_PROJECT_NAME: ${COMPOSE_PROJECT_NAME:-tokenhub}
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2
+    container_name: tokenhub-caddy
+    ports:
+      - "127.0.0.1:${CADDY_HTTP_PORT:-8080}:80"
+      - "127.0.0.1:${CADDY_HTTPS_PORT:-8443}:443"
+    volumes:
+      - ./docker/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./public:/srv/app/public:ro
+      - ./storage/logs:/srv/app/storage/logs
+      - ./storage/caddy:/srv/app/storage/caddy:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - php
+    restart: unless-stopped
+
+  mysql:
+    image: mysql:9.7
+    container_name: tokenhub-mysql
+    environment:
+      MYSQL_DATABASE: ${DB_DATABASE:-tokenhub}
+      MYSQL_USER: ${DB_USERNAME:-tokenhub}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-tokenhub_secret}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-root_secret}
+    ports:
+      - "127.0.0.1:${DB_FORWARD_PORT:-33060}:3306"
+    volumes:
+      - mysql_97_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-p${DB_ROOT_PASSWORD:-root_secret}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  redis:
+    image: redis:latest
+    container_name: tokenhub-redis
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD:?REDIS_PASSWORD must be set}"]
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD must be set}
+    ports:
+      - "127.0.0.1:${REDIS_FORWARD_PORT:-63790}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli --no-auth-warning -a \"$${REDIS_PASSWORD}\" ping | grep -q PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: tokenhub-qdrant
+    ports:
+      - "127.0.0.1:${QDRANT_FORWARD_PORT:-63330}:6333"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    healthcheck:
+      test: ["CMD-SHELL", "timeout 5 bash -c '</dev/tcp/127.0.0.1/6333'"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+volumes:
+  mysql_97_data:
+  redis_data:
+  qdrant_data:
+  caddy_data:
+  caddy_config:
