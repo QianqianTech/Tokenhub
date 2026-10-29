@@ -35,3 +35,6 @@ Thumbs.db
 
 # Browser test dependencies
 /tests/e2e/node_modules
+
+# Local Redis snapshots
+dump.rdb
