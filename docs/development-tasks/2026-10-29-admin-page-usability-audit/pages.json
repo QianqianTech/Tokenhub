@@ -1,0 +1,1521 @@
+{
+  "summary": {
+    "target": "http://192.168.8.236:8080/admin/",
+    "client_date": "2026-10-29",
+    "client_timezone": "America/Los_Angeles",
+    "task_state": "proposed",
+    "scope": "Admin SPA configured views; standalone /screen pages excluded",
+    "domains": 8,
+    "main_menu_pages": 38,
+    "configured_resources": 80,
+    "reviewed_view_targets": 82,
+    "live_verified_pages": 0,
+    "priorities": {
+      "P0": 8,
+      "P1": 37,
+      "P2": 8
+    },
+    "evidence_types": {
+      "source_reproduced": 11,
+      "source_confirmed": 30,
+      "usability_improvement": 10,
+      "runtime_verification": 2
+    },
+    "limitations": [
+      "Chrome UI reads repeatedly timed out; no authenticated live page or screenshot was captured.",
+      "Public frontend hashes match local files. This does not establish deployed backend or database equivalence.",
+      "Local probes use synthetic fake DOM/data and do not validate visual layout, real permissions or production writes."
+    ]
+  },
+  "pages": [
+    {
+      "key": "dashboard",
+      "label": "智慧分析",
+      "entry_type": "main_menu",
+      "entry_description": "运营中心 → 智慧分析",
+      "current_canonical_url": "#/operations/dashboard",
+      "static_review": "reviewed",
+      "live_review": "pending_browser_connection",
+      "goal": "理解当前运行并下钻异常",
+      "observation": "已有趋势/排行/安全/性能图；并发、日期、金额和下钻口径需校正。",
+      "tasks": [
+        "UX-001",
+        "UX-009",
+        "UX-010",
+        "UX-011",
+        "UX-051"
+      ],
+      "live_scenario": "近30天切今日、连续搜索、单面板失败、点击员工排行。"
+    },
+    {
+      "key": "admin-chat-sessions",
+      "label": "会话测试",
+      "entry_type": "main_menu",
+      "entry_description": "运营中心 → 会话测试",
+      "current_canonical_url": "#/operations/admin-chat-sessions",
+      "static_review": "reviewed",
+      "live_review": "pending_browser_connection",
+      "goal": "验证直连或真实Key调用结果",
+      "observation": "已明确两种模式及计费区别；缺停止，生成中清空/切换会话状态不安全。",
+      "tasks": [
+        "UX-004",
+        "UX-017",
+        "UX-053"
+      ],
+      "live_scenario": "两种模式、切Key、停流、清空、断流；实际调用需使用授权测试额度。"
+    },
+    {
+      "key": "departments",
+      "label": "部门管理",
+      "entry_type": "main_menu",
+      "entry_description": "组织与权限 → 部门管理",
+      "current_canonical_url": "#/organization/departments",
+      "static_review": "reviewed",
+      "live_review": "pending_browser_connection",
+      "goal": "维护组织层级",
+      "observation": "已有部门树和概况；父级需手输ID，树缺搜索/折叠，停用后果未说明。",
+      "tasks": [
+        "UX-015",
+        "UX-021"
+      ],
+      "live_scenario": "三级树新增/移动/停用；验证Key影响须用测试组织。"
+    },
+    {
+      "key": "users",
+      "label": "用户管理",
+      "entry_type": "main_menu",
+      "entry_description": "组织与权限 → 用户管理",
+      "current_canonical_url": "#/organization/users",
+      "static_review": "reviewed",
+      "live_review": "pending_browser_connection",
+      "goal": "定位用户并维护在职、部门和账号",
+      "observation": "缺账号关键字搜索，多种安全动作并列，错误文案存在串页。",
+      "tasks": [
+        "UX-003",
+        "UX-015",
+        "UX-018",
+        "UX-022"
+      ],
+      "live_scenario": "同名用户定位、移部门、离职和停用后Key处理。"
+    },
+    {
+      "key": "admin-users",
+      "label": "管理员管理",
+      "entry_type": "main_menu",
+      "entry_description": "组织与权限 → 管理员管理",
+      "current_canonical_url": "#/organization/admin-users",
+      "static_review": "reviewed",
+      "live_review": "pending_browser_connection",
+      "goal": "维护管理员身份与授权范围",
+      "observation": "角色、类型、预设/自定义分散；清空权限/部门的语义存在实质错误。",
+      "tasks": [
+        "UX-003",
+        "UX-007",
+        "UX-015",
+        "UX-023"
+      ],
+      "live_scenario": "预设与自定义、全清空、授权子部门、自身账号保护。"
+    },
+    {
+      "key": "permission-config",
+      "label": "权限配置",
+      "entry_type": "main_menu",
+      "entry_description": "组织与权限 → 权限配置",
+      "current_canonical_url": "#/organization/permission-config",
+      "static_review": "reviewed",
+      "live_review": "pending_browser_connection",
+      "goal": "清楚地配置有效权限",
+      "observation": "有预设能力说明；保存payload不能表达空权限，列表限100，权限码阅读困难。",
+      "tasks": [
+        "UX-003",
+        "UX-007",
+        "UX-023"
+      ],
+      "live_scenario": "保存前后差异、新会话真实权限、清空与恢复预设分别验证。"
+    },
+    {
+      "key": "providers",
+      "label": "厂商管理",
+      "entry_type": "main_menu",
+      "entry_description": "模型服务 → 厂商管理",
+      "current_canonical_url": "#/models/providers",
+      "static_review": "reviewed",
+      "live_review": "pending_browser_connection",
+      "goal": "接入厂商并导入可调用模型",
+      "observation": "已有预设/拉取/目录同步；填写到验证的引导和密钥保留语义需清楚。",
+      "tasks": [
+        "UX-003",
+        "UX-013",
+        "UX-015",
+        "UX-024"
+      ],
+      "live_scenario": "配置→验证→预览→导入，URL/鉴权失败时修正。"
+    },
+    {
+      "key": "models",
+      "label": "模型管理",
+      "entry_type": "main_menu",
+      "entry_description": "模型服务 → 模型管理",
+      "current_canonical_url": "#/models/models",
+      "static_review": "reviewed",
+      "live_review": "pending_browser_connection",
+      "goal": "维护逻辑模型和上游通道",
+      "observation": "有网关支持/批量和能力契约；名称/厂商查找不足，通道关系难读。",
+      "tasks": [
+        "UX-003",
+        "UX-015",
+        "UX-025",
+        "UX-052"
+      ],
+      "live_scenario": "同名模型多通道、不可调用原因、当前页批量范围。"
+    },
+    {
+      "key": "model-prices",
+      "label": "价格配置",
+      "entry_type": "main_menu",
+      "entry_description": "模型服务 → 价格配置",
+      "current_canonical_url": "#/models/model-prices",
+      "static_review": "reviewed",
+      "live_review": "pending_browser_connection",
+      "goal": "正确填写并查看生效成本",
+      "observation": "模型选择/单位/日期和复杂规则不直观；通用停用不对应价格状态。",
+      "tasks": [
+        "UX-003",
+        "UX-006",
+        "UX-011",
+        "UX-026"
+      ],
+      "live_scenario": "免费0、未配置、小额、不同币种、生效边界和历史版本。"
+    },
+    {
+      "key": "api-keys",
+      "label": "API 密钥",
+      "entry_type": "main_menu",
+      "entry_description": "API 接入 → API 密钥",
+      "current_canonical_url": "#/access/api-keys",
+      "static_review": "reviewed",
+      "live_review": "pending_browser_connection",
+      "goal": "发放/管理Key并掌握实际用量",
+      "observation": "已有分页与轮换额度工具；统计口径、原子保存、引用截断及一次性结果需修复。",
+      "tasks": [
+        "UX-004",
+        "UX-008",
+        "UX-015",
+        "UX-027",
+        "UX-028"
+      ],
+      "live_scenario": "45个Key翻页、搜索、创建一次、保留未载入模型授权、故障回滚。"
+    },
+    {
+      "key": "api-key-model-quotas",
+      "label": "模型限额",
+      "entry_type": "main_menu",
+      "entry_description": "API 接入 → 模型限额",
+      "current_canonical_url": "#/access/api-key-model-quotas",
+      "static_review": "reviewed",
+      "live_review": "pending_browser_connection",
+      "goal": "限制某Key的某模型用量",
+      "observation": "创建已有Key/模型引用选择；列表筛选仍手输ID，不能查全。",
+      "tasks": [
+        "UX-003",
+        "UX-004",
+        "UX-018",
+        "UX-029"
+      ],
+      "live_scenario": "对象名称搜索、周期切换、0不限、实际用量及重置。"
+    },
+    {
+      "key": "quota-policies",
+      "label": "限额策略",
+      "entry_type": "main_menu",
+      "entry_description": "API 接入 → 限额策略",
+      "current_canonical_url": "#/access/quota-policies",
+      "static_review": "reviewed",
+      "live_review": "pending_browser_connection",
+      "goal": "建立可理解的限额规则",
+      "observation": "表单有并发限制，主表未展示；多层优先/不限/预占解释不足。",
+      "tasks": [
+        "UX-003",
+        "UX-013",
+        "UX-029"
+      ],
+      "live_scenario": "多层策略生效与并发额度回读。"
+    },
+    {
+      "key": "quota-bindings",
+      "label": "限额绑定",
+      "entry_type": "main_menu",
+      "entry_description": "API 接入 → 限额绑定",
+      "current_canonical_url": "#/access/quota-bindings",
+      "static_review": "reviewed",
+      "live_review": "pending_browser_connection",
+      "goal": "把限额绑定到正确对象并解除",
+      "observation": "绑定已有目标选择；通用“停用”面对无status表可能无效果。",
+      "tasks": [
+        "UX-003",
+        "UX-004",
+        "UX-006",
+        "UX-029"
+      ],
+      "live_scenario": "绑定→回读实际限额→解绑→回读恢复。"
+    },
+    {
+      "key": "usage-records",
+      "label": "用量明细",
+      "entry_type": "main_menu",
+      "entry_description": "用量中心 → 用量明细",
+      "current_canonical_url": "#/usage/usage-records",
+      "static_review": "reviewed",
+      "live_review": "pending_browser_connection",
+      "goal": "核对调用、计量与异常原因",
+      "observation": "已有内容和诊断；大量原始ID/横向列，前50条及错误伪行影响查账。",
+      "tasks": [
+        "UX-001",
+        "UX-003",
+        "UX-005",
+        "UX-018",
+        "UX-030"
+      ],
+      "live_scenario": "按员工和时段下钻、失败请求诊断、关联内容、查到历史记录。"
+    },
+    {
+      "key": "multimodal-tasks",
+      "label": "多模态任务",
+      "entry_type": "main_menu",
+      "entry_description": "用量中心 → 多模态任务",
+      "current_canonical_url": "#/usage/multimodal-tasks",
+      "static_review": "reviewed",
+      "live_review": "pending_browser_connection",
+      "goal": "追踪生成任务到产物",
+      "observation": "只有通用状态表；缺专用进度/失败/结果入口，停用不能代表取消。",
+      "tasks": [
+        "UX-003",
+        "UX-006",
+        "UX-018",
+        "UX-031"
+      ],
+      "live_scenario": "排队/进行中/成功/失败/过期各有可执行下一步。"
+    },
+    {
+      "key": "media-assets",
+      "label": "媒体资产",
+      "entry_type": "main_menu",
+      "entry_description": "用量中心 → 媒体资产",
+      "current_canonical_url": "#/usage/media-assets",
+      "static_review": "reviewed",
+      "live_review": "pending_browser_connection",
+      "goal": "找到并预览下载生成媒体",
+      "observation": "只有原始大小/类型和下载；无友好预览与请求关系。",
+      "tasks": [
+        "UX-003",
+        "UX-006",
+        "UX-018",
+        "UX-031",
+        "UX-032"
+      ],
+      "live_scenario": "图像、音频、视频结果及过期资产，下载受阻时提示。"
+    },
+    {
+      "key": "usage-contents",
+      "label": "内容留存",
+      "entry_type": "main_menu",
+      "entry_description": "用量中心 → 内容留存",
+      "current_canonical_url": "#/usage/usage-contents",
+      "static_review": "reviewed",
+      "live_review": "pending_browser_connection",
+      "goal": "理解内容留存和可访问性",
+      "observation": "摘要/模式/过期等列表信息有基础，缺请求到内容的直接查看闭环。",
+      "tasks": [
+        "UX-003",
+        "UX-018",
+        "UX-030"
+      ],
+      "live_scenario": "区分无正文、已清理、无权限和真实错误。"
+    },
+    {
+      "key": "content-archive",
+      "label": "会话归档",
+      "entry_type": "main_menu",
+      "entry_description": "用量中心 → 会话归档",
+      "current_canonical_url": "#/usage/content-archive",
+      "static_review": "reviewed",
+      "live_review": "pending_browser_connection",
+      "goal": "检索完整会话归档并受控查看原文",
+      "observation": "有原文选项和详情；筛选要求ID/文本日期，错误伪行及分页仍缺失。",
+      "tasks": [
+        "UX-001",
+        "UX-003",
+        "UX-005",
+        "UX-018",
+        "UX-030",
+        "UX-032"
+      ],
+      "live_scenario": "会话/用户时段查询、原文权限、带当前条件导出。"
+    },
+    {
+      "key": "export-tasks",
+      "label": "导出任务",
+      "entry_type": "main_menu",
+      "entry_description": "用量中心 → 导出任务",
+      "current_canonical_url": "#/usage/export-tasks",
+      "static_review": "reviewed",
+      "live_review": "pending_browser_connection",
+      "goal": "获取完整且可追踪的导出结果",
+      "observation": "只有状态/内部路径和成功下载，任务状态不持续更新。",
+      "tasks": [
+        "UX-003",
+        "UX-018",
+        "UX-032"
+      ],
+      "live_scenario": "创建直达、生成进度、失败、下载链接到期。"
+    },
+    {
+      "key": "dashboard-share-links",
+      "label": "大屏分享",
+      "entry_type": "main_menu",
+      "entry_description": "运营中心 → 大屏分享",
+      "current_canonical_url": "#/operations/dashboard-share-links",
+      "static_review": "reviewed",
+      "live_review": "pending_browser_connection",
+      "goal": "创建范围可控的大屏分享",
+      "observation": "范围/指标需填JSON，安全动作反馈和入口名称需改进。",
+      "tasks": [
+        "UX-003",
+        "UX-015",
+        "UX-033"
+      ],
+      "live_scenario": "限制部门及指标、到期、IP拒绝、撤销会话。"
+    },
+    {
+      "key": "dashboard-share-access-logs",
+      "label": "大屏访问日志",
+      "entry_type": "main_menu",
+      "entry_description": "运营中心 → 大屏访问日志",
+      "current_canonical_url": "#/operations/dashboard-share-access-logs",
+      "static_review": "reviewed",
+      "live_review": "pending_browser_connection",
+      "goal": "解释分享访问成功或受阻",
+      "observation": "表格是ID和事件枚举；缺清楚对象关联及适用筛选。",
+      "tasks": [
+        "UX-003",
+        "UX-018",
+        "UX-033",
+        "UX-035"
+      ],
+      "live_scenario": "按分享和拒绝原因查找，回到对应分享；不实际扩展白名单。"
+    },
+    {
+      "key": "desensitization-policies",
+      "label": "脱敏策略",
+      "entry_type": "main_menu",
+      "entry_description": "安全审计 → 脱敏策略",
+      "current_canonical_url": "#/security/desensitization-policies",
+      "static_review": "reviewed",
+      "live_review": "pending_browser_connection",
+      "goal": "配置并验证请求脱敏",
+      "observation": "JSON解析器与范围ID门槛高，缺预览；编辑需manage权限。",
+      "tasks": [
+        "UX-003",
+        "UX-013",
+        "UX-015",
+        "UX-036"
+      ],
+      "live_scenario": "用合成敏感样例验证替换、阻断、摘要及作用范围。"
+    },
+    {
+      "key": "desensitization-events",
+      "label": "脱敏事件",
+      "entry_type": "main_menu",
+      "entry_description": "安全审计 → 脱敏事件",
+      "current_canonical_url": "#/security/desensitization-events",
+      "static_review": "reviewed",
+      "live_review": "pending_browser_connection",
+      "goal": "解释脱敏命中及影响请求",
+      "observation": "主要展示policy_id等，缺策略及请求联动。",
+      "tasks": [
+        "UX-003",
+        "UX-018",
+        "UX-035",
+        "UX-036"
+      ],
+      "live_scenario": "从命中事件定位原策略/请求，不展示不必要原文。"
+    },
+    {
+      "key": "log-retention-policies",
+      "label": "日志留存",
+      "entry_type": "main_menu",
+      "entry_description": "系统运维 → 日志留存",
+      "current_canonical_url": "#/system/log-retention-policies",
+      "static_review": "reviewed",
+      "live_review": "pending_browser_connection",
+      "goal": "编辑日志在线/归档保留策略",
+      "observation": "没有新增/编辑form，通用停用无status可更新。",
+      "tasks": [
+        "UX-006",
+        "UX-013",
+        "UX-037"
+      ],
+      "live_scenario": "修改天数和压缩/加密、回读及最小天数约束。"
+    },
+    {
+      "key": "log-archive-files",
+      "label": "日志归档",
+      "entry_type": "main_menu",
+      "entry_description": "系统运维 → 日志归档",
+      "current_canonical_url": "#/system/log-archive-files",
+      "static_review": "reviewed",
+      "live_review": "pending_browser_connection",
+      "goal": "找到归档并安全下载",
+      "observation": "展示路径和布尔值，缺友好文件信息及适用过滤。",
+      "tasks": [
+        "UX-003",
+        "UX-018",
+        "UX-032",
+        "UX-035",
+        "UX-037"
+      ],
+      "live_scenario": "时间范围、日志类型、已删除/过期、下载结果。"
+    },
+    {
+      "key": "logs",
+      "label": "日志中心",
+      "entry_type": "main_menu",
+      "entry_description": "安全审计 → 日志中心",
+      "current_canonical_url": "#/security/logs",
+      "static_review": "reviewed",
+      "live_review": "pending_browser_connection",
+      "goal": "按请求定位系统和上游故障",
+      "observation": "已有诊断工具；日志类型、时间和ID筛选需业务化，可见数据不能止于50条。",
+      "tasks": [
+        "UX-003",
+        "UX-005",
+        "UX-018",
+        "UX-019",
+        "UX-035"
+      ],
+      "live_scenario": "请求ID串联、级别/时间查询、错误与空数据区分。"
+    },
+    {
+      "key": "alert-events",
+      "label": "告警事件",
+      "entry_type": "main_menu",
+      "entry_description": "安全审计 → 告警事件",
+      "current_canonical_url": "#/security/alert-events",
+      "static_review": "reviewed",
+      "live_review": "pending_browser_connection",
+      "goal": "及时处理并关闭告警",
+      "observation": "确认/关闭后没有刷新和成功反馈，状态筛选及分页缺失。",
+      "tasks": [
+        "UX-003",
+        "UX-014",
+        "UX-018",
+        "UX-034"
+      ],
+      "live_scenario": "处置说明、确认、关闭、重复点击及失败恢复。"
+    },
+    {
+      "key": "audit-logs",
+      "label": "审计日志",
+      "entry_type": "main_menu",
+      "entry_description": "安全审计 → 审计日志",
+      "current_canonical_url": "#/security/audit-logs",
+      "static_review": "reviewed",
+      "live_review": "pending_browser_connection",
+      "goal": "追溯操作人、对象及改动",
+      "observation": "只读表有基础；动作代码和对象ID不够直观，通用筛选不完全适用。",
+      "tasks": [
+        "UX-003",
+        "UX-018",
+        "UX-019",
+        "UX-035"
+      ],
+      "live_scenario": "按操作者/动作/对象定位并查看变更差异。"
+    },
+    {
+      "key": "content-retention-policy",
+      "label": "内容留存策略",
+      "entry_type": "main_menu",
+      "entry_description": "系统运维 → 内容留存策略",
+      "current_canonical_url": "#/system/content-retention-policy",
+      "static_review": "reviewed",
+      "live_review": "pending_browser_connection",
+      "goal": "配置内容保留模式、期限及范围",
+      "observation": "有专用表单，范围策略仍是JSON，角色逗号输入；缺生效影响预览。",
+      "tasks": [
+        "UX-013",
+        "UX-015",
+        "UX-030",
+        "UX-037"
+      ],
+      "live_scenario": "不留存/摘要/脱敏/原文、例外范围及到期行为。"
+    },
+    {
+      "key": "settings-center",
+      "label": "系统设置",
+      "entry_type": "settings_center_internal",
+      "entry_description": "设置中心内部分类（设置中心本身入口需补全）",
+      "current_canonical_url": null,
+      "static_review": "reviewed",
+      "live_review": "pending_browser_connection",
+      "goal": "按分类查找系统配置",
+      "observation": "非首分类切换后内部表单全hidden，且在当前菜单没有主入口。",
+      "tasks": [
+        "UX-002",
+        "UX-039",
+        "UX-040",
+        "UX-041"
+      ],
+      "live_scenario": "首次切4类，恢复上次分区、保存和返回。"
+    },
+    {
+      "key": "settings-brand-identity",
+      "label": "标题与标识",
+      "entry_type": "main_menu",
+      "entry_description": "系统运维 → 标题与标识",
+      "current_canonical_url": "#/system/settings-brand-identity",
+      "static_review": "reviewed",
+      "live_review": "pending_browser_connection",
+      "goal": "设置和预览产品标题/标识",
+      "observation": "要求同源路径或data URL，保存成功不提示，不会立即刷新壳层品牌。",
+      "tasks": [
+        "UX-013",
+        "UX-040"
+      ],
+      "live_scenario": "无效Logo路径、保存反馈、后台/登录/大屏一致预览。"
+    },
+    {
+      "key": "settings-tls-certificates",
+      "label": "证书与入口",
+      "entry_type": "main_menu",
+      "entry_description": "系统运维 → 证书与入口",
+      "current_canonical_url": "#/system/settings-tls-certificates",
+      "static_review": "reviewed",
+      "live_review": "pending_browser_connection",
+      "goal": "确认有效证书真实部署和续签",
+      "observation": "已有证书类型和库存；部署检查仅匹配名字，过期证书可误判成功。",
+      "tasks": [
+        "UX-014",
+        "UX-038",
+        "UX-040",
+        "UX-048"
+      ],
+      "live_scenario": "有效/过期/未部署、申请失败、库存更新及入口探测。"
+    },
+    {
+      "key": "settings-entry-security",
+      "label": "访问安全",
+      "entry_type": "settings_center_internal",
+      "entry_description": "设置中心内部分类（设置中心本身入口需补全）",
+      "current_canonical_url": null,
+      "static_review": "reviewed",
+      "live_review": "pending_browser_connection",
+      "goal": "理解管理端/API访问限制",
+      "observation": "CIDR列表和开关缺示例/当前访问影响；仅藏在设置中心分类，直达路由不支持。",
+      "tasks": [
+        "UX-002",
+        "UX-013",
+        "UX-015",
+        "UX-039",
+        "UX-040"
+      ],
+      "live_scenario": "当前IP被移出范围的预警；仅在授权测试环境保存。"
+    },
+    {
+      "key": "settings-retention-export",
+      "label": "留存与导出",
+      "entry_type": "settings_center_internal",
+      "entry_description": "设置中心内部分类（设置中心本身入口需补全）",
+      "current_canonical_url": null,
+      "static_review": "reviewed",
+      "live_review": "pending_browser_connection",
+      "goal": "配置导出下载和文件保留期限",
+      "observation": "秒/天有标签但无范围校验或影响预览，与内容/日志策略分散。",
+      "tasks": [
+        "UX-002",
+        "UX-013",
+        "UX-032",
+        "UX-037",
+        "UX-040"
+      ],
+      "live_scenario": "链接TTL、文件保留、清理批次和到期行为。"
+    },
+    {
+      "key": "settings-alert-thresholds",
+      "label": "告警设置",
+      "entry_type": "main_menu",
+      "entry_description": "系统运维 → 告警设置",
+      "current_canonical_url": "#/system/settings-alert-thresholds",
+      "static_review": "reviewed",
+      "live_review": "pending_browser_connection",
+      "goal": "配置清楚的告警阈值",
+      "observation": "错误率缺单位/范围示例，通用数值字段缺约束，保存成功无反馈。",
+      "tasks": [
+        "UX-013",
+        "UX-034",
+        "UX-040"
+      ],
+      "live_scenario": "比例与百分比语义、最小请求量、窗口单位和生效验证。"
+    },
+    {
+      "key": "settings-rag-upload-review",
+      "label": "RAG上传审核",
+      "entry_type": "settings_center_internal",
+      "entry_description": "设置中心内部分类（设置中心本身入口需补全）",
+      "current_canonical_url": null,
+      "static_review": "reviewed",
+      "live_review": "pending_browser_connection",
+      "goal": "配置审核角色与导入准入",
+      "observation": "角色按文本行输入；免审核/自审/驳回语义需连同导入流程验证。",
+      "tasks": [
+        "UX-002",
+        "UX-013",
+        "UX-039",
+        "UX-040",
+        "UX-044"
+      ],
+      "live_scenario": "审核开/关、自审规则、驳回阻断。"
+    },
+    {
+      "key": "settings-rag-package-upload",
+      "label": "RAG图片包上传",
+      "entry_type": "settings_center_internal",
+      "entry_description": "设置中心内部分类（设置中心本身入口需补全）",
+      "current_canonical_url": null,
+      "static_review": "reviewed",
+      "live_review": "pending_browser_connection",
+      "goal": "配置图片包大小与扩展名",
+      "observation": "限制未与上传前预检联动，保存反馈不明确。",
+      "tasks": [
+        "UX-002",
+        "UX-013",
+        "UX-039",
+        "UX-040",
+        "UX-042"
+      ],
+      "live_scenario": "最大包大小与允许后缀在上传页同步提示并执行。"
+    },
+    {
+      "key": "settings-rag-ai-image-processing",
+      "label": "RAG图片AI处理",
+      "entry_type": "settings_center_internal",
+      "entry_description": "设置中心内部分类（设置中心本身入口需补全）",
+      "current_canonical_url": null,
+      "static_review": "reviewed",
+      "live_review": "pending_browser_connection",
+      "goal": "配置AI标注模型、提示策略和重试",
+      "observation": "视觉模型手输ID，需模型选择和能力校验；单位/失败恢复需解释。",
+      "tasks": [
+        "UX-002",
+        "UX-004",
+        "UX-013",
+        "UX-039",
+        "UX-040",
+        "UX-047"
+      ],
+      "live_scenario": "只选可用视觉模型，超时/重试与任务实际执行一致。"
+    },
+    {
+      "key": "settings-rag-vectorization-monitoring",
+      "label": "RAG向量监控",
+      "entry_type": "settings_center_internal",
+      "entry_description": "设置中心内部分类（设置中心本身入口需补全）",
+      "current_canonical_url": null,
+      "static_review": "reviewed",
+      "live_review": "pending_browser_connection",
+      "goal": "配置向量健康告警",
+      "observation": "成功率阈值无范围/百分比提示；与健康页关系不清楚。",
+      "tasks": [
+        "UX-002",
+        "UX-013",
+        "UX-038",
+        "UX-039",
+        "UX-040"
+      ],
+      "live_scenario": "阈值0–100、窗口/连续失败触发及未启用Qdrant。"
+    },
+    {
+      "key": "operations-status",
+      "label": "运行状态",
+      "entry_type": "main_menu",
+      "entry_description": "系统运维 → 运行状态",
+      "current_canonical_url": "#/system/operations-status",
+      "static_review": "reviewed",
+      "live_review": "pending_browser_connection",
+      "goal": "快速判断部署健康与任务积压",
+      "observation": "缺字段被判异常，状态仅首次加载，没有刷新/未知说明。",
+      "tasks": [
+        "UX-005",
+        "UX-038"
+      ],
+      "live_scenario": "可选服务未启用、真实故障、队列变化、更新时间。"
+    },
+    {
+      "key": "rag-settings",
+      "label": "RAG 设置",
+      "entry_type": "legacy_or_orphaned",
+      "entry_description": "已注册的旧容器/内部页，当前主菜单无稳定入口",
+      "current_canonical_url": null,
+      "static_review": "reviewed",
+      "live_review": "pending_browser_connection",
+      "goal": "进入RAG相关配置",
+      "observation": "作为特殊页直接渲染整个系统设置中心，当前RAG主菜单没有入口。",
+      "tasks": [
+        "UX-002",
+        "UX-015",
+        "UX-039",
+        "UX-041"
+      ],
+      "live_scenario": "RAG角色只看到其有权配置的RAG分区，不能绕到全局设置。"
+    },
+    {
+      "key": "system-settings",
+      "label": "高级设置",
+      "entry_type": "main_menu",
+      "entry_description": "系统运维 → 高级设置",
+      "current_canonical_url": "#/system/system-settings",
+      "static_review": "reviewed",
+      "live_review": "pending_browser_connection",
+      "goal": "查看和编辑高级配置",
+      "observation": "已有按字段编辑卡片，限前100且缺搜索；多入口同配置一致性待核。",
+      "tasks": [
+        "UX-003",
+        "UX-013",
+        "UX-040"
+      ],
+      "live_scenario": "搜索配置项、复杂类型、冲突、保存后回读。"
+    },
+    {
+      "key": "rag-console",
+      "label": "RAG 控制台",
+      "entry_type": "legacy_or_orphaned",
+      "entry_description": "已注册的旧容器/内部页，当前主菜单无稳定入口",
+      "current_canonical_url": null,
+      "static_review": "reviewed",
+      "live_review": "pending_browser_connection",
+      "goal": "旧版RAG总览入口",
+      "observation": "已注册并有子页常量，但没有当前主菜单入口，不能靠直接hash稳定访问；须决定迁移或提供明确高级入口。",
+      "tasks": [
+        "UX-002",
+        "UX-041"
+      ],
+      "live_scenario": "旧链接迁移、权限、当前菜单选中态与所有子页可达性。"
+    },
+    {
+      "key": "rag-knowledge-management",
+      "label": "知识库管理",
+      "entry_type": "legacy_or_orphaned",
+      "entry_description": "已注册的旧容器/内部页，当前主菜单无稳定入口",
+      "current_canonical_url": null,
+      "static_review": "reviewed",
+      "live_review": "pending_browser_connection",
+      "goal": "旧版知识库配置入口",
+      "observation": "已注册并有子页常量，但没有当前主菜单入口，不能靠直接hash稳定访问；须决定迁移或提供明确高级入口。",
+      "tasks": [
+        "UX-002",
+        "UX-041"
+      ],
+      "live_scenario": "旧链接迁移、权限、当前菜单选中态与所有子页可达性。"
+    },
+    {
+      "key": "rag-import-review",
+      "label": "导入与审核",
+      "entry_type": "legacy_or_orphaned",
+      "entry_description": "已注册的旧容器/内部页，当前主菜单无稳定入口",
+      "current_canonical_url": null,
+      "static_review": "reviewed",
+      "live_review": "pending_browser_connection",
+      "goal": "旧版导入审核入口",
+      "observation": "已注册并有子页常量，但没有当前主菜单入口，不能靠直接hash稳定访问；须决定迁移或提供明确高级入口。",
+      "tasks": [
+        "UX-002",
+        "UX-041"
+      ],
+      "live_scenario": "旧链接迁移、权限、当前菜单选中态与所有子页可达性。"
+    },
+    {
+      "key": "rag-image-vector",
+      "label": "图片与向量",
+      "entry_type": "legacy_or_orphaned",
+      "entry_description": "已注册的旧容器/内部页，当前主菜单无稳定入口",
+      "current_canonical_url": null,
+      "static_review": "reviewed",
+      "live_review": "pending_browser_connection",
+      "goal": "旧版图片向量入口",
+      "observation": "已注册并有子页常量，但没有当前主菜单入口，不能靠直接hash稳定访问；须决定迁移或提供明确高级入口。",
+      "tasks": [
+        "UX-002",
+        "UX-041"
+      ],
+      "live_scenario": "旧链接迁移、权限、当前菜单选中态与所有子页可达性。"
+    },
+    {
+      "key": "rag-feedback-correction",
+      "label": "反馈与纠偏",
+      "entry_type": "legacy_or_orphaned",
+      "entry_description": "已注册的旧容器/内部页，当前主菜单无稳定入口",
+      "current_canonical_url": null,
+      "static_review": "reviewed",
+      "live_review": "pending_browser_connection",
+      "goal": "旧版反馈纠偏入口",
+      "observation": "已注册并有子页常量，但没有当前主菜单入口，不能靠直接hash稳定访问；须决定迁移或提供明确高级入口。",
+      "tasks": [
+        "UX-002",
+        "UX-041"
+      ],
+      "live_scenario": "旧链接迁移、权限、当前菜单选中态与所有子页可达性。"
+    },
+    {
+      "key": "rag-advanced-data",
+      "label": "高级数据",
+      "entry_type": "legacy_or_orphaned",
+      "entry_description": "已注册的旧容器/内部页，当前主菜单无稳定入口",
+      "current_canonical_url": null,
+      "static_review": "reviewed",
+      "live_review": "pending_browser_connection",
+      "goal": "旧版高级数据入口",
+      "observation": "已注册并有子页常量，但没有当前主菜单入口，不能靠直接hash稳定访问；须决定迁移或提供明确高级入口。",
+      "tasks": [
+        "UX-002",
+        "UX-041"
+      ],
+      "live_scenario": "旧链接迁移、权限、当前菜单选中态与所有子页可达性。"
+    },
+    {
+      "key": "rag-build",
+      "label": "构建知识",
+      "entry_type": "main_menu",
+      "entry_description": "RAG 知识库 → 构建知识",
+      "current_canonical_url": "#/rag/rag-build",
+      "static_review": "reviewed",
+      "live_review": "pending_browser_connection",
+      "goal": "构建可检索知识的完整流程",
+      "observation": "有构建总览/知识库/数据集/导入任务/记录；深链接和导入后的上下文易丢。",
+      "tasks": [
+        "UX-001",
+        "UX-002",
+        "UX-041",
+        "UX-042",
+        "UX-043",
+        "UX-044"
+      ],
+      "live_scenario": "从零创建到首条可检索知识；现有数据不出现错误引导。"
+    },
+    {
+      "key": "rag-retrieval-lab",
+      "label": "检索试验台",
+      "entry_type": "main_menu",
+      "entry_description": "RAG 知识库 → 检索试验台",
+      "current_canonical_url": "#/rag/rag-retrieval-lab",
+      "static_review": "reviewed",
+      "live_review": "pending_browser_connection",
+      "goal": "用真实问题验证命中证据",
+      "observation": "已有数据集/问题/命中及加入样本；lookup失败会误变新手空态，重复检索无序号防护。",
+      "tasks": [
+        "UX-001",
+        "UX-004",
+        "UX-014",
+        "UX-041",
+        "UX-045",
+        "UX-047"
+      ],
+      "live_scenario": "无知识库与无权限/失败区分，检索后加入样本保留上下文。"
+    },
+    {
+      "key": "rag-quality",
+      "label": "质量评估",
+      "entry_type": "main_menu",
+      "entry_description": "RAG 知识库 → 质量评估",
+      "current_canonical_url": "#/rag/rag-quality",
+      "static_review": "reviewed",
+      "live_review": "pending_browser_connection",
+      "goal": "从评估定位问题并跟进纠偏",
+      "observation": "已有评估/样本/反馈/纠偏4子页；缺完整处理闭环及URL保留活动子页。",
+      "tasks": [
+        "UX-001",
+        "UX-041",
+        "UX-045",
+        "UX-046"
+      ],
+      "live_scenario": "失败样本→纠偏→复评→关闭，全程对象清楚。"
+    },
+    {
+      "key": "rag-operations",
+      "label": "运行维护",
+      "entry_type": "main_menu",
+      "entry_description": "RAG 知识库 → 运行维护",
+      "current_canonical_url": "#/rag/rag-operations",
+      "static_review": "reviewed",
+      "live_review": "pending_browser_connection",
+      "goal": "运行维护与向量健康诊断",
+      "observation": "健康/任务/检索/留存分组合理，但子页原始字段多，留存缺编辑。",
+      "tasks": [
+        "UX-003",
+        "UX-037",
+        "UX-038",
+        "UX-041",
+        "UX-047"
+      ],
+      "live_scenario": "由失败统计定位任务/记录，查看范围和可执行恢复。"
+    },
+    {
+      "key": "rag-dashboard",
+      "label": "总览",
+      "entry_type": "current_internal_tab",
+      "entry_description": "构建可检索知识的完整流程 / rag-build → 总览（tab状态尚未写URL）",
+      "current_canonical_url": null,
+      "static_review": "reviewed",
+      "live_review": "pending_browser_connection",
+      "goal": "理解RAG流水线和阻塞位置",
+      "observation": "有指标/最近数据卡片；名称/统计口径混合技术字段，卡片缺详情联动。",
+      "tasks": [
+        "UX-004",
+        "UX-019",
+        "UX-038",
+        "UX-041",
+        "UX-047"
+      ],
+      "live_scenario": "零数据、正在构建、失败阻塞、有知识但无命中分别说明。"
+    },
+    {
+      "key": "rag-template-center",
+      "label": "模板下载",
+      "entry_type": "legacy_or_orphaned",
+      "entry_description": "已注册的旧容器/内部页，当前主菜单无稳定入口",
+      "current_canonical_url": null,
+      "static_review": "reviewed",
+      "live_review": "pending_browser_connection",
+      "goal": "下载匹配当前导入方式的模板",
+      "observation": "只列类型/版本/下载，缺字段要求、例子和上传直达；当前主分类没入口。",
+      "tasks": [
+        "UX-002",
+        "UX-041",
+        "UX-042"
+      ],
+      "live_scenario": "文本/问答/图片清单/图片包下载与上传类型一致。"
+    },
+    {
+      "key": "rag-upload-workbench",
+      "label": "上传导入",
+      "entry_type": "legacy_or_orphaned",
+      "entry_description": "已注册的旧容器/内部页，当前主菜单无稳定入口",
+      "current_canonical_url": null,
+      "static_review": "reviewed",
+      "live_review": "pending_browser_connection",
+      "goal": "上传并生成可审核预览",
+      "observation": "知识库/数据集未联动；无文件预检/进度，重复上传防护缺失。",
+      "tasks": [
+        "UX-004",
+        "UX-014",
+        "UX-041",
+        "UX-042"
+      ],
+      "live_scenario": "文件类型/大小/模板错配、读取失败、上传成功。"
+    },
+    {
+      "key": "rag-upload-detail",
+      "label": "上传详情",
+      "entry_type": "legacy_or_orphaned",
+      "entry_description": "已注册的旧容器/内部页，当前主菜单无稳定入口",
+      "current_canonical_url": null,
+      "static_review": "reviewed",
+      "live_review": "pending_browser_connection",
+      "goal": "查询指定任务和审核内容",
+      "observation": "Upload ID手输入，预览无翻页；pending/not_required按钮状态不匹配。",
+      "tasks": [
+        "UX-001",
+        "UX-002",
+        "UX-043",
+        "UX-044",
+        "UX-047"
+      ],
+      "live_scenario": "从记录直达、45项预览、待审和免审确认、切任务失败不残留。"
+    },
+    {
+      "key": "rag-knowledge-bases",
+      "label": "知识库",
+      "entry_type": "current_internal_tab",
+      "entry_description": "构建可检索知识的完整流程 / rag-build → 知识库（tab状态尚未写URL）",
+      "current_canonical_url": null,
+      "static_review": "reviewed",
+      "live_review": "pending_browser_connection",
+      "goal": "创建知识库和默认向量配置",
+      "observation": "form已有默认向量配置选择；部门是数字ID，授权/数据集/向量配置缺近旁入口。",
+      "tasks": [
+        "UX-002",
+        "UX-003",
+        "UX-004",
+        "UX-041"
+      ],
+      "live_scenario": "新建知识库→配置向量→授权→数据集，不需要手改hash。"
+    },
+    {
+      "key": "rag-knowledge-base-bindings",
+      "label": "知识库授权",
+      "entry_type": "legacy_or_orphaned",
+      "entry_description": "已注册的旧容器/内部页，当前主菜单无稳定入口",
+      "current_canonical_url": null,
+      "static_review": "reviewed",
+      "live_review": "pending_browser_connection",
+      "goal": "授予或撤销知识库访问",
+      "observation": "有列定义但当前导航完全孤立、没有新增/编辑form；停用实际是撤销授权。",
+      "tasks": [
+        "UX-002",
+        "UX-006",
+        "UX-015",
+        "UX-041"
+      ],
+      "live_scenario": "明确授权对象/权限/默认行为，撤销有影响说明与回读。"
+    },
+    {
+      "key": "rag-vector-datasets",
+      "label": "向量数据集",
+      "entry_type": "current_internal_tab",
+      "entry_description": "构建可检索知识的完整流程 / rag-build → 向量数据集（tab状态尚未写URL）",
+      "current_canonical_url": null,
+      "static_review": "reviewed",
+      "live_review": "pending_browser_connection",
+      "goal": "维护数据集模态和向量参数",
+      "observation": "已有表单，但向量配置未按文本/图片/多模态过滤，检索配置用JSON。",
+      "tasks": [
+        "UX-002",
+        "UX-003",
+        "UX-004",
+        "UX-013",
+        "UX-041"
+      ],
+      "live_scenario": "按知识库筛选，配置模态匹配，修改索引参数说明重建影响。"
+    },
+    {
+      "key": "rag-dataset-bindings",
+      "label": "数据集授权",
+      "entry_type": "legacy_or_orphaned",
+      "entry_description": "已注册的旧容器/内部页，当前主菜单无稳定入口",
+      "current_canonical_url": null,
+      "static_review": "reviewed",
+      "live_review": "pending_browser_connection",
+      "goal": "维护数据集授权范围",
+      "observation": "只有通用列无管理表单，旧分类可找到而当前主菜单找不到；撤销名称不准。",
+      "tasks": [
+        "UX-002",
+        "UX-006",
+        "UX-015",
+        "UX-041"
+      ],
+      "live_scenario": "添加/查看/撤销有效授权，重复授权和继承策略清楚。"
+    },
+    {
+      "key": "rag-vector-configs",
+      "label": "向量配置",
+      "entry_type": "legacy_or_orphaned",
+      "entry_description": "已注册的旧容器/内部页，当前主菜单无稳定入口",
+      "current_canonical_url": null,
+      "static_review": "reviewed",
+      "live_review": "pending_browser_connection",
+      "goal": "配置并测试可用向量模型",
+      "observation": "有测试向量模型动作，入口藏在旧分类，选择器全量截断且维度/模态需联动。",
+      "tasks": [
+        "UX-002",
+        "UX-004",
+        "UX-006",
+        "UX-013",
+        "UX-041"
+      ],
+      "live_scenario": "测试模型维度→保存→绑定数据集，错误定位和配置冲突。"
+    },
+    {
+      "key": "rag-import-templates",
+      "label": "导入模板原始表",
+      "entry_type": "legacy_or_orphaned",
+      "entry_description": "已注册的旧容器/内部页，当前主菜单无稳定入口",
+      "current_canonical_url": null,
+      "static_review": "reviewed",
+      "live_review": "pending_browser_connection",
+      "goal": "高级维护模板版本",
+      "observation": "通用原始表没有编辑form；应明确只读或提供结构化维护，不出现假停用。",
+      "tasks": [
+        "UX-002",
+        "UX-003",
+        "UX-006",
+        "UX-041",
+        "UX-047"
+      ],
+      "live_scenario": "业务模板下载与高级模板元数据一致，停用语义真实。"
+    },
+    {
+      "key": "rag-uploads",
+      "label": "导入记录",
+      "entry_type": "current_internal_tab",
+      "entry_description": "构建可检索知识的完整流程 / rag-build → 导入记录（tab状态尚未写URL）",
+      "current_canonical_url": null,
+      "static_review": "reviewed",
+      "live_review": "pending_browser_connection",
+      "goal": "按状态找导入任务并进入详情",
+      "observation": "通用记录没有上传详情操作，缺upload_id等主识别；停用不解释取消含义。",
+      "tasks": [
+        "UX-003",
+        "UX-006",
+        "UX-018",
+        "UX-041",
+        "UX-042",
+        "UX-043"
+      ],
+      "live_scenario": "通过文件名/任务ID/阶段定位，点击进入对应导入详情。"
+    },
+    {
+      "key": "rag-image-preview",
+      "label": "图片预览",
+      "entry_type": "legacy_or_orphaned",
+      "entry_description": "已注册的旧容器/内部页，当前主菜单无稳定入口",
+      "current_canonical_url": null,
+      "static_review": "reviewed",
+      "live_review": "pending_browser_connection",
+      "goal": "核对图片和人工/AI/OCR信息",
+      "observation": "有缩略图和重新标注，主体为JSON/英文且无翻页，需手输upload_id。",
+      "tasks": [
+        "UX-002",
+        "UX-014",
+        "UX-043",
+        "UX-047"
+      ],
+      "live_scenario": "45张图片翻页、大图、AI失败/警告、重新标注状态。"
+    },
+    {
+      "key": "rag-vectorization-metrics",
+      "label": "向量化监控",
+      "entry_type": "current_internal_tab",
+      "entry_description": "运行维护与向量健康诊断 / rag-operations → 向量化监控（tab状态尚未写URL）",
+      "current_canonical_url": null,
+      "static_review": "reviewed",
+      "live_review": "pending_browser_connection",
+      "goal": "解释向量化健康和失败原因",
+      "observation": "有无任务提示，但分布是key:JSON清单，缺任务下钻和刷新。",
+      "tasks": [
+        "UX-019",
+        "UX-038",
+        "UX-047"
+      ],
+      "live_scenario": "失败类型→具体任务→处理结果，时间窗和阈值一致。"
+    },
+    {
+      "key": "rag-retrieval-evaluation",
+      "label": "检索评测",
+      "entry_type": "legacy_or_orphaned",
+      "entry_description": "已注册的旧容器/内部页，当前主菜单无稳定入口",
+      "current_canonical_url": null,
+      "static_review": "reviewed",
+      "live_review": "pending_browser_connection",
+      "goal": "运行并解释检索评测",
+      "observation": "与rag-evaluation共用renderer，名称和入口重复，应迁移到同一评估流程。",
+      "tasks": [
+        "UX-002",
+        "UX-041",
+        "UX-045"
+      ],
+      "live_scenario": "同一运行从两个旧入口显示相同数据和URL。"
+    },
+    {
+      "key": "rag-upload-preview-items",
+      "label": "上传预览原始数据",
+      "entry_type": "legacy_or_orphaned",
+      "entry_description": "已注册的旧容器/内部页，当前主菜单无稳定入口",
+      "current_canonical_url": null,
+      "static_review": "reviewed",
+      "live_review": "pending_browser_connection",
+      "goal": "查看原始导入项和校验错误",
+      "observation": "通用原始数据表无修正/定位入口，可能出现不合适停用。",
+      "tasks": [
+        "UX-002",
+        "UX-003",
+        "UX-006",
+        "UX-041",
+        "UX-047"
+      ],
+      "live_scenario": "错误行能对应文件行号、任务、修正办法。"
+    },
+    {
+      "key": "rag-documents",
+      "label": "文档",
+      "entry_type": "legacy_or_orphaned",
+      "entry_description": "已注册的旧容器/内部页，当前主菜单无稳定入口",
+      "current_canonical_url": null,
+      "static_review": "reviewed",
+      "live_review": "pending_browser_connection",
+      "goal": "查看文档版本和所属数据集",
+      "observation": "原始ID多，缺文档→片段→索引链；通用停用未说明对向量影响。",
+      "tasks": [
+        "UX-002",
+        "UX-003",
+        "UX-006",
+        "UX-019",
+        "UX-041",
+        "UX-047"
+      ],
+      "live_scenario": "版本、删除/停用范围和索引一致，详情链可走通。"
+    },
+    {
+      "key": "rag-chunks",
+      "label": "内容片段",
+      "entry_type": "legacy_or_orphaned",
+      "entry_description": "已注册的旧容器/内部页，当前主菜单无稳定入口",
+      "current_canonical_url": null,
+      "static_review": "reviewed",
+      "live_review": "pending_browser_connection",
+      "goal": "查看和管理可检索内容片段",
+      "observation": "列表缺kb/dataset和正文摘要关联，通用动作不足以解释片段生命周期。",
+      "tasks": [
+        "UX-002",
+        "UX-003",
+        "UX-006",
+        "UX-019",
+        "UX-041",
+        "UX-047"
+      ],
+      "live_scenario": "禁用后检索确实不命中，显示所属文档及重新启用能力。"
+    },
+    {
+      "key": "rag-image-assets",
+      "label": "图片资产",
+      "entry_type": "legacy_or_orphaned",
+      "entry_description": "已注册的旧容器/内部页，当前主菜单无稳定入口",
+      "current_canonical_url": null,
+      "static_review": "reviewed",
+      "live_review": "pending_browser_connection",
+      "goal": "管理知识库图片及描述质量",
+      "observation": "没有友好预览和说明编辑，列表长技术字段；需与上传预览共用组件。",
+      "tasks": [
+        "UX-002",
+        "UX-003",
+        "UX-006",
+        "UX-031",
+        "UX-041",
+        "UX-047"
+      ],
+      "live_scenario": "图片→上传/文档/向量关联，标注与警告可读。"
+    },
+    {
+      "key": "rag-embedding-jobs",
+      "label": "向量任务",
+      "entry_type": "current_internal_tab",
+      "entry_description": "运行维护与向量健康诊断 / rag-operations → 向量任务（tab状态尚未写URL）",
+      "current_canonical_url": null,
+      "static_review": "reviewed",
+      "live_review": "pending_browser_connection",
+      "goal": "找到失败向量任务并恢复",
+      "observation": "仅进度/计数/错误码，缺详情、重试条件与结果；通用停用不等于取消。",
+      "tasks": [
+        "UX-003",
+        "UX-006",
+        "UX-018",
+        "UX-038",
+        "UX-047"
+      ],
+      "live_scenario": "处理数量/总数、失败原因、允许重试/不允许原因。"
+    },
+    {
+      "key": "rag-vector-records",
+      "label": "向量记录",
+      "entry_type": "legacy_or_orphaned",
+      "entry_description": "已注册的旧容器/内部页，当前主菜单无稳定入口",
+      "current_canonical_url": null,
+      "static_review": "reviewed",
+      "live_review": "pending_browser_connection",
+      "goal": "核对内容和索引一致性",
+      "observation": "集合/片段/状态/维度原始列表，缺索引健康和安全的重建入口。",
+      "tasks": [
+        "UX-002",
+        "UX-003",
+        "UX-006",
+        "UX-019",
+        "UX-041",
+        "UX-047"
+      ],
+      "live_scenario": "从内容到向量记录及集合状态，已删向量不作正常记录。"
+    },
+    {
+      "key": "rag-retrieval-logs",
+      "label": "检索日志",
+      "entry_type": "current_internal_tab",
+      "entry_description": "运行维护与向量健康诊断 / rag-operations → 检索日志（tab状态尚未写URL）",
+      "current_canonical_url": null,
+      "static_review": "reviewed",
+      "live_review": "pending_browser_connection",
+      "goal": "复盘问题、命中证据与降级",
+      "observation": "表只列ID/命中数，缺问题、策略、耗时详情；原始ID不便定位。",
+      "tasks": [
+        "UX-003",
+        "UX-006",
+        "UX-018",
+        "UX-035",
+        "UX-047"
+      ],
+      "live_scenario": "检索→证据→反馈/评估样本，降级原因可解释。"
+    },
+    {
+      "key": "rag-evaluation",
+      "label": "检索评估",
+      "entry_type": "current_internal_tab",
+      "entry_description": "从评估定位问题并跟进纠偏 / rag-quality → 检索评估（tab状态尚未写URL）",
+      "current_canonical_url": null,
+      "static_review": "reviewed",
+      "live_review": "pending_browser_connection",
+      "goal": "查看最近评估质量和失败样本",
+      "observation": "运行及转纠偏已有入口；原始数据量大，结果需阈值、范围和比较。",
+      "tasks": [
+        "UX-014",
+        "UX-045",
+        "UX-046"
+      ],
+      "live_scenario": "零样本、不同失败比例、转纠偏幂等和复评。"
+    },
+    {
+      "key": "rag-answer-feedback",
+      "label": "用户反馈",
+      "entry_type": "current_internal_tab",
+      "entry_description": "从评估定位问题并跟进纠偏 / rag-quality → 用户反馈（tab状态尚未写URL）",
+      "current_canonical_url": null,
+      "static_review": "reviewed",
+      "live_review": "pending_browser_connection",
+      "goal": "处理用户反馈并关联检索",
+      "observation": "只有通用列，缺看详情和处理动作，无法形成有效反馈闭环。",
+      "tasks": [
+        "UX-003",
+        "UX-006",
+        "UX-018",
+        "UX-046",
+        "UX-047"
+      ],
+      "live_scenario": "差评→查看检索→归因→转任务→处理回告。"
+    },
+    {
+      "key": "rag-correction-tasks",
+      "label": "纠偏任务",
+      "entry_type": "current_internal_tab",
+      "entry_description": "从评估定位问题并跟进纠偏 / rag-quality → 纠偏任务（tab状态尚未写URL）",
+      "current_canonical_url": null,
+      "static_review": "reviewed",
+      "live_review": "pending_browser_connection",
+      "goal": "完成纠偏和验证",
+      "observation": "没有专用编辑/执行/验证/关闭界面，通用停用不是纠偏完成。",
+      "tasks": [
+        "UX-003",
+        "UX-006",
+        "UX-018",
+        "UX-046"
+      ],
+      "live_scenario": "受理、修改、复评、关闭及失败恢复。"
+    },
+    {
+      "key": "rag-retention-policies",
+      "label": "过期策略",
+      "entry_type": "current_internal_tab",
+      "entry_description": "运行维护与向量健康诊断 / rag-operations → 过期策略（tab状态尚未写URL）",
+      "current_canonical_url": null,
+      "static_review": "reviewed",
+      "live_review": "pending_browser_connection",
+      "goal": "设置RAG数据过期与处理方式",
+      "observation": "资源无form，enabled与通用status停用不匹配。",
+      "tasks": [
+        "UX-003",
+        "UX-006",
+        "UX-013",
+        "UX-037"
+      ],
+      "live_scenario": "按知识库/数据集等对象修改策略，验证到期动作和保留边界。"
+    },
+    {
+      "key": "rag-eval-cases",
+      "label": "检索评估样本",
+      "entry_type": "current_internal_tab",
+      "entry_description": "从评估定位问题并跟进纠偏 / rag-quality → 检索评估样本（tab状态尚未写URL）",
+      "current_canonical_url": null,
+      "static_review": "reviewed",
+      "live_review": "pending_browser_connection",
+      "goal": "维护可信评估样本",
+      "observation": "专用创建/导入/启停有实现；查全和编辑欠缺，期望片段仍可手输ID。",
+      "tasks": [
+        "UX-001",
+        "UX-003",
+        "UX-004",
+        "UX-014",
+        "UX-045"
+      ],
+      "live_scenario": "加入样本自动填值、批量导入行错误、启停和搜索。"
+    },
+    {
+      "key": "rag-eval-runs",
+      "label": "检索评估运行",
+      "entry_type": "legacy_or_orphaned",
+      "entry_description": "已注册的旧容器/内部页，当前主菜单无稳定入口",
+      "current_canonical_url": null,
+      "static_review": "reviewed",
+      "live_review": "pending_browser_connection",
+      "goal": "比较各次评估运行",
+      "observation": "后端只读但前端资源未标readOnly，会出现停用；缺运行比较和失败详情关联。",
+      "tasks": [
+        "UX-002",
+        "UX-003",
+        "UX-006",
+        "UX-041",
+        "UX-045"
+      ],
+      "live_scenario": "只读动作正确，选两次运行比较指标和失败变化。"
+    },
+    {
+      "key": "rag-eval-results",
+      "label": "检索评估结果",
+      "entry_type": "legacy_or_orphaned",
+      "entry_description": "已注册的旧容器/内部页，当前主菜单无稳定入口",
+      "current_canonical_url": null,
+      "static_review": "reviewed",
+      "live_review": "pending_browser_connection",
+      "goal": "解释单个样本评估结果",
+      "observation": "后端只读但前端可能给停用；只列run/case/rank，问题和证据不可直接读。",
+      "tasks": [
+        "UX-002",
+        "UX-003",
+        "UX-006",
+        "UX-019",
+        "UX-041",
+        "UX-045"
+      ],
+      "live_scenario": "回到运行与样本，查看期望/实际命中，不能对结果做假停用。"
+    },
+    {
+      "key": "login",
+      "label": "管理员登录",
+      "entry_type": "login",
+      "entry_description": "登录入口",
+      "current_canonical_url": "/admin/",
+      "static_review": "reviewed",
+      "live_review": "pending_browser_connection",
+      "goal": "快速、安全地进入后台",
+      "observation": "回车提交和登录错误文案需修复；自动填充已有基础。",
+      "tasks": [
+        "UX-016",
+        "UX-014",
+        "UX-017"
+      ],
+      "live_scenario": "回车、错密码、离线、登录中重复点击、过期后重登录。"
+    },
+    {
+      "key": "rag-import-task",
+      "label": "导入任务",
+      "entry_type": "current_internal_tab",
+      "entry_description": "构建可检索知识的完整流程 / rag-build → 导入任务（tab状态尚未写URL）",
+      "current_canonical_url": null,
+      "static_review": "reviewed",
+      "live_review": "pending_browser_connection",
+      "goal": "持续跟踪某次导入并完成审核向量化",
+      "observation": "内部renderer有实现但不在resources字典；依赖rag-build的tab/upload_id，刷新易丢上下文。",
+      "tasks": [
+        "UX-001",
+        "UX-002",
+        "UX-014",
+        "UX-042",
+        "UX-043",
+        "UX-044"
+      ],
+      "live_scenario": "上传→预览→审核/免审核确认→向量化→检索，刷新始终同一任务。"
+    }
+  ]
+}

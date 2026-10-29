@@ -1,0 +1,65 @@
+{
+  "note": "Audit source snapshot only; unrelated working tree changes pre-existed. Backend files were read locally only.",
+  "files": [
+    {
+      "path": "app/Http/Controllers/AdminController.php",
+      "sha256": "3418bb65fc6e3defcfeda1ba707df87d9d3a3ff75addb8901f4a4f0af1a40bcb"
+    },
+    {
+      "path": "app/Services/AdminUserService.php",
+      "sha256": "92dec2638bd57affa94f50fceb44d538f32c66744be46ed2ae52d0ef251ff712"
+    },
+    {
+      "path": "app/Services/CrudService.php",
+      "sha256": "e430d00e9333f2e5e240337aac729c40cd13bdc0b73f999808a1acace9b0a75a"
+    },
+    {
+      "path": "app/Services/RagUploadService.php",
+      "sha256": "01b78b107be206e4156ec897241ba83e7d65fcfc36189ffc2406e30cb67160b5"
+    },
+    {
+      "path": "database/migrations/0001_create_tokenhub_schema.sql",
+      "sha256": "2c395f97c63307cfe98b0bb27ab688384a46c6f0e12e164c5db6e523ff169e55"
+    },
+    {
+      "path": "public/admin/assets/css/app.css",
+      "sha256": "bec1219d439b850ed92ee945d22907cc006ee0b345899e17bc75977e7d375903"
+    },
+    {
+      "path": "public/admin/assets/js/api.js",
+      "sha256": "69eea7259811b33423395f0d3bd37439985b0b90e2e02435e21c6acbb0341db7"
+    },
+    {
+      "path": "public/admin/assets/js/app.js",
+      "sha256": "2bad17a0440380811ebf349a6ca3881fef8d92629f748eb6924eb19527959ec9"
+    },
+    {
+      "path": "public/admin/assets/js/dashboard.js",
+      "sha256": "64ae5857ab90f2af9f39a229e5214a5453e51b4d1a3ac8a64c9929078445dcc3"
+    },
+    {
+      "path": "public/admin/assets/js/dom.js",
+      "sha256": "e59f938314868906db9dcf937cee034cb38a5418aaf143e6fd02584fd9c951dc"
+    },
+    {
+      "path": "public/admin/assets/js/domains.js",
+      "sha256": "b9fdcf04879c7e2e2fa43bdadbb88a982ee504014f44f555db400d33f5a06350"
+    },
+    {
+      "path": "public/admin/assets/js/resources.js",
+      "sha256": "1e65e13a8cb6d71537f4f30a4246cac6340197e22ea35b32bb8ecd1080214abc"
+    },
+    {
+      "path": "public/admin/assets/js/table.js",
+      "sha256": "d8c073c02218a00084e47fc197a31b830fd76ce8fca713a566132df5ff4e4a46"
+    },
+    {
+      "path": "public/admin/index.html",
+      "sha256": "af5697b5558ad30241739b8254d3880a930470e6ac7a9e7ef37e2400bd19fb24"
+    },
+    {
+      "path": "tests/Frontend/AdminLayoutOverflowTest.php",
+      "sha256": "a6420d05c559a2c0db8d7ff95d31ca50751e780eed540f8b6d900d2c9f161780"
+    }
+  ]
+}

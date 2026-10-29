@@ -1,0 +1,116 @@
+{
+  "method": "Local execution of extracted, unmodified source functions with fake DOM/data. No browser rendering, authenticated APIs, production mutations, or real data.",
+  "results": [
+    {
+      "id": "PROBE-01",
+      "reproduced": true,
+      "observed": {
+        "domainKey": "rag",
+        "tabKey": "rag-build"
+      }
+    },
+    {
+      "id": "PROBE-04",
+      "reproduced": true,
+      "observed": {}
+    },
+    {
+      "id": "PROBE-05",
+      "reproduced": true,
+      "observed": [
+        "rag-settings",
+        "rag-console",
+        "rag-knowledge-management",
+        "rag-import-review",
+        "rag-image-vector",
+        "rag-feedback-correction",
+        "rag-advanced-data",
+        "rag-knowledge-base-bindings"
+      ]
+    },
+    {
+      "id": "PROBE-06",
+      "reproduced": true,
+      "observed": [
+        {
+          "value": "music_generation",
+          "label": "music_generation"
+        },
+        {
+          "value": "realtime",
+          "label": "realtime"
+        }
+      ]
+    },
+    {
+      "id": "PROBE-02",
+      "reproduced": true,
+      "observed": {
+        "renderCount": 2,
+        "filters": {}
+      }
+    },
+    {
+      "id": "PROBE-03",
+      "reproduced": true,
+      "observed": {
+        "blankCategories": [
+          "安全防护",
+          "治理告警",
+          "RAG 设置"
+        ]
+      }
+    },
+    {
+      "id": "PROBE-07",
+      "reproduced": true,
+      "observed": {
+        "tag": "table",
+        "columns": [
+          "id",
+          "username"
+        ],
+        "row": {
+          "message": "Injected offline error"
+        }
+      }
+    },
+    {
+      "id": "PROBE-08",
+      "reproduced": true,
+      "observed": {
+        "total": 45,
+        "page": 1,
+        "buttons": 0
+      }
+    },
+    {
+      "id": "PROBE-09",
+      "reproduced": true,
+      "observed": {
+        "pending": {
+          "approveDisabled": true,
+          "rejectDisabled": true
+        },
+        "reviewNotRequired": {
+          "vectorizeDisabled": true
+        }
+      }
+    },
+    {
+      "id": "PROBE-10",
+      "reproduced": true,
+      "observed": {
+        "matchingExpiredFixtureAccepted": true
+      }
+    },
+    {
+      "id": "PROBE-11",
+      "reproduced": true,
+      "observed": {
+        "inputCost": 0.21,
+        "display": "未配置"
+      }
+    }
+  ]
+}

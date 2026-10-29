@@ -39,7 +39,7 @@ record() {
 } | tee "$REPORT"
 
 # ---------------------------------------------------------------- containers
-for service in mysql redis qdrant php queue-worker scheduler rag-worker caddy; do
+for service in mysql redis qdrant php queue-worker scheduler rag-worker realtime-gateway caddy; do
   state="$(container_state "$service")"
   case "$state" in
     *" healthy") record PASS "container $service" "$state" ;;
@@ -60,7 +60,16 @@ host="${hostport%%:*}"
 if [ "$scheme" = https ]; then port="$(env_get TOKENHUB_HTTPS_PORT)"; else port="$(env_get TOKENHUB_HTTP_PORT)"; fi
 port="${port:-80}"
 base="$scheme://$host:$port"
-curl_local() { curl -sS -k --max-time 15 --resolve "$host:$port:127.0.0.1" "$@"; }
+connect_address="$(env_get TOKENHUB_BIND_ADDRESS)"
+case "$connect_address" in
+  ""|0.0.0.0) connect_address=127.0.0.1 ;;
+  ::) connect_address='[::1]' ;;
+esac
+case "$connect_address" in
+  \[*\]) ;;
+  *:*) connect_address="[$connect_address]" ;;
+esac
+curl_local() { curl -sS -k --noproxy '*' --max-time 15 --resolve "$host:$port:$connect_address" "$@"; }
 
 for path in /health /ready; do
   body="$(curl_local -w ' HTTP=%{http_code}' "$base$path" 2>&1)"

@@ -1,0 +1,111 @@
+{
+  "target": "http://192.168.8.236:8080/admin/",
+  "date_client": "2026-10-29",
+  "method": "Unauthenticated public static asset GET; credentials and sessions not read",
+  "assets": [
+    {
+      "path": "/admin/index.html",
+      "bytes": 3706,
+      "sha256": "af5697b5558ad30241739b8254d3880a930470e6ac7a9e7ef37e2400bd19fb24",
+      "local_sha256": "af5697b5558ad30241739b8254d3880a930470e6ac7a9e7ef37e2400bd19fb24",
+      "matches_local": true,
+      "headers": {}
+    },
+    {
+      "path": "/admin/assets/js/api.js",
+      "bytes": 6563,
+      "sha256": "69eea7259811b33423395f0d3bd37439985b0b90e2e02435e21c6acbb0341db7",
+      "local_sha256": "69eea7259811b33423395f0d3bd37439985b0b90e2e02435e21c6acbb0341db7",
+      "matches_local": true,
+      "headers": {
+        "Content-Type": "text/javascript; charset=utf-8",
+        "Etag": "\"dmgs7wtf318g52b\"",
+        "Last-Modified": "Wed, 28 Oct 2026 21:16:46 GMT"
+      }
+    },
+    {
+      "path": "/admin/assets/js/app.js",
+      "bytes": 23400,
+      "sha256": "2bad17a0440380811ebf349a6ca3881fef8d92629f748eb6924eb19527959ec9",
+      "local_sha256": "2bad17a0440380811ebf349a6ca3881fef8d92629f748eb6924eb19527959ec9",
+      "matches_local": true,
+      "headers": {
+        "Content-Type": "text/javascript; charset=utf-8",
+        "Etag": "\"dmgs7wtf318gi20\"",
+        "Last-Modified": "Wed, 28 Oct 2026 21:16:46 GMT"
+      }
+    },
+    {
+      "path": "/admin/assets/js/dashboard.js",
+      "bytes": 21227,
+      "sha256": "64ae5857ab90f2af9f39a229e5214a5453e51b4d1a3ac8a64c9929078445dcc3",
+      "local_sha256": "64ae5857ab90f2af9f39a229e5214a5453e51b4d1a3ac8a64c9929078445dcc3",
+      "matches_local": true,
+      "headers": {
+        "Content-Type": "text/javascript; charset=utf-8",
+        "Etag": "\"dmgs7wtf318ggdn\"",
+        "Last-Modified": "Wed, 28 Oct 2026 21:16:46 GMT"
+      }
+    },
+    {
+      "path": "/admin/assets/js/dom.js",
+      "bytes": 5937,
+      "sha256": "e59f938314868906db9dcf937cee034cb38a5418aaf143e6fd02584fd9c951dc",
+      "local_sha256": "e59f938314868906db9dcf937cee034cb38a5418aaf143e6fd02584fd9c951dc",
+      "matches_local": true,
+      "headers": {
+        "Content-Type": "text/javascript; charset=utf-8",
+        "Etag": "\"dkfsrp9f9q804kx\"",
+        "Last-Modified": "Tue, 04 Aug 2026 02:18:00 GMT"
+      }
+    },
+    {
+      "path": "/admin/assets/js/domains.js",
+      "bytes": 3024,
+      "sha256": "b9fdcf04879c7e2e2fa43bdadbb88a982ee504014f44f555db400d33f5a06350",
+      "local_sha256": "b9fdcf04879c7e2e2fa43bdadbb88a982ee504014f44f555db400d33f5a06350",
+      "matches_local": true,
+      "headers": {
+        "Content-Type": "text/javascript; charset=utf-8",
+        "Etag": "\"dmgs7wtf318g2c0\"",
+        "Last-Modified": "Wed, 28 Oct 2026 21:16:46 GMT"
+      }
+    },
+    {
+      "path": "/admin/assets/js/resources.js",
+      "bytes": 45490,
+      "sha256": "1e65e13a8cb6d71537f4f30a4246cac6340197e22ea35b32bb8ecd1080214abc",
+      "local_sha256": "1e65e13a8cb6d71537f4f30a4246cac6340197e22ea35b32bb8ecd1080214abc",
+      "matches_local": true,
+      "headers": {
+        "Content-Type": "text/javascript; charset=utf-8",
+        "Etag": "\"dmgssk46ibcwz3m\"",
+        "Last-Modified": "Wed, 28 Oct 2026 21:43:44 GMT"
+      }
+    },
+    {
+      "path": "/admin/assets/js/table.js",
+      "bytes": 253936,
+      "sha256": "d8c073c02218a00084e47fc197a31b830fd76ce8fca713a566132df5ff4e4a46",
+      "local_sha256": "d8c073c02218a00084e47fc197a31b830fd76ce8fca713a566132df5ff4e4a46",
+      "matches_local": true,
+      "headers": {
+        "Content-Type": "text/javascript; charset=utf-8",
+        "Etag": "\"dmgssk46ibcw5fxs\"",
+        "Last-Modified": "Wed, 28 Oct 2026 21:43:44 GMT"
+      }
+    },
+    {
+      "path": "/admin/assets/css/app.css",
+      "bytes": 82936,
+      "sha256": "bec1219d439b850ed92ee945d22907cc006ee0b345899e17bc75977e7d375903",
+      "local_sha256": "bec1219d439b850ed92ee945d22907cc006ee0b345899e17bc75977e7d375903",
+      "matches_local": true,
+      "headers": {
+        "Content-Type": "text/css; charset=utf-8",
+        "Etag": "\"dmgs7wtf318g1rzs\"",
+        "Last-Modified": "Wed, 28 Oct 2026 21:16:46 GMT"
+      }
+    }
+  ]
+}
