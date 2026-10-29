@@ -52,3 +52,32 @@ foreach ($discovered as $index => $name) {
         assert_true($index <= $removeIndex, 'WAF tables must be dropped after every migration that created them: ' . $name);
     }
 }
+
+// New migrations must not reuse a version prefix: two files with the same
+// prefix make the execution order depend on the rest of the file name. The
+// three legacy duplicates are kept because installed databases record them
+// by full file name; renaming them would re-run non-idempotent SQL.
+$legacyDuplicatePrefixes = ['2026_07_08_000002', '2026_07_08_000008', '2026_07_09_000009'];
+$prefixCounts = [];
+foreach ($discovered as $name) {
+    if (preg_match('/^(\d{4}_\d{2}_\d{2}_\d{6})_/', $name, $prefixMatch)) {
+        $prefixCounts[$prefixMatch[1]] = ($prefixCounts[$prefixMatch[1]] ?? 0) + 1;
+    }
+}
+$duplicatePrefixes = array_keys(array_filter($prefixCounts, static fn (int $count): bool => $count > 1));
+assert_same($legacyDuplicatePrefixes, array_values(array_intersect($duplicatePrefixes, $legacyDuplicatePrefixes)), 'Legacy duplicate prefixes are known.');
+assert_same([], array_values(array_diff($duplicatePrefixes, $legacyDuplicatePrefixes)), 'New migrations must use a unique version prefix.');
+
+// models.capability is widened by several migrations; the last one to run
+// must list every capability the gateway routes.
+$capabilityValues = ['text_generation', 'vision_understanding', 'video_understanding', 'audio_understanding', 'embedding', 'asr', 'tts', 'image_generation', 'video_generation', 'rerank', 'moderation', 'music_generation', 'realtime'];
+$lastCapabilityEnum = '';
+foreach ($discovered as $name) {
+    $migrationSql = (string) file_get_contents(__DIR__ . '/../../database/migrations/' . $name);
+    if (preg_match_all("/ALTER TABLE models MODIFY COLUMN capability ENUM\(([^)]*)\)/", $migrationSql, $enumMatches)) {
+        $lastCapabilityEnum = (string) end($enumMatches[1]);
+    }
+}
+foreach ($capabilityValues as $capability) {
+    assert_true(str_contains($lastCapabilityEnum, "''" . $capability . "''"), 'The final models.capability ENUM should include ' . $capability . '.');
+}

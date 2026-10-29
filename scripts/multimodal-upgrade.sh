@@ -23,7 +23,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 MIGRATION=2026_10_29_000001_model_prices_pricing_rules.sql
-MIGRATIONS=("$MIGRATION" 2026_10_29_000002_models_music_realtime_capabilities.sql 2026_10_29_000002_task_billing_settlement_modalities.sql)
+MIGRATIONS=("$MIGRATION" 2026_10_29_000002_models_music_realtime_capabilities.sql 2026_10_29_000003_task_billing_settlement_modalities.sql)
 MODE=auto DRY_RUN=0 VERIFY_ONLY=0 SKIP_BACKUP=0 TAG="" APP_DIR=/var/www/tokenhub INSTALL_GO=1
 GO_VERSION="${GO_VERSION:-1.24.4}"
 
