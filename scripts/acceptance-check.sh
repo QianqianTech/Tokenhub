@@ -58,7 +58,8 @@ curl -fsS -m "$TIMEOUT_SECONDS" "$BASE_URL/admin/" >"$tmp/admin.html" || fail "a
 grep -q 'TokenHub' "$tmp/admin.html" || fail "admin static page does not contain TokenHub"
 
 curl -fsS -m "$TIMEOUT_SECONDS" "$BASE_URL/screen/" >"$tmp/screen.html" || fail "screen static page failed"
-grep -q 'TokenHub' "$tmp/screen.html" || fail "screen static page does not contain TokenHub"
+grep -q 'id="screen"' "$tmp/screen.html" || fail "screen static page is missing its main view"
+grep -q '/screen/assets/screen.js' "$tmp/screen.html" || fail "screen static page is missing its application script"
 
 assert_status_in ".env block" "403 404" -I "$BASE_URL/.env"
 assert_status_in ".git block" "403 404" -I "$BASE_URL/.git/config"

@@ -110,9 +110,21 @@ PREPARE stmt FROM @sql;
 EXECUTE stmt;
 DEALLOCATE PREPARE stmt;
 
-UPDATE audit_logs SET actor_user_id = actor_id WHERE actor_user_id IS NULL AND actor_id IS NOT NULL;
-UPDATE audit_logs SET client_ip = ip_address WHERE client_ip IS NULL AND ip_address IS NOT NULL;
-UPDATE audit_logs SET details = metadata WHERE details IS NULL AND metadata IS NOT NULL;
+-- Fresh installs already have the canonical columns and no legacy audit fields.
+SET @sql = (SELECT IF(COUNT(*) = 1, 'UPDATE audit_logs SET actor_user_id = actor_id WHERE actor_user_id IS NULL AND actor_id IS NOT NULL', 'DO 1') FROM information_schema.columns WHERE table_schema = @schema_name AND table_name = 'audit_logs' AND column_name = 'actor_id');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @sql = (SELECT IF(COUNT(*) = 1, 'UPDATE audit_logs SET client_ip = ip_address WHERE client_ip IS NULL AND ip_address IS NOT NULL', 'DO 1') FROM information_schema.columns WHERE table_schema = @schema_name AND table_name = 'audit_logs' AND column_name = 'ip_address');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @sql = (SELECT IF(COUNT(*) = 1, 'UPDATE audit_logs SET details = metadata WHERE details IS NULL AND metadata IS NOT NULL', 'DO 1') FROM information_schema.columns WHERE table_schema = @schema_name AND table_name = 'audit_logs' AND column_name = 'metadata');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
 
 INSERT INTO system_settings (setting_key, setting_value, description)
 VALUES (

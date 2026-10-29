@@ -1,0 +1,6364 @@
+{
+  "resources": [
+    {
+      "key": "dashboard",
+      "label": "智慧分析",
+      "group": "运营",
+      "form": false,
+      "readOnly": false,
+      "columns": [],
+      "filters": [
+        {
+          "name": "status",
+          "label": "状态",
+          "type": "select",
+          "options": [
+            [
+              "",
+              "全部状态"
+            ],
+            [
+              "active",
+              "启用"
+            ],
+            [
+              "disabled",
+              "停用"
+            ],
+            [
+              "queued",
+              "排队中"
+            ],
+            [
+              "processing",
+              "处理中"
+            ],
+            [
+              "succeeded",
+              "成功"
+            ],
+            [
+              "failed",
+              "失败"
+            ],
+            [
+              "success",
+              "成功"
+            ],
+            [
+              "blocked",
+              "已拦截"
+            ],
+            [
+              "timeout",
+              "超时"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "key": "admin-chat-sessions",
+      "label": "会话测试",
+      "group": "运营",
+      "form": false,
+      "readOnly": true,
+      "columns": [],
+      "filters": [
+        {
+          "name": "status",
+          "label": "状态",
+          "type": "select",
+          "options": [
+            [
+              "",
+              "全部状态"
+            ],
+            [
+              "active",
+              "启用"
+            ],
+            [
+              "disabled",
+              "停用"
+            ],
+            [
+              "queued",
+              "排队中"
+            ],
+            [
+              "processing",
+              "处理中"
+            ],
+            [
+              "succeeded",
+              "成功"
+            ],
+            [
+              "failed",
+              "失败"
+            ],
+            [
+              "success",
+              "成功"
+            ],
+            [
+              "blocked",
+              "已拦截"
+            ],
+            [
+              "timeout",
+              "超时"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "key": "departments",
+      "label": "部门管理",
+      "group": "组织",
+      "form": true,
+      "readOnly": false,
+      "columns": [
+        "id",
+        "name",
+        "parent_id",
+        "path",
+        "level",
+        "sort_order",
+        "status"
+      ],
+      "filters": [
+        {
+          "name": "status",
+          "label": "状态",
+          "type": "select",
+          "options": [
+            [
+              "",
+              "全部状态"
+            ],
+            [
+              "active",
+              "启用"
+            ],
+            [
+              "disabled",
+              "停用"
+            ],
+            [
+              "queued",
+              "排队中"
+            ],
+            [
+              "processing",
+              "处理中"
+            ],
+            [
+              "succeeded",
+              "成功"
+            ],
+            [
+              "failed",
+              "失败"
+            ],
+            [
+              "success",
+              "成功"
+            ],
+            [
+              "blocked",
+              "已拦截"
+            ],
+            [
+              "timeout",
+              "超时"
+            ]
+          ]
+        },
+        {
+          "name": "department_id",
+          "label": "部门 ID",
+          "type": "number",
+          "optional": true
+        },
+        {
+          "name": "user_id",
+          "label": "用户 ID",
+          "type": "number",
+          "optional": true
+        }
+      ]
+    },
+    {
+      "key": "users",
+      "label": "用户管理",
+      "group": "组织",
+      "form": true,
+      "readOnly": false,
+      "columns": [
+        "id",
+        "username",
+        "department_id",
+        "role",
+        "status",
+        "last_login_at",
+        "created_at"
+      ],
+      "filters": [
+        {
+          "name": "status",
+          "label": "状态",
+          "type": "select",
+          "options": [
+            [
+              "",
+              "全部状态"
+            ],
+            [
+              "active",
+              "启用"
+            ],
+            [
+              "disabled",
+              "停用"
+            ],
+            [
+              "queued",
+              "排队中"
+            ],
+            [
+              "processing",
+              "处理中"
+            ],
+            [
+              "succeeded",
+              "成功"
+            ],
+            [
+              "failed",
+              "失败"
+            ],
+            [
+              "success",
+              "成功"
+            ],
+            [
+              "blocked",
+              "已拦截"
+            ],
+            [
+              "timeout",
+              "超时"
+            ]
+          ]
+        },
+        {
+          "name": "department_id",
+          "label": "部门 ID",
+          "type": "number",
+          "optional": true
+        },
+        {
+          "name": "user_id",
+          "label": "用户 ID",
+          "type": "number",
+          "optional": true
+        }
+      ]
+    },
+    {
+      "key": "admin-users",
+      "label": "管理员管理",
+      "group": "系统设置",
+      "form": true,
+      "readOnly": false,
+      "columns": [
+        "id",
+        "username",
+        "department_id",
+        "role",
+        "admin_type",
+        "admin_scope",
+        "permissions",
+        "managed_department_ids",
+        "status",
+        "last_login_at",
+        "created_at"
+      ],
+      "filters": [
+        {
+          "name": "status",
+          "label": "状态",
+          "type": "select",
+          "options": [
+            [
+              "",
+              "全部状态"
+            ],
+            [
+              "active",
+              "启用"
+            ],
+            [
+              "disabled",
+              "停用"
+            ],
+            [
+              "queued",
+              "排队中"
+            ],
+            [
+              "processing",
+              "处理中"
+            ],
+            [
+              "succeeded",
+              "成功"
+            ],
+            [
+              "failed",
+              "失败"
+            ],
+            [
+              "success",
+              "成功"
+            ],
+            [
+              "blocked",
+              "已拦截"
+            ],
+            [
+              "timeout",
+              "超时"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "key": "permission-config",
+      "label": "权限配置",
+      "group": "系统设置",
+      "form": false,
+      "readOnly": true,
+      "columns": [],
+      "filters": [
+        {
+          "name": "status",
+          "label": "状态",
+          "type": "select",
+          "options": [
+            [
+              "",
+              "全部状态"
+            ],
+            [
+              "active",
+              "启用"
+            ],
+            [
+              "disabled",
+              "停用"
+            ],
+            [
+              "queued",
+              "排队中"
+            ],
+            [
+              "processing",
+              "处理中"
+            ],
+            [
+              "succeeded",
+              "成功"
+            ],
+            [
+              "failed",
+              "失败"
+            ],
+            [
+              "success",
+              "成功"
+            ],
+            [
+              "blocked",
+              "已拦截"
+            ],
+            [
+              "timeout",
+              "超时"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "key": "providers",
+      "label": "厂商管理",
+      "group": "模型",
+      "form": true,
+      "readOnly": false,
+      "columns": [
+        "id",
+        "name",
+        "protocol",
+        "base_url",
+        "status",
+        "timeout_ms",
+        "retry_count",
+        "created_at"
+      ],
+      "filters": [
+        {
+          "name": "status",
+          "label": "状态",
+          "type": "select",
+          "options": [
+            [
+              "",
+              "全部状态"
+            ],
+            [
+              "active",
+              "启用"
+            ],
+            [
+              "disabled",
+              "停用"
+            ],
+            [
+              "queued",
+              "排队中"
+            ],
+            [
+              "processing",
+              "处理中"
+            ],
+            [
+              "succeeded",
+              "成功"
+            ],
+            [
+              "failed",
+              "失败"
+            ],
+            [
+              "success",
+              "成功"
+            ],
+            [
+              "blocked",
+              "已拦截"
+            ],
+            [
+              "timeout",
+              "超时"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "key": "models",
+      "label": "模型管理",
+      "group": "模型",
+      "form": true,
+      "readOnly": false,
+      "columns": [
+        "id",
+        "provider_name",
+        "name",
+        "external_name",
+        "capability",
+        "context_length",
+        "status",
+        "route_priority",
+        "gateway_support"
+      ],
+      "filters": [
+        {
+          "name": "status",
+          "label": "状态",
+          "type": "select",
+          "options": [
+            [
+              "",
+              "全部状态"
+            ],
+            [
+              "active",
+              "启用"
+            ],
+            [
+              "disabled",
+              "停用"
+            ],
+            [
+              "queued",
+              "排队中"
+            ],
+            [
+              "processing",
+              "处理中"
+            ],
+            [
+              "succeeded",
+              "成功"
+            ],
+            [
+              "failed",
+              "失败"
+            ],
+            [
+              "success",
+              "成功"
+            ],
+            [
+              "blocked",
+              "已拦截"
+            ],
+            [
+              "timeout",
+              "超时"
+            ]
+          ]
+        },
+        {
+          "name": "capability",
+          "label": "能力",
+          "type": "select",
+          "options": [
+            [
+              "",
+              "全部能力"
+            ],
+            [
+              "text_generation",
+              "文本生成"
+            ],
+            [
+              "vision_understanding",
+              "视觉理解"
+            ],
+            [
+              "video_understanding",
+              "视频理解"
+            ],
+            [
+              "audio_understanding",
+              "音频理解"
+            ],
+            [
+              "embedding",
+              "向量检索"
+            ],
+            [
+              "asr",
+              "语音识别"
+            ],
+            [
+              "tts",
+              "语音合成"
+            ],
+            [
+              "image_generation",
+              "文生图"
+            ],
+            [
+              "video_generation",
+              "文生视频"
+            ],
+            [
+              "rerank",
+              "检索重排"
+            ],
+            [
+              "moderation",
+              "内容审核"
+            ],
+            [
+              "music_generation",
+              "music_generation"
+            ],
+            [
+              "realtime",
+              "realtime"
+            ]
+          ]
+        },
+        {
+          "name": "support",
+          "label": "网关支持",
+          "type": "select",
+          "options": [
+            [
+              "",
+              "仅可调用的模型"
+            ],
+            [
+              "unsupported",
+              "不支持的模型"
+            ],
+            [
+              "all",
+              "全部模型"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "key": "model-prices",
+      "label": "价格配置",
+      "group": "模型",
+      "form": true,
+      "readOnly": false,
+      "columns": [
+        "id",
+        "model_id",
+        "price_categories",
+        "price_summary",
+        "currency",
+        "effective_at"
+      ],
+      "filters": [
+        {
+          "name": "status",
+          "label": "状态",
+          "type": "select",
+          "options": [
+            [
+              "",
+              "全部状态"
+            ],
+            [
+              "active",
+              "启用"
+            ],
+            [
+              "disabled",
+              "停用"
+            ],
+            [
+              "queued",
+              "排队中"
+            ],
+            [
+              "processing",
+              "处理中"
+            ],
+            [
+              "succeeded",
+              "成功"
+            ],
+            [
+              "failed",
+              "失败"
+            ],
+            [
+              "success",
+              "成功"
+            ],
+            [
+              "blocked",
+              "已拦截"
+            ],
+            [
+              "timeout",
+              "超时"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "key": "api-keys",
+      "label": "API 密钥",
+      "group": "访问",
+      "form": true,
+      "readOnly": false,
+      "columns": [
+        "id",
+        "name",
+        "created_at",
+        "key",
+        "status"
+      ],
+      "filters": [
+        {
+          "name": "status",
+          "label": "状态",
+          "type": "select",
+          "options": [
+            [
+              "",
+              "全部状态"
+            ],
+            [
+              "active",
+              "启用"
+            ],
+            [
+              "disabled",
+              "停用"
+            ],
+            [
+              "queued",
+              "排队中"
+            ],
+            [
+              "processing",
+              "处理中"
+            ],
+            [
+              "succeeded",
+              "成功"
+            ],
+            [
+              "failed",
+              "失败"
+            ],
+            [
+              "success",
+              "成功"
+            ],
+            [
+              "blocked",
+              "已拦截"
+            ],
+            [
+              "timeout",
+              "超时"
+            ]
+          ]
+        },
+        {
+          "name": "department_id",
+          "label": "部门 ID",
+          "type": "number",
+          "optional": true
+        },
+        {
+          "name": "user_id",
+          "label": "用户 ID",
+          "type": "number",
+          "optional": true
+        }
+      ]
+    },
+    {
+      "key": "api-key-model-quotas",
+      "label": "模型限额",
+      "group": "访问",
+      "form": true,
+      "readOnly": false,
+      "columns": [
+        "id",
+        "api_key_id",
+        "model_id",
+        "period",
+        "request_limit",
+        "input_token_limit",
+        "output_token_limit",
+        "total_token_limit",
+        "status",
+        "updated_at"
+      ],
+      "filters": [
+        {
+          "name": "status",
+          "label": "状态",
+          "type": "select",
+          "options": [
+            [
+              "",
+              "全部状态"
+            ],
+            [
+              "active",
+              "启用"
+            ],
+            [
+              "disabled",
+              "停用"
+            ],
+            [
+              "queued",
+              "排队中"
+            ],
+            [
+              "processing",
+              "处理中"
+            ],
+            [
+              "succeeded",
+              "成功"
+            ],
+            [
+              "failed",
+              "失败"
+            ],
+            [
+              "success",
+              "成功"
+            ],
+            [
+              "blocked",
+              "已拦截"
+            ],
+            [
+              "timeout",
+              "超时"
+            ]
+          ]
+        },
+        {
+          "name": "api_key_id",
+          "label": "API 密钥 ID",
+          "type": "number",
+          "optional": true
+        },
+        {
+          "name": "model_id",
+          "label": "模型 ID",
+          "type": "number",
+          "optional": true
+        }
+      ]
+    },
+    {
+      "key": "quota-policies",
+      "label": "限额策略",
+      "group": "访问",
+      "form": true,
+      "readOnly": false,
+      "columns": [
+        "id",
+        "name",
+        "period",
+        "request_limit",
+        "input_token_limit",
+        "output_token_limit",
+        "total_token_limit",
+        "cost_limit",
+        "status"
+      ],
+      "filters": [
+        {
+          "name": "status",
+          "label": "状态",
+          "type": "select",
+          "options": [
+            [
+              "",
+              "全部状态"
+            ],
+            [
+              "active",
+              "启用"
+            ],
+            [
+              "disabled",
+              "停用"
+            ],
+            [
+              "queued",
+              "排队中"
+            ],
+            [
+              "processing",
+              "处理中"
+            ],
+            [
+              "succeeded",
+              "成功"
+            ],
+            [
+              "failed",
+              "失败"
+            ],
+            [
+              "success",
+              "成功"
+            ],
+            [
+              "blocked",
+              "已拦截"
+            ],
+            [
+              "timeout",
+              "超时"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "key": "quota-bindings",
+      "label": "限额绑定",
+      "group": "访问",
+      "form": true,
+      "readOnly": false,
+      "columns": [
+        "id",
+        "quota_policy_id",
+        "target_type",
+        "target_id"
+      ],
+      "filters": [
+        {
+          "name": "status",
+          "label": "状态",
+          "type": "select",
+          "options": [
+            [
+              "",
+              "全部状态"
+            ],
+            [
+              "active",
+              "启用"
+            ],
+            [
+              "disabled",
+              "停用"
+            ],
+            [
+              "queued",
+              "排队中"
+            ],
+            [
+              "processing",
+              "处理中"
+            ],
+            [
+              "succeeded",
+              "成功"
+            ],
+            [
+              "failed",
+              "失败"
+            ],
+            [
+              "success",
+              "成功"
+            ],
+            [
+              "blocked",
+              "已拦截"
+            ],
+            [
+              "timeout",
+              "超时"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "key": "usage-records",
+      "label": "用量明细",
+      "group": "用量",
+      "form": false,
+      "readOnly": true,
+      "columns": [
+        "id",
+        "request_id",
+        "user_id",
+        "department_id",
+        "api_key_id",
+        "model_name",
+        "capability",
+        "status",
+        "input_tokens",
+        "output_tokens",
+        "cache_read_tokens",
+        "cache_write_tokens",
+        "total_tokens",
+        "cost_amount",
+        "latency_ms",
+        "created_at"
+      ],
+      "filters": [
+        {
+          "name": "status",
+          "label": "状态",
+          "type": "select",
+          "options": [
+            [
+              "",
+              "全部状态"
+            ],
+            [
+              "active",
+              "启用"
+            ],
+            [
+              "disabled",
+              "停用"
+            ],
+            [
+              "queued",
+              "排队中"
+            ],
+            [
+              "processing",
+              "处理中"
+            ],
+            [
+              "succeeded",
+              "成功"
+            ],
+            [
+              "failed",
+              "失败"
+            ],
+            [
+              "success",
+              "成功"
+            ],
+            [
+              "blocked",
+              "已拦截"
+            ],
+            [
+              "timeout",
+              "超时"
+            ]
+          ]
+        },
+        {
+          "name": "department_id",
+          "label": "部门 ID",
+          "type": "number",
+          "optional": true
+        },
+        {
+          "name": "user_id",
+          "label": "用户 ID",
+          "type": "number",
+          "optional": true
+        },
+        {
+          "name": "provider_id",
+          "label": "厂商 ID",
+          "type": "number",
+          "optional": true
+        },
+        {
+          "name": "model_id",
+          "label": "模型 ID",
+          "type": "number",
+          "optional": true
+        },
+        {
+          "name": "capability",
+          "label": "能力",
+          "type": "select",
+          "options": [
+            [
+              "",
+              "全部能力"
+            ],
+            [
+              "text_generation",
+              "文本生成"
+            ],
+            [
+              "vision_understanding",
+              "视觉理解"
+            ],
+            [
+              "video_understanding",
+              "视频理解"
+            ],
+            [
+              "audio_understanding",
+              "音频理解"
+            ],
+            [
+              "embedding",
+              "向量检索"
+            ],
+            [
+              "asr",
+              "语音识别"
+            ],
+            [
+              "tts",
+              "语音合成"
+            ],
+            [
+              "image_generation",
+              "文生图"
+            ],
+            [
+              "video_generation",
+              "文生视频"
+            ],
+            [
+              "rerank",
+              "检索重排"
+            ],
+            [
+              "moderation",
+              "内容审核"
+            ],
+            [
+              "music_generation",
+              "music_generation"
+            ],
+            [
+              "realtime",
+              "realtime"
+            ]
+          ]
+        },
+        {
+          "name": "from",
+          "label": "开始时间",
+          "optional": true
+        },
+        {
+          "name": "to",
+          "label": "结束时间",
+          "optional": true
+        }
+      ]
+    },
+    {
+      "key": "multimodal-tasks",
+      "label": "多模态任务",
+      "group": "用量",
+      "form": false,
+      "readOnly": false,
+      "columns": [
+        "id",
+        "task_id",
+        "task_type",
+        "status",
+        "user_id",
+        "department_id",
+        "provider_id",
+        "model_id",
+        "latency_ms",
+        "created_at"
+      ],
+      "filters": [
+        {
+          "name": "status",
+          "label": "状态",
+          "type": "select",
+          "options": [
+            [
+              "",
+              "全部状态"
+            ],
+            [
+              "active",
+              "启用"
+            ],
+            [
+              "disabled",
+              "停用"
+            ],
+            [
+              "queued",
+              "排队中"
+            ],
+            [
+              "processing",
+              "处理中"
+            ],
+            [
+              "succeeded",
+              "成功"
+            ],
+            [
+              "failed",
+              "失败"
+            ],
+            [
+              "success",
+              "成功"
+            ],
+            [
+              "blocked",
+              "已拦截"
+            ],
+            [
+              "timeout",
+              "超时"
+            ]
+          ]
+        },
+        {
+          "name": "department_id",
+          "label": "部门 ID",
+          "type": "number",
+          "optional": true
+        },
+        {
+          "name": "user_id",
+          "label": "用户 ID",
+          "type": "number",
+          "optional": true
+        },
+        {
+          "name": "provider_id",
+          "label": "厂商 ID",
+          "type": "number",
+          "optional": true
+        },
+        {
+          "name": "model_id",
+          "label": "模型 ID",
+          "type": "number",
+          "optional": true
+        },
+        {
+          "name": "capability",
+          "label": "能力",
+          "type": "select",
+          "options": [
+            [
+              "",
+              "全部能力"
+            ],
+            [
+              "text_generation",
+              "文本生成"
+            ],
+            [
+              "vision_understanding",
+              "视觉理解"
+            ],
+            [
+              "video_understanding",
+              "视频理解"
+            ],
+            [
+              "audio_understanding",
+              "音频理解"
+            ],
+            [
+              "embedding",
+              "向量检索"
+            ],
+            [
+              "asr",
+              "语音识别"
+            ],
+            [
+              "tts",
+              "语音合成"
+            ],
+            [
+              "image_generation",
+              "文生图"
+            ],
+            [
+              "video_generation",
+              "文生视频"
+            ],
+            [
+              "rerank",
+              "检索重排"
+            ],
+            [
+              "moderation",
+              "内容审核"
+            ],
+            [
+              "music_generation",
+              "music_generation"
+            ],
+            [
+              "realtime",
+              "realtime"
+            ]
+          ]
+        },
+        {
+          "name": "from",
+          "label": "开始时间",
+          "optional": true
+        },
+        {
+          "name": "to",
+          "label": "结束时间",
+          "optional": true
+        }
+      ]
+    },
+    {
+      "key": "media-assets",
+      "label": "媒体资产",
+      "group": "用量",
+      "form": false,
+      "readOnly": false,
+      "columns": [
+        "id",
+        "asset_id",
+        "media_type",
+        "owner_user_id",
+        "department_id",
+        "mime_type",
+        "size_bytes",
+        "expires_at",
+        "created_at"
+      ],
+      "filters": [
+        {
+          "name": "status",
+          "label": "状态",
+          "type": "select",
+          "options": [
+            [
+              "",
+              "全部状态"
+            ],
+            [
+              "active",
+              "启用"
+            ],
+            [
+              "disabled",
+              "停用"
+            ],
+            [
+              "queued",
+              "排队中"
+            ],
+            [
+              "processing",
+              "处理中"
+            ],
+            [
+              "succeeded",
+              "成功"
+            ],
+            [
+              "failed",
+              "失败"
+            ],
+            [
+              "success",
+              "成功"
+            ],
+            [
+              "blocked",
+              "已拦截"
+            ],
+            [
+              "timeout",
+              "超时"
+            ]
+          ]
+        },
+        {
+          "name": "department_id",
+          "label": "部门 ID",
+          "type": "number",
+          "optional": true
+        },
+        {
+          "name": "user_id",
+          "label": "用户 ID",
+          "type": "number",
+          "optional": true
+        },
+        {
+          "name": "provider_id",
+          "label": "厂商 ID",
+          "type": "number",
+          "optional": true
+        },
+        {
+          "name": "model_id",
+          "label": "模型 ID",
+          "type": "number",
+          "optional": true
+        },
+        {
+          "name": "capability",
+          "label": "能力",
+          "type": "select",
+          "options": [
+            [
+              "",
+              "全部能力"
+            ],
+            [
+              "text_generation",
+              "文本生成"
+            ],
+            [
+              "vision_understanding",
+              "视觉理解"
+            ],
+            [
+              "video_understanding",
+              "视频理解"
+            ],
+            [
+              "audio_understanding",
+              "音频理解"
+            ],
+            [
+              "embedding",
+              "向量检索"
+            ],
+            [
+              "asr",
+              "语音识别"
+            ],
+            [
+              "tts",
+              "语音合成"
+            ],
+            [
+              "image_generation",
+              "文生图"
+            ],
+            [
+              "video_generation",
+              "文生视频"
+            ],
+            [
+              "rerank",
+              "检索重排"
+            ],
+            [
+              "moderation",
+              "内容审核"
+            ],
+            [
+              "music_generation",
+              "music_generation"
+            ],
+            [
+              "realtime",
+              "realtime"
+            ]
+          ]
+        },
+        {
+          "name": "from",
+          "label": "开始时间",
+          "optional": true
+        },
+        {
+          "name": "to",
+          "label": "结束时间",
+          "optional": true
+        }
+      ]
+    },
+    {
+      "key": "usage-contents",
+      "label": "内容留存",
+      "group": "日志",
+      "form": false,
+      "readOnly": true,
+      "columns": [
+        "id",
+        "usage_record_id",
+        "retention_mode",
+        "summary",
+        "expires_at",
+        "cleaned_at",
+        "created_at"
+      ],
+      "filters": [
+        {
+          "name": "status",
+          "label": "状态",
+          "type": "select",
+          "options": [
+            [
+              "",
+              "全部状态"
+            ],
+            [
+              "active",
+              "启用"
+            ],
+            [
+              "disabled",
+              "停用"
+            ],
+            [
+              "queued",
+              "排队中"
+            ],
+            [
+              "processing",
+              "处理中"
+            ],
+            [
+              "succeeded",
+              "成功"
+            ],
+            [
+              "failed",
+              "失败"
+            ],
+            [
+              "success",
+              "成功"
+            ],
+            [
+              "blocked",
+              "已拦截"
+            ],
+            [
+              "timeout",
+              "超时"
+            ]
+          ]
+        },
+        {
+          "name": "department_id",
+          "label": "部门 ID",
+          "type": "number",
+          "optional": true
+        },
+        {
+          "name": "user_id",
+          "label": "用户 ID",
+          "type": "number",
+          "optional": true
+        },
+        {
+          "name": "provider_id",
+          "label": "厂商 ID",
+          "type": "number",
+          "optional": true
+        },
+        {
+          "name": "model_id",
+          "label": "模型 ID",
+          "type": "number",
+          "optional": true
+        },
+        {
+          "name": "capability",
+          "label": "能力",
+          "type": "select",
+          "options": [
+            [
+              "",
+              "全部能力"
+            ],
+            [
+              "text_generation",
+              "文本生成"
+            ],
+            [
+              "vision_understanding",
+              "视觉理解"
+            ],
+            [
+              "video_understanding",
+              "视频理解"
+            ],
+            [
+              "audio_understanding",
+              "音频理解"
+            ],
+            [
+              "embedding",
+              "向量检索"
+            ],
+            [
+              "asr",
+              "语音识别"
+            ],
+            [
+              "tts",
+              "语音合成"
+            ],
+            [
+              "image_generation",
+              "文生图"
+            ],
+            [
+              "video_generation",
+              "文生视频"
+            ],
+            [
+              "rerank",
+              "检索重排"
+            ],
+            [
+              "moderation",
+              "内容审核"
+            ],
+            [
+              "music_generation",
+              "music_generation"
+            ],
+            [
+              "realtime",
+              "realtime"
+            ]
+          ]
+        },
+        {
+          "name": "from",
+          "label": "开始时间",
+          "optional": true
+        },
+        {
+          "name": "to",
+          "label": "结束时间",
+          "optional": true
+        }
+      ]
+    },
+    {
+      "key": "content-archive",
+      "label": "会话归档",
+      "group": "日志",
+      "form": false,
+      "readOnly": true,
+      "columns": [
+        "content_id",
+        "request_id",
+        "session_id",
+        "user_id",
+        "department_id",
+        "model_name",
+        "status",
+        "retention_mode",
+        "created_at",
+        "cleaned_at"
+      ],
+      "filters": [
+        {
+          "name": "status",
+          "label": "状态",
+          "type": "select",
+          "options": [
+            [
+              "",
+              "全部状态"
+            ],
+            [
+              "active",
+              "启用"
+            ],
+            [
+              "disabled",
+              "停用"
+            ],
+            [
+              "queued",
+              "排队中"
+            ],
+            [
+              "processing",
+              "处理中"
+            ],
+            [
+              "succeeded",
+              "成功"
+            ],
+            [
+              "failed",
+              "失败"
+            ],
+            [
+              "success",
+              "成功"
+            ],
+            [
+              "blocked",
+              "已拦截"
+            ],
+            [
+              "timeout",
+              "超时"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "key": "export-tasks",
+      "label": "导出任务",
+      "group": "日志",
+      "form": false,
+      "readOnly": true,
+      "columns": [
+        "id",
+        "export_id",
+        "export_type",
+        "status",
+        "file_path",
+        "error_code",
+        "expires_at",
+        "created_at"
+      ],
+      "filters": [
+        {
+          "name": "status",
+          "label": "状态",
+          "type": "select",
+          "options": [
+            [
+              "",
+              "全部状态"
+            ],
+            [
+              "active",
+              "启用"
+            ],
+            [
+              "disabled",
+              "停用"
+            ],
+            [
+              "queued",
+              "排队中"
+            ],
+            [
+              "processing",
+              "处理中"
+            ],
+            [
+              "succeeded",
+              "成功"
+            ],
+            [
+              "failed",
+              "失败"
+            ],
+            [
+              "success",
+              "成功"
+            ],
+            [
+              "blocked",
+              "已拦截"
+            ],
+            [
+              "timeout",
+              "超时"
+            ]
+          ]
+        },
+        {
+          "name": "department_id",
+          "label": "部门 ID",
+          "type": "number",
+          "optional": true
+        },
+        {
+          "name": "user_id",
+          "label": "用户 ID",
+          "type": "number",
+          "optional": true
+        },
+        {
+          "name": "provider_id",
+          "label": "厂商 ID",
+          "type": "number",
+          "optional": true
+        },
+        {
+          "name": "model_id",
+          "label": "模型 ID",
+          "type": "number",
+          "optional": true
+        },
+        {
+          "name": "capability",
+          "label": "能力",
+          "type": "select",
+          "options": [
+            [
+              "",
+              "全部能力"
+            ],
+            [
+              "text_generation",
+              "文本生成"
+            ],
+            [
+              "vision_understanding",
+              "视觉理解"
+            ],
+            [
+              "video_understanding",
+              "视频理解"
+            ],
+            [
+              "audio_understanding",
+              "音频理解"
+            ],
+            [
+              "embedding",
+              "向量检索"
+            ],
+            [
+              "asr",
+              "语音识别"
+            ],
+            [
+              "tts",
+              "语音合成"
+            ],
+            [
+              "image_generation",
+              "文生图"
+            ],
+            [
+              "video_generation",
+              "文生视频"
+            ],
+            [
+              "rerank",
+              "检索重排"
+            ],
+            [
+              "moderation",
+              "内容审核"
+            ],
+            [
+              "music_generation",
+              "music_generation"
+            ],
+            [
+              "realtime",
+              "realtime"
+            ]
+          ]
+        },
+        {
+          "name": "from",
+          "label": "开始时间",
+          "optional": true
+        },
+        {
+          "name": "to",
+          "label": "结束时间",
+          "optional": true
+        }
+      ]
+    },
+    {
+      "key": "dashboard-share-links",
+      "label": "大屏分享",
+      "group": "运营",
+      "form": true,
+      "readOnly": false,
+      "columns": [
+        "id",
+        "share_code",
+        "name",
+        "username",
+        "scope_type",
+        "scope_ids",
+        "allowed_metrics",
+        "allow_drilldown",
+        "allowed_ip_cidrs",
+        "expires_at",
+        "status"
+      ],
+      "filters": [
+        {
+          "name": "status",
+          "label": "状态",
+          "type": "select",
+          "options": [
+            [
+              "",
+              "全部状态"
+            ],
+            [
+              "active",
+              "启用"
+            ],
+            [
+              "disabled",
+              "停用"
+            ],
+            [
+              "queued",
+              "排队中"
+            ],
+            [
+              "processing",
+              "处理中"
+            ],
+            [
+              "succeeded",
+              "成功"
+            ],
+            [
+              "failed",
+              "失败"
+            ],
+            [
+              "success",
+              "成功"
+            ],
+            [
+              "blocked",
+              "已拦截"
+            ],
+            [
+              "timeout",
+              "超时"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "key": "dashboard-share-access-logs",
+      "label": "大屏访问日志",
+      "group": "运营",
+      "form": false,
+      "readOnly": true,
+      "columns": [
+        "id",
+        "share_link_id",
+        "event_type",
+        "client_ip",
+        "reason",
+        "created_at"
+      ],
+      "filters": [
+        {
+          "name": "status",
+          "label": "状态",
+          "type": "select",
+          "options": [
+            [
+              "",
+              "全部状态"
+            ],
+            [
+              "active",
+              "启用"
+            ],
+            [
+              "disabled",
+              "停用"
+            ],
+            [
+              "queued",
+              "排队中"
+            ],
+            [
+              "processing",
+              "处理中"
+            ],
+            [
+              "succeeded",
+              "成功"
+            ],
+            [
+              "failed",
+              "失败"
+            ],
+            [
+              "success",
+              "成功"
+            ],
+            [
+              "blocked",
+              "已拦截"
+            ],
+            [
+              "timeout",
+              "超时"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "key": "desensitization-policies",
+      "label": "脱敏策略",
+      "group": "安全",
+      "form": true,
+      "readOnly": false,
+      "columns": [
+        "id",
+        "name",
+        "scope_type",
+        "scope_id",
+        "action",
+        "status"
+      ],
+      "filters": [
+        {
+          "name": "status",
+          "label": "状态",
+          "type": "select",
+          "options": [
+            [
+              "",
+              "全部状态"
+            ],
+            [
+              "active",
+              "启用"
+            ],
+            [
+              "disabled",
+              "停用"
+            ],
+            [
+              "queued",
+              "排队中"
+            ],
+            [
+              "processing",
+              "处理中"
+            ],
+            [
+              "succeeded",
+              "成功"
+            ],
+            [
+              "failed",
+              "失败"
+            ],
+            [
+              "success",
+              "成功"
+            ],
+            [
+              "blocked",
+              "已拦截"
+            ],
+            [
+              "timeout",
+              "超时"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "key": "desensitization-events",
+      "label": "脱敏事件",
+      "group": "安全",
+      "form": false,
+      "readOnly": true,
+      "columns": [
+        "id",
+        "policy_id",
+        "request_id",
+        "target_type",
+        "action",
+        "match_count",
+        "summary",
+        "created_at"
+      ],
+      "filters": [
+        {
+          "name": "status",
+          "label": "状态",
+          "type": "select",
+          "options": [
+            [
+              "",
+              "全部状态"
+            ],
+            [
+              "active",
+              "启用"
+            ],
+            [
+              "disabled",
+              "停用"
+            ],
+            [
+              "queued",
+              "排队中"
+            ],
+            [
+              "processing",
+              "处理中"
+            ],
+            [
+              "succeeded",
+              "成功"
+            ],
+            [
+              "failed",
+              "失败"
+            ],
+            [
+              "success",
+              "成功"
+            ],
+            [
+              "blocked",
+              "已拦截"
+            ],
+            [
+              "timeout",
+              "超时"
+            ]
+          ]
+        },
+        {
+          "name": "department_id",
+          "label": "部门 ID",
+          "type": "number",
+          "optional": true
+        },
+        {
+          "name": "user_id",
+          "label": "用户 ID",
+          "type": "number",
+          "optional": true
+        },
+        {
+          "name": "provider_id",
+          "label": "厂商 ID",
+          "type": "number",
+          "optional": true
+        },
+        {
+          "name": "model_id",
+          "label": "模型 ID",
+          "type": "number",
+          "optional": true
+        },
+        {
+          "name": "capability",
+          "label": "能力",
+          "type": "select",
+          "options": [
+            [
+              "",
+              "全部能力"
+            ],
+            [
+              "text_generation",
+              "文本生成"
+            ],
+            [
+              "vision_understanding",
+              "视觉理解"
+            ],
+            [
+              "video_understanding",
+              "视频理解"
+            ],
+            [
+              "audio_understanding",
+              "音频理解"
+            ],
+            [
+              "embedding",
+              "向量检索"
+            ],
+            [
+              "asr",
+              "语音识别"
+            ],
+            [
+              "tts",
+              "语音合成"
+            ],
+            [
+              "image_generation",
+              "文生图"
+            ],
+            [
+              "video_generation",
+              "文生视频"
+            ],
+            [
+              "rerank",
+              "检索重排"
+            ],
+            [
+              "moderation",
+              "内容审核"
+            ],
+            [
+              "music_generation",
+              "music_generation"
+            ],
+            [
+              "realtime",
+              "realtime"
+            ]
+          ]
+        },
+        {
+          "name": "from",
+          "label": "开始时间",
+          "optional": true
+        },
+        {
+          "name": "to",
+          "label": "结束时间",
+          "optional": true
+        }
+      ]
+    },
+    {
+      "key": "log-retention-policies",
+      "label": "日志留存",
+      "group": "日志",
+      "form": false,
+      "readOnly": false,
+      "columns": [
+        "id",
+        "log_type",
+        "online_retention_days",
+        "archive_retention_days",
+        "min_retention_days",
+        "compress_enabled",
+        "encrypt_enabled"
+      ],
+      "filters": [
+        {
+          "name": "status",
+          "label": "状态",
+          "type": "select",
+          "options": [
+            [
+              "",
+              "全部状态"
+            ],
+            [
+              "active",
+              "启用"
+            ],
+            [
+              "disabled",
+              "停用"
+            ],
+            [
+              "queued",
+              "排队中"
+            ],
+            [
+              "processing",
+              "处理中"
+            ],
+            [
+              "succeeded",
+              "成功"
+            ],
+            [
+              "failed",
+              "失败"
+            ],
+            [
+              "success",
+              "成功"
+            ],
+            [
+              "blocked",
+              "已拦截"
+            ],
+            [
+              "timeout",
+              "超时"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "key": "log-archive-files",
+      "label": "日志归档",
+      "group": "日志",
+      "form": false,
+      "readOnly": true,
+      "columns": [
+        "id",
+        "log_type",
+        "archive_path",
+        "compressed",
+        "encrypted",
+        "size_bytes",
+        "created_at",
+        "deleted_at"
+      ],
+      "filters": [
+        {
+          "name": "status",
+          "label": "状态",
+          "type": "select",
+          "options": [
+            [
+              "",
+              "全部状态"
+            ],
+            [
+              "active",
+              "启用"
+            ],
+            [
+              "disabled",
+              "停用"
+            ],
+            [
+              "queued",
+              "排队中"
+            ],
+            [
+              "processing",
+              "处理中"
+            ],
+            [
+              "succeeded",
+              "成功"
+            ],
+            [
+              "failed",
+              "失败"
+            ],
+            [
+              "success",
+              "成功"
+            ],
+            [
+              "blocked",
+              "已拦截"
+            ],
+            [
+              "timeout",
+              "超时"
+            ]
+          ]
+        },
+        {
+          "name": "department_id",
+          "label": "部门 ID",
+          "type": "number",
+          "optional": true
+        },
+        {
+          "name": "user_id",
+          "label": "用户 ID",
+          "type": "number",
+          "optional": true
+        },
+        {
+          "name": "provider_id",
+          "label": "厂商 ID",
+          "type": "number",
+          "optional": true
+        },
+        {
+          "name": "model_id",
+          "label": "模型 ID",
+          "type": "number",
+          "optional": true
+        },
+        {
+          "name": "capability",
+          "label": "能力",
+          "type": "select",
+          "options": [
+            [
+              "",
+              "全部能力"
+            ],
+            [
+              "text_generation",
+              "文本生成"
+            ],
+            [
+              "vision_understanding",
+              "视觉理解"
+            ],
+            [
+              "video_understanding",
+              "视频理解"
+            ],
+            [
+              "audio_understanding",
+              "音频理解"
+            ],
+            [
+              "embedding",
+              "向量检索"
+            ],
+            [
+              "asr",
+              "语音识别"
+            ],
+            [
+              "tts",
+              "语音合成"
+            ],
+            [
+              "image_generation",
+              "文生图"
+            ],
+            [
+              "video_generation",
+              "文生视频"
+            ],
+            [
+              "rerank",
+              "检索重排"
+            ],
+            [
+              "moderation",
+              "内容审核"
+            ],
+            [
+              "music_generation",
+              "music_generation"
+            ],
+            [
+              "realtime",
+              "realtime"
+            ]
+          ]
+        },
+        {
+          "name": "from",
+          "label": "开始时间",
+          "optional": true
+        },
+        {
+          "name": "to",
+          "label": "结束时间",
+          "optional": true
+        }
+      ]
+    },
+    {
+      "key": "logs",
+      "label": "日志中心",
+      "group": "日志",
+      "form": false,
+      "readOnly": true,
+      "columns": [
+        "timestamp",
+        "log_type",
+        "level",
+        "request_id",
+        "trace_id",
+        "user_id",
+        "department_id",
+        "api_key_id",
+        "provider_id",
+        "model_id",
+        "client_ip",
+        "status",
+        "latency_ms",
+        "error_code"
+      ],
+      "filters": [
+        {
+          "name": "log_type",
+          "label": "日志类型",
+          "optional": true
+        },
+        {
+          "name": "request_id",
+          "label": "请求 ID",
+          "optional": true
+        },
+        {
+          "name": "trace_id",
+          "label": "链路 ID",
+          "optional": true
+        },
+        {
+          "name": "user_id",
+          "label": "用户 ID",
+          "type": "number",
+          "optional": true
+        },
+        {
+          "name": "department_id",
+          "label": "部门 ID",
+          "type": "number",
+          "optional": true
+        },
+        {
+          "name": "api_key_id",
+          "label": "API 密钥 ID",
+          "type": "number",
+          "optional": true
+        },
+        {
+          "name": "provider_id",
+          "label": "厂商 ID",
+          "type": "number",
+          "optional": true
+        },
+        {
+          "name": "model_id",
+          "label": "模型 ID",
+          "type": "number",
+          "optional": true
+        },
+        {
+          "name": "error_code",
+          "label": "错误码",
+          "optional": true
+        },
+        {
+          "name": "from",
+          "label": "开始时间",
+          "optional": true
+        },
+        {
+          "name": "to",
+          "label": "结束时间",
+          "optional": true
+        }
+      ]
+    },
+    {
+      "key": "alert-events",
+      "label": "告警事件",
+      "group": "日志",
+      "form": false,
+      "readOnly": true,
+      "columns": [
+        "id",
+        "event_type",
+        "severity",
+        "message",
+        "status",
+        "created_at"
+      ],
+      "filters": [
+        {
+          "name": "status",
+          "label": "状态",
+          "type": "select",
+          "options": [
+            [
+              "",
+              "全部状态"
+            ],
+            [
+              "active",
+              "启用"
+            ],
+            [
+              "disabled",
+              "停用"
+            ],
+            [
+              "queued",
+              "排队中"
+            ],
+            [
+              "processing",
+              "处理中"
+            ],
+            [
+              "succeeded",
+              "成功"
+            ],
+            [
+              "failed",
+              "失败"
+            ],
+            [
+              "success",
+              "成功"
+            ],
+            [
+              "blocked",
+              "已拦截"
+            ],
+            [
+              "timeout",
+              "超时"
+            ]
+          ]
+        },
+        {
+          "name": "department_id",
+          "label": "部门 ID",
+          "type": "number",
+          "optional": true
+        },
+        {
+          "name": "user_id",
+          "label": "用户 ID",
+          "type": "number",
+          "optional": true
+        },
+        {
+          "name": "provider_id",
+          "label": "厂商 ID",
+          "type": "number",
+          "optional": true
+        },
+        {
+          "name": "model_id",
+          "label": "模型 ID",
+          "type": "number",
+          "optional": true
+        },
+        {
+          "name": "capability",
+          "label": "能力",
+          "type": "select",
+          "options": [
+            [
+              "",
+              "全部能力"
+            ],
+            [
+              "text_generation",
+              "文本生成"
+            ],
+            [
+              "vision_understanding",
+              "视觉理解"
+            ],
+            [
+              "video_understanding",
+              "视频理解"
+            ],
+            [
+              "audio_understanding",
+              "音频理解"
+            ],
+            [
+              "embedding",
+              "向量检索"
+            ],
+            [
+              "asr",
+              "语音识别"
+            ],
+            [
+              "tts",
+              "语音合成"
+            ],
+            [
+              "image_generation",
+              "文生图"
+            ],
+            [
+              "video_generation",
+              "文生视频"
+            ],
+            [
+              "rerank",
+              "检索重排"
+            ],
+            [
+              "moderation",
+              "内容审核"
+            ],
+            [
+              "music_generation",
+              "music_generation"
+            ],
+            [
+              "realtime",
+              "realtime"
+            ]
+          ]
+        },
+        {
+          "name": "from",
+          "label": "开始时间",
+          "optional": true
+        },
+        {
+          "name": "to",
+          "label": "结束时间",
+          "optional": true
+        }
+      ]
+    },
+    {
+      "key": "audit-logs",
+      "label": "审计日志",
+      "group": "日志",
+      "form": false,
+      "readOnly": true,
+      "columns": [
+        "id",
+        "actor_user_id",
+        "actor_type",
+        "action",
+        "target_type",
+        "target_id",
+        "request_id",
+        "client_ip",
+        "created_at"
+      ],
+      "filters": [
+        {
+          "name": "status",
+          "label": "状态",
+          "type": "select",
+          "options": [
+            [
+              "",
+              "全部状态"
+            ],
+            [
+              "active",
+              "启用"
+            ],
+            [
+              "disabled",
+              "停用"
+            ],
+            [
+              "queued",
+              "排队中"
+            ],
+            [
+              "processing",
+              "处理中"
+            ],
+            [
+              "succeeded",
+              "成功"
+            ],
+            [
+              "failed",
+              "失败"
+            ],
+            [
+              "success",
+              "成功"
+            ],
+            [
+              "blocked",
+              "已拦截"
+            ],
+            [
+              "timeout",
+              "超时"
+            ]
+          ]
+        },
+        {
+          "name": "department_id",
+          "label": "部门 ID",
+          "type": "number",
+          "optional": true
+        },
+        {
+          "name": "user_id",
+          "label": "用户 ID",
+          "type": "number",
+          "optional": true
+        },
+        {
+          "name": "provider_id",
+          "label": "厂商 ID",
+          "type": "number",
+          "optional": true
+        },
+        {
+          "name": "model_id",
+          "label": "模型 ID",
+          "type": "number",
+          "optional": true
+        },
+        {
+          "name": "capability",
+          "label": "能力",
+          "type": "select",
+          "options": [
+            [
+              "",
+              "全部能力"
+            ],
+            [
+              "text_generation",
+              "文本生成"
+            ],
+            [
+              "vision_understanding",
+              "视觉理解"
+            ],
+            [
+              "video_understanding",
+              "视频理解"
+            ],
+            [
+              "audio_understanding",
+              "音频理解"
+            ],
+            [
+              "embedding",
+              "向量检索"
+            ],
+            [
+              "asr",
+              "语音识别"
+            ],
+            [
+              "tts",
+              "语音合成"
+            ],
+            [
+              "image_generation",
+              "文生图"
+            ],
+            [
+              "video_generation",
+              "文生视频"
+            ],
+            [
+              "rerank",
+              "检索重排"
+            ],
+            [
+              "moderation",
+              "内容审核"
+            ],
+            [
+              "music_generation",
+              "music_generation"
+            ],
+            [
+              "realtime",
+              "realtime"
+            ]
+          ]
+        },
+        {
+          "name": "from",
+          "label": "开始时间",
+          "optional": true
+        },
+        {
+          "name": "to",
+          "label": "结束时间",
+          "optional": true
+        }
+      ]
+    },
+    {
+      "key": "content-retention-policy",
+      "label": "内容留存策略",
+      "group": "系统设置",
+      "form": false,
+      "readOnly": true,
+      "columns": [],
+      "filters": [
+        {
+          "name": "status",
+          "label": "状态",
+          "type": "select",
+          "options": [
+            [
+              "",
+              "全部状态"
+            ],
+            [
+              "active",
+              "启用"
+            ],
+            [
+              "disabled",
+              "停用"
+            ],
+            [
+              "queued",
+              "排队中"
+            ],
+            [
+              "processing",
+              "处理中"
+            ],
+            [
+              "succeeded",
+              "成功"
+            ],
+            [
+              "failed",
+              "失败"
+            ],
+            [
+              "success",
+              "成功"
+            ],
+            [
+              "blocked",
+              "已拦截"
+            ],
+            [
+              "timeout",
+              "超时"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "key": "settings-center",
+      "label": "系统设置",
+      "group": "系统设置",
+      "form": false,
+      "readOnly": true,
+      "columns": [],
+      "filters": [
+        {
+          "name": "status",
+          "label": "状态",
+          "type": "select",
+          "options": [
+            [
+              "",
+              "全部状态"
+            ],
+            [
+              "active",
+              "启用"
+            ],
+            [
+              "disabled",
+              "停用"
+            ],
+            [
+              "queued",
+              "排队中"
+            ],
+            [
+              "processing",
+              "处理中"
+            ],
+            [
+              "succeeded",
+              "成功"
+            ],
+            [
+              "failed",
+              "失败"
+            ],
+            [
+              "success",
+              "成功"
+            ],
+            [
+              "blocked",
+              "已拦截"
+            ],
+            [
+              "timeout",
+              "超时"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "key": "settings-brand-identity",
+      "label": "标题与标识",
+      "group": "系统设置",
+      "form": false,
+      "readOnly": true,
+      "columns": [],
+      "filters": [
+        {
+          "name": "status",
+          "label": "状态",
+          "type": "select",
+          "options": [
+            [
+              "",
+              "全部状态"
+            ],
+            [
+              "active",
+              "启用"
+            ],
+            [
+              "disabled",
+              "停用"
+            ],
+            [
+              "queued",
+              "排队中"
+            ],
+            [
+              "processing",
+              "处理中"
+            ],
+            [
+              "succeeded",
+              "成功"
+            ],
+            [
+              "failed",
+              "失败"
+            ],
+            [
+              "success",
+              "成功"
+            ],
+            [
+              "blocked",
+              "已拦截"
+            ],
+            [
+              "timeout",
+              "超时"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "key": "settings-tls-certificates",
+      "label": "证书与入口",
+      "group": "系统设置",
+      "form": false,
+      "readOnly": true,
+      "columns": [],
+      "filters": [
+        {
+          "name": "status",
+          "label": "状态",
+          "type": "select",
+          "options": [
+            [
+              "",
+              "全部状态"
+            ],
+            [
+              "active",
+              "启用"
+            ],
+            [
+              "disabled",
+              "停用"
+            ],
+            [
+              "queued",
+              "排队中"
+            ],
+            [
+              "processing",
+              "处理中"
+            ],
+            [
+              "succeeded",
+              "成功"
+            ],
+            [
+              "failed",
+              "失败"
+            ],
+            [
+              "success",
+              "成功"
+            ],
+            [
+              "blocked",
+              "已拦截"
+            ],
+            [
+              "timeout",
+              "超时"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "key": "settings-entry-security",
+      "label": "访问安全",
+      "group": "系统设置",
+      "form": false,
+      "readOnly": true,
+      "columns": [],
+      "filters": [
+        {
+          "name": "status",
+          "label": "状态",
+          "type": "select",
+          "options": [
+            [
+              "",
+              "全部状态"
+            ],
+            [
+              "active",
+              "启用"
+            ],
+            [
+              "disabled",
+              "停用"
+            ],
+            [
+              "queued",
+              "排队中"
+            ],
+            [
+              "processing",
+              "处理中"
+            ],
+            [
+              "succeeded",
+              "成功"
+            ],
+            [
+              "failed",
+              "失败"
+            ],
+            [
+              "success",
+              "成功"
+            ],
+            [
+              "blocked",
+              "已拦截"
+            ],
+            [
+              "timeout",
+              "超时"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "key": "settings-retention-export",
+      "label": "留存与导出",
+      "group": "系统设置",
+      "form": false,
+      "readOnly": true,
+      "columns": [],
+      "filters": [
+        {
+          "name": "status",
+          "label": "状态",
+          "type": "select",
+          "options": [
+            [
+              "",
+              "全部状态"
+            ],
+            [
+              "active",
+              "启用"
+            ],
+            [
+              "disabled",
+              "停用"
+            ],
+            [
+              "queued",
+              "排队中"
+            ],
+            [
+              "processing",
+              "处理中"
+            ],
+            [
+              "succeeded",
+              "成功"
+            ],
+            [
+              "failed",
+              "失败"
+            ],
+            [
+              "success",
+              "成功"
+            ],
+            [
+              "blocked",
+              "已拦截"
+            ],
+            [
+              "timeout",
+              "超时"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "key": "settings-alert-thresholds",
+      "label": "告警设置",
+      "group": "系统设置",
+      "form": false,
+      "readOnly": true,
+      "columns": [],
+      "filters": [
+        {
+          "name": "status",
+          "label": "状态",
+          "type": "select",
+          "options": [
+            [
+              "",
+              "全部状态"
+            ],
+            [
+              "active",
+              "启用"
+            ],
+            [
+              "disabled",
+              "停用"
+            ],
+            [
+              "queued",
+              "排队中"
+            ],
+            [
+              "processing",
+              "处理中"
+            ],
+            [
+              "succeeded",
+              "成功"
+            ],
+            [
+              "failed",
+              "失败"
+            ],
+            [
+              "success",
+              "成功"
+            ],
+            [
+              "blocked",
+              "已拦截"
+            ],
+            [
+              "timeout",
+              "超时"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "key": "settings-rag-upload-review",
+      "label": "RAG上传审核",
+      "group": "系统设置",
+      "form": false,
+      "readOnly": true,
+      "columns": [],
+      "filters": [
+        {
+          "name": "status",
+          "label": "状态",
+          "type": "select",
+          "options": [
+            [
+              "",
+              "全部状态"
+            ],
+            [
+              "active",
+              "启用"
+            ],
+            [
+              "disabled",
+              "停用"
+            ],
+            [
+              "queued",
+              "排队中"
+            ],
+            [
+              "processing",
+              "处理中"
+            ],
+            [
+              "succeeded",
+              "成功"
+            ],
+            [
+              "failed",
+              "失败"
+            ],
+            [
+              "success",
+              "成功"
+            ],
+            [
+              "blocked",
+              "已拦截"
+            ],
+            [
+              "timeout",
+              "超时"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "key": "settings-rag-package-upload",
+      "label": "RAG图片包上传",
+      "group": "系统设置",
+      "form": false,
+      "readOnly": true,
+      "columns": [],
+      "filters": [
+        {
+          "name": "status",
+          "label": "状态",
+          "type": "select",
+          "options": [
+            [
+              "",
+              "全部状态"
+            ],
+            [
+              "active",
+              "启用"
+            ],
+            [
+              "disabled",
+              "停用"
+            ],
+            [
+              "queued",
+              "排队中"
+            ],
+            [
+              "processing",
+              "处理中"
+            ],
+            [
+              "succeeded",
+              "成功"
+            ],
+            [
+              "failed",
+              "失败"
+            ],
+            [
+              "success",
+              "成功"
+            ],
+            [
+              "blocked",
+              "已拦截"
+            ],
+            [
+              "timeout",
+              "超时"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "key": "settings-rag-ai-image-processing",
+      "label": "RAG图片AI处理",
+      "group": "系统设置",
+      "form": false,
+      "readOnly": true,
+      "columns": [],
+      "filters": [
+        {
+          "name": "status",
+          "label": "状态",
+          "type": "select",
+          "options": [
+            [
+              "",
+              "全部状态"
+            ],
+            [
+              "active",
+              "启用"
+            ],
+            [
+              "disabled",
+              "停用"
+            ],
+            [
+              "queued",
+              "排队中"
+            ],
+            [
+              "processing",
+              "处理中"
+            ],
+            [
+              "succeeded",
+              "成功"
+            ],
+            [
+              "failed",
+              "失败"
+            ],
+            [
+              "success",
+              "成功"
+            ],
+            [
+              "blocked",
+              "已拦截"
+            ],
+            [
+              "timeout",
+              "超时"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "key": "settings-rag-vectorization-monitoring",
+      "label": "RAG向量监控",
+      "group": "系统设置",
+      "form": false,
+      "readOnly": true,
+      "columns": [],
+      "filters": [
+        {
+          "name": "status",
+          "label": "状态",
+          "type": "select",
+          "options": [
+            [
+              "",
+              "全部状态"
+            ],
+            [
+              "active",
+              "启用"
+            ],
+            [
+              "disabled",
+              "停用"
+            ],
+            [
+              "queued",
+              "排队中"
+            ],
+            [
+              "processing",
+              "处理中"
+            ],
+            [
+              "succeeded",
+              "成功"
+            ],
+            [
+              "failed",
+              "失败"
+            ],
+            [
+              "success",
+              "成功"
+            ],
+            [
+              "blocked",
+              "已拦截"
+            ],
+            [
+              "timeout",
+              "超时"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "key": "operations-status",
+      "label": "运行状态",
+      "group": "系统运维",
+      "form": false,
+      "readOnly": true,
+      "columns": [],
+      "filters": [
+        {
+          "name": "status",
+          "label": "状态",
+          "type": "select",
+          "options": [
+            [
+              "",
+              "全部状态"
+            ],
+            [
+              "active",
+              "启用"
+            ],
+            [
+              "disabled",
+              "停用"
+            ],
+            [
+              "queued",
+              "排队中"
+            ],
+            [
+              "processing",
+              "处理中"
+            ],
+            [
+              "succeeded",
+              "成功"
+            ],
+            [
+              "failed",
+              "失败"
+            ],
+            [
+              "success",
+              "成功"
+            ],
+            [
+              "blocked",
+              "已拦截"
+            ],
+            [
+              "timeout",
+              "超时"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "key": "rag-settings",
+      "label": "RAG 设置",
+      "group": "RAG知识库",
+      "form": false,
+      "readOnly": true,
+      "columns": [],
+      "filters": [
+        {
+          "name": "status",
+          "label": "状态",
+          "type": "select",
+          "options": [
+            [
+              "",
+              "全部状态"
+            ],
+            [
+              "active",
+              "启用"
+            ],
+            [
+              "disabled",
+              "停用"
+            ],
+            [
+              "queued",
+              "排队中"
+            ],
+            [
+              "processing",
+              "处理中"
+            ],
+            [
+              "succeeded",
+              "成功"
+            ],
+            [
+              "failed",
+              "失败"
+            ],
+            [
+              "success",
+              "成功"
+            ],
+            [
+              "blocked",
+              "已拦截"
+            ],
+            [
+              "timeout",
+              "超时"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "key": "system-settings",
+      "label": "高级设置",
+      "group": "系统设置",
+      "form": false,
+      "readOnly": true,
+      "columns": [],
+      "filters": [
+        {
+          "name": "status",
+          "label": "状态",
+          "type": "select",
+          "options": [
+            [
+              "",
+              "全部状态"
+            ],
+            [
+              "active",
+              "启用"
+            ],
+            [
+              "disabled",
+              "停用"
+            ],
+            [
+              "queued",
+              "排队中"
+            ],
+            [
+              "processing",
+              "处理中"
+            ],
+            [
+              "succeeded",
+              "成功"
+            ],
+            [
+              "failed",
+              "失败"
+            ],
+            [
+              "success",
+              "成功"
+            ],
+            [
+              "blocked",
+              "已拦截"
+            ],
+            [
+              "timeout",
+              "超时"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "key": "rag-console",
+      "label": "RAG 控制台",
+      "group": "RAG知识库",
+      "form": false,
+      "readOnly": true,
+      "columns": [],
+      "filters": [
+        {
+          "name": "status",
+          "label": "状态",
+          "type": "select",
+          "options": [
+            [
+              "",
+              "全部状态"
+            ],
+            [
+              "active",
+              "启用"
+            ],
+            [
+              "disabled",
+              "停用"
+            ],
+            [
+              "queued",
+              "排队中"
+            ],
+            [
+              "processing",
+              "处理中"
+            ],
+            [
+              "succeeded",
+              "成功"
+            ],
+            [
+              "failed",
+              "失败"
+            ],
+            [
+              "success",
+              "成功"
+            ],
+            [
+              "blocked",
+              "已拦截"
+            ],
+            [
+              "timeout",
+              "超时"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "key": "rag-knowledge-management",
+      "label": "知识库管理",
+      "group": "RAG知识库",
+      "form": false,
+      "readOnly": true,
+      "columns": [],
+      "filters": [
+        {
+          "name": "status",
+          "label": "状态",
+          "type": "select",
+          "options": [
+            [
+              "",
+              "全部状态"
+            ],
+            [
+              "active",
+              "启用"
+            ],
+            [
+              "disabled",
+              "停用"
+            ],
+            [
+              "queued",
+              "排队中"
+            ],
+            [
+              "processing",
+              "处理中"
+            ],
+            [
+              "succeeded",
+              "成功"
+            ],
+            [
+              "failed",
+              "失败"
+            ],
+            [
+              "success",
+              "成功"
+            ],
+            [
+              "blocked",
+              "已拦截"
+            ],
+            [
+              "timeout",
+              "超时"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "key": "rag-import-review",
+      "label": "导入与审核",
+      "group": "RAG知识库",
+      "form": false,
+      "readOnly": true,
+      "columns": [],
+      "filters": [
+        {
+          "name": "status",
+          "label": "状态",
+          "type": "select",
+          "options": [
+            [
+              "",
+              "全部状态"
+            ],
+            [
+              "active",
+              "启用"
+            ],
+            [
+              "disabled",
+              "停用"
+            ],
+            [
+              "queued",
+              "排队中"
+            ],
+            [
+              "processing",
+              "处理中"
+            ],
+            [
+              "succeeded",
+              "成功"
+            ],
+            [
+              "failed",
+              "失败"
+            ],
+            [
+              "success",
+              "成功"
+            ],
+            [
+              "blocked",
+              "已拦截"
+            ],
+            [
+              "timeout",
+              "超时"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "key": "rag-image-vector",
+      "label": "图片与向量",
+      "group": "RAG知识库",
+      "form": false,
+      "readOnly": true,
+      "columns": [],
+      "filters": [
+        {
+          "name": "status",
+          "label": "状态",
+          "type": "select",
+          "options": [
+            [
+              "",
+              "全部状态"
+            ],
+            [
+              "active",
+              "启用"
+            ],
+            [
+              "disabled",
+              "停用"
+            ],
+            [
+              "queued",
+              "排队中"
+            ],
+            [
+              "processing",
+              "处理中"
+            ],
+            [
+              "succeeded",
+              "成功"
+            ],
+            [
+              "failed",
+              "失败"
+            ],
+            [
+              "success",
+              "成功"
+            ],
+            [
+              "blocked",
+              "已拦截"
+            ],
+            [
+              "timeout",
+              "超时"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "key": "rag-feedback-correction",
+      "label": "反馈与纠偏",
+      "group": "RAG知识库",
+      "form": false,
+      "readOnly": true,
+      "columns": [],
+      "filters": [
+        {
+          "name": "status",
+          "label": "状态",
+          "type": "select",
+          "options": [
+            [
+              "",
+              "全部状态"
+            ],
+            [
+              "active",
+              "启用"
+            ],
+            [
+              "disabled",
+              "停用"
+            ],
+            [
+              "queued",
+              "排队中"
+            ],
+            [
+              "processing",
+              "处理中"
+            ],
+            [
+              "succeeded",
+              "成功"
+            ],
+            [
+              "failed",
+              "失败"
+            ],
+            [
+              "success",
+              "成功"
+            ],
+            [
+              "blocked",
+              "已拦截"
+            ],
+            [
+              "timeout",
+              "超时"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "key": "rag-advanced-data",
+      "label": "高级数据",
+      "group": "RAG知识库",
+      "form": false,
+      "readOnly": true,
+      "columns": [],
+      "filters": [
+        {
+          "name": "status",
+          "label": "状态",
+          "type": "select",
+          "options": [
+            [
+              "",
+              "全部状态"
+            ],
+            [
+              "active",
+              "启用"
+            ],
+            [
+              "disabled",
+              "停用"
+            ],
+            [
+              "queued",
+              "排队中"
+            ],
+            [
+              "processing",
+              "处理中"
+            ],
+            [
+              "succeeded",
+              "成功"
+            ],
+            [
+              "failed",
+              "失败"
+            ],
+            [
+              "success",
+              "成功"
+            ],
+            [
+              "blocked",
+              "已拦截"
+            ],
+            [
+              "timeout",
+              "超时"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "key": "rag-build",
+      "label": "构建知识",
+      "group": "RAG知识库",
+      "form": false,
+      "readOnly": true,
+      "columns": [],
+      "filters": [
+        {
+          "name": "status",
+          "label": "状态",
+          "type": "select",
+          "options": [
+            [
+              "",
+              "全部状态"
+            ],
+            [
+              "active",
+              "启用"
+            ],
+            [
+              "disabled",
+              "停用"
+            ],
+            [
+              "queued",
+              "排队中"
+            ],
+            [
+              "processing",
+              "处理中"
+            ],
+            [
+              "succeeded",
+              "成功"
+            ],
+            [
+              "failed",
+              "失败"
+            ],
+            [
+              "success",
+              "成功"
+            ],
+            [
+              "blocked",
+              "已拦截"
+            ],
+            [
+              "timeout",
+              "超时"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "key": "rag-retrieval-lab",
+      "label": "检索试验台",
+      "group": "RAG知识库",
+      "form": false,
+      "readOnly": true,
+      "columns": [],
+      "filters": [
+        {
+          "name": "status",
+          "label": "状态",
+          "type": "select",
+          "options": [
+            [
+              "",
+              "全部状态"
+            ],
+            [
+              "active",
+              "启用"
+            ],
+            [
+              "disabled",
+              "停用"
+            ],
+            [
+              "queued",
+              "排队中"
+            ],
+            [
+              "processing",
+              "处理中"
+            ],
+            [
+              "succeeded",
+              "成功"
+            ],
+            [
+              "failed",
+              "失败"
+            ],
+            [
+              "success",
+              "成功"
+            ],
+            [
+              "blocked",
+              "已拦截"
+            ],
+            [
+              "timeout",
+              "超时"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "key": "rag-quality",
+      "label": "质量评估",
+      "group": "RAG知识库",
+      "form": false,
+      "readOnly": true,
+      "columns": [],
+      "filters": [
+        {
+          "name": "status",
+          "label": "状态",
+          "type": "select",
+          "options": [
+            [
+              "",
+              "全部状态"
+            ],
+            [
+              "active",
+              "启用"
+            ],
+            [
+              "disabled",
+              "停用"
+            ],
+            [
+              "queued",
+              "排队中"
+            ],
+            [
+              "processing",
+              "处理中"
+            ],
+            [
+              "succeeded",
+              "成功"
+            ],
+            [
+              "failed",
+              "失败"
+            ],
+            [
+              "success",
+              "成功"
+            ],
+            [
+              "blocked",
+              "已拦截"
+            ],
+            [
+              "timeout",
+              "超时"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "key": "rag-operations",
+      "label": "运行维护",
+      "group": "RAG知识库",
+      "form": false,
+      "readOnly": true,
+      "columns": [],
+      "filters": [
+        {
+          "name": "status",
+          "label": "状态",
+          "type": "select",
+          "options": [
+            [
+              "",
+              "全部状态"
+            ],
+            [
+              "active",
+              "启用"
+            ],
+            [
+              "disabled",
+              "停用"
+            ],
+            [
+              "queued",
+              "排队中"
+            ],
+            [
+              "processing",
+              "处理中"
+            ],
+            [
+              "succeeded",
+              "成功"
+            ],
+            [
+              "failed",
+              "失败"
+            ],
+            [
+              "success",
+              "成功"
+            ],
+            [
+              "blocked",
+              "已拦截"
+            ],
+            [
+              "timeout",
+              "超时"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "key": "rag-dashboard",
+      "label": "总览",
+      "group": "RAG知识库",
+      "form": false,
+      "readOnly": true,
+      "columns": [],
+      "filters": [
+        {
+          "name": "status",
+          "label": "状态",
+          "type": "select",
+          "options": [
+            [
+              "",
+              "全部状态"
+            ],
+            [
+              "active",
+              "启用"
+            ],
+            [
+              "disabled",
+              "停用"
+            ],
+            [
+              "queued",
+              "排队中"
+            ],
+            [
+              "processing",
+              "处理中"
+            ],
+            [
+              "succeeded",
+              "成功"
+            ],
+            [
+              "failed",
+              "失败"
+            ],
+            [
+              "success",
+              "成功"
+            ],
+            [
+              "blocked",
+              "已拦截"
+            ],
+            [
+              "timeout",
+              "超时"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "key": "rag-template-center",
+      "label": "模板下载",
+      "group": "RAG知识库",
+      "form": false,
+      "readOnly": true,
+      "columns": [],
+      "filters": [
+        {
+          "name": "status",
+          "label": "状态",
+          "type": "select",
+          "options": [
+            [
+              "",
+              "全部状态"
+            ],
+            [
+              "active",
+              "启用"
+            ],
+            [
+              "disabled",
+              "停用"
+            ],
+            [
+              "queued",
+              "排队中"
+            ],
+            [
+              "processing",
+              "处理中"
+            ],
+            [
+              "succeeded",
+              "成功"
+            ],
+            [
+              "failed",
+              "失败"
+            ],
+            [
+              "success",
+              "成功"
+            ],
+            [
+              "blocked",
+              "已拦截"
+            ],
+            [
+              "timeout",
+              "超时"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "key": "rag-upload-workbench",
+      "label": "上传导入",
+      "group": "RAG知识库",
+      "form": false,
+      "readOnly": true,
+      "columns": [],
+      "filters": [
+        {
+          "name": "status",
+          "label": "状态",
+          "type": "select",
+          "options": [
+            [
+              "",
+              "全部状态"
+            ],
+            [
+              "active",
+              "启用"
+            ],
+            [
+              "disabled",
+              "停用"
+            ],
+            [
+              "queued",
+              "排队中"
+            ],
+            [
+              "processing",
+              "处理中"
+            ],
+            [
+              "succeeded",
+              "成功"
+            ],
+            [
+              "failed",
+              "失败"
+            ],
+            [
+              "success",
+              "成功"
+            ],
+            [
+              "blocked",
+              "已拦截"
+            ],
+            [
+              "timeout",
+              "超时"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "key": "rag-upload-detail",
+      "label": "上传详情",
+      "group": "RAG知识库",
+      "form": false,
+      "readOnly": true,
+      "columns": [],
+      "filters": [
+        {
+          "name": "status",
+          "label": "状态",
+          "type": "select",
+          "options": [
+            [
+              "",
+              "全部状态"
+            ],
+            [
+              "active",
+              "启用"
+            ],
+            [
+              "disabled",
+              "停用"
+            ],
+            [
+              "queued",
+              "排队中"
+            ],
+            [
+              "processing",
+              "处理中"
+            ],
+            [
+              "succeeded",
+              "成功"
+            ],
+            [
+              "failed",
+              "失败"
+            ],
+            [
+              "success",
+              "成功"
+            ],
+            [
+              "blocked",
+              "已拦截"
+            ],
+            [
+              "timeout",
+              "超时"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "key": "rag-knowledge-bases",
+      "label": "知识库",
+      "group": "RAG知识库",
+      "form": true,
+      "readOnly": false,
+      "columns": [
+        "name",
+        "status",
+        "owner_user_id",
+        "department_id",
+        "created_at"
+      ],
+      "filters": [
+        {
+          "name": "status",
+          "label": "知识库状态",
+          "type": "select",
+          "options": [
+            [
+              "",
+              "全部状态"
+            ],
+            [
+              "active",
+              "启用"
+            ],
+            [
+              "draft",
+              "草稿"
+            ],
+            [
+              "disabled",
+              "停用"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "key": "rag-knowledge-base-bindings",
+      "label": "知识库授权",
+      "group": "RAG知识库",
+      "form": false,
+      "readOnly": false,
+      "columns": [
+        "id",
+        "kb_id",
+        "subject_type",
+        "subject_id",
+        "permission",
+        "is_default",
+        "created_at"
+      ],
+      "filters": [
+        {
+          "name": "status",
+          "label": "状态",
+          "type": "select",
+          "options": [
+            [
+              "",
+              "全部状态"
+            ],
+            [
+              "active",
+              "启用"
+            ],
+            [
+              "disabled",
+              "停用"
+            ],
+            [
+              "queued",
+              "排队中"
+            ],
+            [
+              "processing",
+              "处理中"
+            ],
+            [
+              "succeeded",
+              "成功"
+            ],
+            [
+              "failed",
+              "失败"
+            ],
+            [
+              "success",
+              "成功"
+            ],
+            [
+              "blocked",
+              "已拦截"
+            ],
+            [
+              "timeout",
+              "超时"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "key": "rag-vector-datasets",
+      "label": "向量数据集",
+      "group": "RAG知识库",
+      "form": true,
+      "readOnly": false,
+      "columns": [
+        "name",
+        "is_default",
+        "status",
+        "chunk_count",
+        "vector_count",
+        "last_indexed_at"
+      ],
+      "filters": [
+        {
+          "name": "status",
+          "label": "数据集状态",
+          "type": "select",
+          "options": [
+            [
+              "",
+              "全部状态"
+            ],
+            [
+              "active",
+              "启用"
+            ],
+            [
+              "draft",
+              "草稿"
+            ],
+            [
+              "reindexing",
+              "重建索引"
+            ],
+            [
+              "disabled",
+              "停用"
+            ],
+            [
+              "error",
+              "异常"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "key": "rag-dataset-bindings",
+      "label": "数据集授权",
+      "group": "RAG知识库",
+      "form": false,
+      "readOnly": false,
+      "columns": [
+        "id",
+        "dataset_id",
+        "subject_type",
+        "subject_id",
+        "permission",
+        "is_default",
+        "priority",
+        "created_at"
+      ],
+      "filters": [
+        {
+          "name": "status",
+          "label": "状态",
+          "type": "select",
+          "options": [
+            [
+              "",
+              "全部状态"
+            ],
+            [
+              "active",
+              "启用"
+            ],
+            [
+              "disabled",
+              "停用"
+            ],
+            [
+              "queued",
+              "排队中"
+            ],
+            [
+              "processing",
+              "处理中"
+            ],
+            [
+              "succeeded",
+              "成功"
+            ],
+            [
+              "failed",
+              "失败"
+            ],
+            [
+              "success",
+              "成功"
+            ],
+            [
+              "blocked",
+              "已拦截"
+            ],
+            [
+              "timeout",
+              "超时"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "key": "rag-vector-configs",
+      "label": "向量配置",
+      "group": "RAG知识库",
+      "form": true,
+      "readOnly": false,
+      "columns": [
+        "id",
+        "config_id",
+        "name",
+        "modality",
+        "model_name",
+        "dimension",
+        "vector_store",
+        "collection_name",
+        "enabled"
+      ],
+      "filters": [
+        {
+          "name": "status",
+          "label": "状态",
+          "type": "select",
+          "options": [
+            [
+              "",
+              "全部状态"
+            ],
+            [
+              "active",
+              "启用"
+            ],
+            [
+              "disabled",
+              "停用"
+            ],
+            [
+              "queued",
+              "排队中"
+            ],
+            [
+              "processing",
+              "处理中"
+            ],
+            [
+              "succeeded",
+              "成功"
+            ],
+            [
+              "failed",
+              "失败"
+            ],
+            [
+              "success",
+              "成功"
+            ],
+            [
+              "blocked",
+              "已拦截"
+            ],
+            [
+              "timeout",
+              "超时"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "key": "rag-import-templates",
+      "label": "导入模板原始表",
+      "group": "RAG知识库",
+      "form": false,
+      "readOnly": false,
+      "columns": [
+        "id",
+        "template_id",
+        "template_type",
+        "name",
+        "version",
+        "enabled",
+        "updated_at"
+      ],
+      "filters": [
+        {
+          "name": "status",
+          "label": "状态",
+          "type": "select",
+          "options": [
+            [
+              "",
+              "全部状态"
+            ],
+            [
+              "active",
+              "启用"
+            ],
+            [
+              "disabled",
+              "停用"
+            ],
+            [
+              "queued",
+              "排队中"
+            ],
+            [
+              "processing",
+              "处理中"
+            ],
+            [
+              "succeeded",
+              "成功"
+            ],
+            [
+              "failed",
+              "失败"
+            ],
+            [
+              "success",
+              "成功"
+            ],
+            [
+              "blocked",
+              "已拦截"
+            ],
+            [
+              "timeout",
+              "超时"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "key": "rag-uploads",
+      "label": "导入记录",
+      "group": "RAG知识库",
+      "form": false,
+      "readOnly": false,
+      "columns": [
+        "content_type",
+        "status",
+        "stage",
+        "progress",
+        "total_items",
+        "text_items",
+        "image_items",
+        "created_at"
+      ],
+      "filters": [
+        {
+          "name": "status",
+          "label": "状态",
+          "type": "select",
+          "options": [
+            [
+              "",
+              "全部状态"
+            ],
+            [
+              "active",
+              "启用"
+            ],
+            [
+              "disabled",
+              "停用"
+            ],
+            [
+              "queued",
+              "排队中"
+            ],
+            [
+              "processing",
+              "处理中"
+            ],
+            [
+              "succeeded",
+              "成功"
+            ],
+            [
+              "failed",
+              "失败"
+            ],
+            [
+              "success",
+              "成功"
+            ],
+            [
+              "blocked",
+              "已拦截"
+            ],
+            [
+              "timeout",
+              "超时"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "key": "rag-image-preview",
+      "label": "图片预览",
+      "group": "RAG知识库",
+      "form": false,
+      "readOnly": true,
+      "columns": [
+        "preview_item_id",
+        "item_type",
+        "title",
+        "purpose",
+        "description",
+        "validation_status"
+      ],
+      "filters": [
+        {
+          "name": "status",
+          "label": "状态",
+          "type": "select",
+          "options": [
+            [
+              "",
+              "全部状态"
+            ],
+            [
+              "active",
+              "启用"
+            ],
+            [
+              "disabled",
+              "停用"
+            ],
+            [
+              "queued",
+              "排队中"
+            ],
+            [
+              "processing",
+              "处理中"
+            ],
+            [
+              "succeeded",
+              "成功"
+            ],
+            [
+              "failed",
+              "失败"
+            ],
+            [
+              "success",
+              "成功"
+            ],
+            [
+              "blocked",
+              "已拦截"
+            ],
+            [
+              "timeout",
+              "超时"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "key": "rag-vectorization-metrics",
+      "label": "向量化监控",
+      "group": "RAG知识库",
+      "form": false,
+      "readOnly": true,
+      "columns": [
+        "overall_success_rate",
+        "total_jobs",
+        "failed_jobs",
+        "alert_code"
+      ],
+      "filters": [
+        {
+          "name": "status",
+          "label": "状态",
+          "type": "select",
+          "options": [
+            [
+              "",
+              "全部状态"
+            ],
+            [
+              "active",
+              "启用"
+            ],
+            [
+              "disabled",
+              "停用"
+            ],
+            [
+              "queued",
+              "排队中"
+            ],
+            [
+              "processing",
+              "处理中"
+            ],
+            [
+              "succeeded",
+              "成功"
+            ],
+            [
+              "failed",
+              "失败"
+            ],
+            [
+              "success",
+              "成功"
+            ],
+            [
+              "blocked",
+              "已拦截"
+            ],
+            [
+              "timeout",
+              "超时"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "key": "rag-retrieval-evaluation",
+      "label": "检索评测",
+      "group": "RAG知识库",
+      "form": false,
+      "readOnly": true,
+      "columns": [
+        "recall_at_5",
+        "recall_at_10",
+        "recall_at_20",
+        "mrr",
+        "failed_cases"
+      ],
+      "filters": [
+        {
+          "name": "status",
+          "label": "状态",
+          "type": "select",
+          "options": [
+            [
+              "",
+              "全部状态"
+            ],
+            [
+              "active",
+              "启用"
+            ],
+            [
+              "disabled",
+              "停用"
+            ],
+            [
+              "queued",
+              "排队中"
+            ],
+            [
+              "processing",
+              "处理中"
+            ],
+            [
+              "succeeded",
+              "成功"
+            ],
+            [
+              "failed",
+              "失败"
+            ],
+            [
+              "success",
+              "成功"
+            ],
+            [
+              "blocked",
+              "已拦截"
+            ],
+            [
+              "timeout",
+              "超时"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "key": "rag-upload-preview-items",
+      "label": "上传预览原始数据",
+      "group": "RAG知识库",
+      "form": false,
+      "readOnly": false,
+      "columns": [
+        "id",
+        "preview_item_id",
+        "upload_id",
+        "item_type",
+        "title",
+        "validation_status",
+        "image_asset_id",
+        "created_at"
+      ],
+      "filters": [
+        {
+          "name": "status",
+          "label": "状态",
+          "type": "select",
+          "options": [
+            [
+              "",
+              "全部状态"
+            ],
+            [
+              "active",
+              "启用"
+            ],
+            [
+              "disabled",
+              "停用"
+            ],
+            [
+              "queued",
+              "排队中"
+            ],
+            [
+              "processing",
+              "处理中"
+            ],
+            [
+              "succeeded",
+              "成功"
+            ],
+            [
+              "failed",
+              "失败"
+            ],
+            [
+              "success",
+              "成功"
+            ],
+            [
+              "blocked",
+              "已拦截"
+            ],
+            [
+              "timeout",
+              "超时"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "key": "rag-documents",
+      "label": "文档",
+      "group": "RAG知识库",
+      "form": false,
+      "readOnly": false,
+      "columns": [
+        "id",
+        "document_id",
+        "kb_id",
+        "dataset_id",
+        "title",
+        "doc_type",
+        "status",
+        "version",
+        "created_at"
+      ],
+      "filters": [
+        {
+          "name": "status",
+          "label": "状态",
+          "type": "select",
+          "options": [
+            [
+              "",
+              "全部状态"
+            ],
+            [
+              "active",
+              "启用"
+            ],
+            [
+              "disabled",
+              "停用"
+            ],
+            [
+              "queued",
+              "排队中"
+            ],
+            [
+              "processing",
+              "处理中"
+            ],
+            [
+              "succeeded",
+              "成功"
+            ],
+            [
+              "failed",
+              "失败"
+            ],
+            [
+              "success",
+              "成功"
+            ],
+            [
+              "blocked",
+              "已拦截"
+            ],
+            [
+              "timeout",
+              "超时"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "key": "rag-chunks",
+      "label": "内容片段",
+      "group": "RAG知识库",
+      "form": false,
+      "readOnly": false,
+      "columns": [
+        "chunk_type",
+        "title",
+        "enabled",
+        "lifecycle_status",
+        "created_at"
+      ],
+      "filters": [
+        {
+          "name": "status",
+          "label": "状态",
+          "type": "select",
+          "options": [
+            [
+              "",
+              "全部状态"
+            ],
+            [
+              "active",
+              "启用"
+            ],
+            [
+              "disabled",
+              "停用"
+            ],
+            [
+              "queued",
+              "排队中"
+            ],
+            [
+              "processing",
+              "处理中"
+            ],
+            [
+              "succeeded",
+              "成功"
+            ],
+            [
+              "failed",
+              "失败"
+            ],
+            [
+              "success",
+              "成功"
+            ],
+            [
+              "blocked",
+              "已拦截"
+            ],
+            [
+              "timeout",
+              "超时"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "key": "rag-image-assets",
+      "label": "图片资产",
+      "group": "RAG知识库",
+      "form": false,
+      "readOnly": false,
+      "columns": [
+        "id",
+        "image_id",
+        "kb_id",
+        "upload_id",
+        "mime_type",
+        "width",
+        "height",
+        "purpose",
+        "short_description",
+        "warnings",
+        "created_at"
+      ],
+      "filters": [
+        {
+          "name": "status",
+          "label": "状态",
+          "type": "select",
+          "options": [
+            [
+              "",
+              "全部状态"
+            ],
+            [
+              "active",
+              "启用"
+            ],
+            [
+              "disabled",
+              "停用"
+            ],
+            [
+              "queued",
+              "排队中"
+            ],
+            [
+              "processing",
+              "处理中"
+            ],
+            [
+              "succeeded",
+              "成功"
+            ],
+            [
+              "failed",
+              "失败"
+            ],
+            [
+              "success",
+              "成功"
+            ],
+            [
+              "blocked",
+              "已拦截"
+            ],
+            [
+              "timeout",
+              "超时"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "key": "rag-embedding-jobs",
+      "label": "向量任务",
+      "group": "RAG知识库",
+      "form": false,
+      "readOnly": false,
+      "columns": [
+        "id",
+        "job_id",
+        "upload_id",
+        "dataset_id",
+        "job_type",
+        "status",
+        "processed_items",
+        "progress_percent",
+        "error_code",
+        "created_at"
+      ],
+      "filters": [
+        {
+          "name": "status",
+          "label": "状态",
+          "type": "select",
+          "options": [
+            [
+              "",
+              "全部状态"
+            ],
+            [
+              "active",
+              "启用"
+            ],
+            [
+              "disabled",
+              "停用"
+            ],
+            [
+              "queued",
+              "排队中"
+            ],
+            [
+              "processing",
+              "处理中"
+            ],
+            [
+              "succeeded",
+              "成功"
+            ],
+            [
+              "failed",
+              "失败"
+            ],
+            [
+              "success",
+              "成功"
+            ],
+            [
+              "blocked",
+              "已拦截"
+            ],
+            [
+              "timeout",
+              "超时"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "key": "rag-vector-records",
+      "label": "向量记录",
+      "group": "RAG知识库",
+      "form": false,
+      "readOnly": false,
+      "columns": [
+        "id",
+        "vector_id",
+        "collection_name",
+        "dataset_id",
+        "chunk_id",
+        "modality",
+        "dimension",
+        "status",
+        "indexed_at",
+        "deleted_at"
+      ],
+      "filters": [
+        {
+          "name": "status",
+          "label": "状态",
+          "type": "select",
+          "options": [
+            [
+              "",
+              "全部状态"
+            ],
+            [
+              "active",
+              "启用"
+            ],
+            [
+              "disabled",
+              "停用"
+            ],
+            [
+              "queued",
+              "排队中"
+            ],
+            [
+              "processing",
+              "处理中"
+            ],
+            [
+              "succeeded",
+              "成功"
+            ],
+            [
+              "failed",
+              "失败"
+            ],
+            [
+              "success",
+              "成功"
+            ],
+            [
+              "blocked",
+              "已拦截"
+            ],
+            [
+              "timeout",
+              "超时"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "key": "rag-retrieval-logs",
+      "label": "检索日志",
+      "group": "RAG知识库",
+      "form": false,
+      "readOnly": false,
+      "columns": [
+        "id",
+        "retrieval_id",
+        "request_id",
+        "api_key_id",
+        "hit_count",
+        "fallback_used",
+        "created_at"
+      ],
+      "filters": [
+        {
+          "name": "status",
+          "label": "状态",
+          "type": "select",
+          "options": [
+            [
+              "",
+              "全部状态"
+            ],
+            [
+              "active",
+              "启用"
+            ],
+            [
+              "disabled",
+              "停用"
+            ],
+            [
+              "queued",
+              "排队中"
+            ],
+            [
+              "processing",
+              "处理中"
+            ],
+            [
+              "succeeded",
+              "成功"
+            ],
+            [
+              "failed",
+              "失败"
+            ],
+            [
+              "success",
+              "成功"
+            ],
+            [
+              "blocked",
+              "已拦截"
+            ],
+            [
+              "timeout",
+              "超时"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "key": "rag-evaluation",
+      "label": "检索评估",
+      "group": "RAG知识库",
+      "form": false,
+      "readOnly": true,
+      "columns": [],
+      "filters": [
+        {
+          "name": "status",
+          "label": "状态",
+          "type": "select",
+          "options": [
+            [
+              "",
+              "全部状态"
+            ],
+            [
+              "active",
+              "启用"
+            ],
+            [
+              "disabled",
+              "停用"
+            ],
+            [
+              "queued",
+              "排队中"
+            ],
+            [
+              "processing",
+              "处理中"
+            ],
+            [
+              "succeeded",
+              "成功"
+            ],
+            [
+              "failed",
+              "失败"
+            ],
+            [
+              "success",
+              "成功"
+            ],
+            [
+              "blocked",
+              "已拦截"
+            ],
+            [
+              "timeout",
+              "超时"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "key": "rag-answer-feedback",
+      "label": "用户反馈",
+      "group": "RAG知识库",
+      "form": false,
+      "readOnly": false,
+      "columns": [
+        "id",
+        "feedback_id",
+        "retrieval_id",
+        "api_key_id",
+        "rating",
+        "status",
+        "created_at"
+      ],
+      "filters": [
+        {
+          "name": "status",
+          "label": "状态",
+          "type": "select",
+          "options": [
+            [
+              "",
+              "全部状态"
+            ],
+            [
+              "active",
+              "启用"
+            ],
+            [
+              "disabled",
+              "停用"
+            ],
+            [
+              "queued",
+              "排队中"
+            ],
+            [
+              "processing",
+              "处理中"
+            ],
+            [
+              "succeeded",
+              "成功"
+            ],
+            [
+              "failed",
+              "失败"
+            ],
+            [
+              "success",
+              "成功"
+            ],
+            [
+              "blocked",
+              "已拦截"
+            ],
+            [
+              "timeout",
+              "超时"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "key": "rag-correction-tasks",
+      "label": "纠偏任务",
+      "group": "RAG知识库",
+      "form": false,
+      "readOnly": false,
+      "columns": [
+        "id",
+        "task_id",
+        "feedback_id",
+        "retrieval_id",
+        "issue_type",
+        "priority",
+        "status",
+        "created_at"
+      ],
+      "filters": [
+        {
+          "name": "status",
+          "label": "状态",
+          "type": "select",
+          "options": [
+            [
+              "",
+              "全部状态"
+            ],
+            [
+              "active",
+              "启用"
+            ],
+            [
+              "disabled",
+              "停用"
+            ],
+            [
+              "queued",
+              "排队中"
+            ],
+            [
+              "processing",
+              "处理中"
+            ],
+            [
+              "succeeded",
+              "成功"
+            ],
+            [
+              "failed",
+              "失败"
+            ],
+            [
+              "success",
+              "成功"
+            ],
+            [
+              "blocked",
+              "已拦截"
+            ],
+            [
+              "timeout",
+              "超时"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "key": "rag-retention-policies",
+      "label": "过期策略",
+      "group": "RAG知识库",
+      "form": false,
+      "readOnly": false,
+      "columns": [
+        "id",
+        "policy_id",
+        "target_type",
+        "target_id",
+        "action",
+        "expire_after_days",
+        "enabled",
+        "created_at"
+      ],
+      "filters": [
+        {
+          "name": "status",
+          "label": "状态",
+          "type": "select",
+          "options": [
+            [
+              "",
+              "全部状态"
+            ],
+            [
+              "active",
+              "启用"
+            ],
+            [
+              "disabled",
+              "停用"
+            ],
+            [
+              "queued",
+              "排队中"
+            ],
+            [
+              "processing",
+              "处理中"
+            ],
+            [
+              "succeeded",
+              "成功"
+            ],
+            [
+              "failed",
+              "失败"
+            ],
+            [
+              "success",
+              "成功"
+            ],
+            [
+              "blocked",
+              "已拦截"
+            ],
+            [
+              "timeout",
+              "超时"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "key": "rag-eval-cases",
+      "label": "检索评估样本",
+      "group": "RAG知识库",
+      "form": false,
+      "readOnly": false,
+      "columns": [
+        "query",
+        "status",
+        "created_at"
+      ],
+      "filters": [
+        {
+          "name": "status",
+          "label": "样本状态",
+          "type": "select",
+          "options": [
+            [
+              "",
+              "全部状态"
+            ],
+            [
+              "active",
+              "启用"
+            ],
+            [
+              "draft",
+              "草稿"
+            ],
+            [
+              "disabled",
+              "停用"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "key": "rag-eval-runs",
+      "label": "检索评估运行",
+      "group": "RAG知识库",
+      "form": false,
+      "readOnly": false,
+      "columns": [
+        "id",
+        "run_id",
+        "case_count",
+        "recall_at_5",
+        "recall_at_10",
+        "recall_at_20",
+        "mrr",
+        "failed_cases",
+        "status",
+        "created_at"
+      ],
+      "filters": [
+        {
+          "name": "status",
+          "label": "状态",
+          "type": "select",
+          "options": [
+            [
+              "",
+              "全部状态"
+            ],
+            [
+              "active",
+              "启用"
+            ],
+            [
+              "disabled",
+              "停用"
+            ],
+            [
+              "queued",
+              "排队中"
+            ],
+            [
+              "processing",
+              "处理中"
+            ],
+            [
+              "succeeded",
+              "成功"
+            ],
+            [
+              "failed",
+              "失败"
+            ],
+            [
+              "success",
+              "成功"
+            ],
+            [
+              "blocked",
+              "已拦截"
+            ],
+            [
+              "timeout",
+              "超时"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "key": "rag-eval-results",
+      "label": "检索评估结果",
+      "group": "RAG知识库",
+      "form": false,
+      "readOnly": false,
+      "columns": [
+        "id",
+        "run_id",
+        "case_id",
+        "hit_rank",
+        "passed",
+        "created_at"
+      ],
+      "filters": [
+        {
+          "name": "status",
+          "label": "状态",
+          "type": "select",
+          "options": [
+            [
+              "",
+              "全部状态"
+            ],
+            [
+              "active",
+              "启用"
+            ],
+            [
+              "disabled",
+              "停用"
+            ],
+            [
+              "queued",
+              "排队中"
+            ],
+            [
+              "processing",
+              "处理中"
+            ],
+            [
+              "succeeded",
+              "成功"
+            ],
+            [
+              "failed",
+              "失败"
+            ],
+            [
+              "success",
+              "成功"
+            ],
+            [
+              "blocked",
+              "已拦截"
+            ],
+            [
+              "timeout",
+              "超时"
+            ]
+          ]
+        }
+      ]
+    }
+  ],
+  "domains": [
+    {
+      "key": "operations",
+      "label": "运营中心",
+      "tabs": [
+        "dashboard",
+        "admin-chat-sessions",
+        "dashboard-share-links",
+        "dashboard-share-access-logs"
+      ]
+    },
+    {
+      "key": "organization",
+      "label": "组织与权限",
+      "tabs": [
+        "departments",
+        "users",
+        "admin-users",
+        "permission-config"
+      ]
+    },
+    {
+      "key": "models",
+      "label": "模型服务",
+      "tabs": [
+        "providers",
+        "models",
+        "model-prices"
+      ]
+    },
+    {
+      "key": "access",
+      "label": "API 接入",
+      "tabs": [
+        "api-keys",
+        "api-key-model-quotas",
+        "quota-policies",
+        "quota-bindings"
+      ]
+    },
+    {
+      "key": "usage",
+      "label": "用量中心",
+      "tabs": [
+        "usage-records",
+        "multimodal-tasks",
+        "media-assets",
+        "usage-contents",
+        "content-archive",
+        "export-tasks"
+      ]
+    },
+    {
+      "key": "rag",
+      "label": "RAG 知识库",
+      "tabs": [
+        "rag-build",
+        "rag-retrieval-lab",
+        "rag-quality",
+        "rag-operations"
+      ]
+    },
+    {
+      "key": "security",
+      "label": "安全审计",
+      "tabs": [
+        "desensitization-policies",
+        "desensitization-events",
+        "alert-events",
+        "logs",
+        "audit-logs"
+      ]
+    },
+    {
+      "key": "system",
+      "label": "系统运维",
+      "superAdmin": true,
+      "tabs": [
+        "operations-status",
+        "settings-tls-certificates",
+        "settings-brand-identity",
+        "content-retention-policy",
+        "log-retention-policies",
+        "log-archive-files",
+        "settings-alert-thresholds",
+        "system-settings"
+      ]
+    }
+  ],
+  "ragTabs": {
+    "rag-build": [
+      [
+        "rag-dashboard",
+        "构建总览"
+      ],
+      [
+        "rag-knowledge-bases",
+        "知识库"
+      ],
+      [
+        "rag-vector-datasets",
+        "数据集"
+      ],
+      [
+        "rag-import-task",
+        "导入任务"
+      ],
+      [
+        "rag-uploads",
+        "任务记录"
+      ]
+    ],
+    "rag-quality": [
+      [
+        "rag-evaluation",
+        "检索评估"
+      ],
+      [
+        "rag-eval-cases",
+        "评估样本"
+      ],
+      [
+        "rag-answer-feedback",
+        "用户反馈"
+      ],
+      [
+        "rag-correction-tasks",
+        "纠偏任务"
+      ]
+    ],
+    "rag-operations": [
+      [
+        "rag-vectorization-metrics",
+        "向量化健康"
+      ],
+      [
+        "rag-embedding-jobs",
+        "向量任务"
+      ],
+      [
+        "rag-retrieval-logs",
+        "检索记录"
+      ],
+      [
+        "rag-retention-policies",
+        "数据留存"
+      ]
+    ],
+    "rag-console": [
+      [
+        "rag-dashboard",
+        "总览"
+      ],
+      [
+        "rag-retrieval-lab",
+        "检索试验台"
+      ],
+      [
+        "rag-vectorization-metrics",
+        "向量化监控"
+      ],
+      [
+        "rag-retrieval-evaluation",
+        "检索评测"
+      ]
+    ],
+    "rag-knowledge-management": [
+      [
+        "rag-knowledge-bases",
+        "知识库"
+      ],
+      [
+        "rag-vector-datasets",
+        "向量数据集"
+      ],
+      [
+        "rag-dataset-bindings",
+        "数据集授权"
+      ],
+      [
+        "rag-vector-configs",
+        "向量配置"
+      ]
+    ],
+    "rag-import-review": [
+      [
+        "rag-template-center",
+        "模板下载"
+      ],
+      [
+        "rag-upload-workbench",
+        "上传导入"
+      ],
+      [
+        "rag-upload-detail",
+        "上传详情"
+      ],
+      [
+        "rag-uploads",
+        "上传记录"
+      ],
+      [
+        "rag-image-preview",
+        "图片预览"
+      ]
+    ],
+    "rag-image-vector": [
+      [
+        "rag-image-assets",
+        "图片资产"
+      ],
+      [
+        "rag-embedding-jobs",
+        "向量任务"
+      ],
+      [
+        "rag-vector-records",
+        "向量记录"
+      ]
+    ],
+    "rag-feedback-correction": [
+      [
+        "rag-evaluation",
+        "检索评估"
+      ],
+      [
+        "rag-retrieval-logs",
+        "检索日志"
+      ],
+      [
+        "rag-answer-feedback",
+        "用户反馈"
+      ],
+      [
+        "rag-correction-tasks",
+        "纠偏任务"
+      ],
+      [
+        "rag-retention-policies",
+        "过期策略"
+      ]
+    ],
+    "rag-advanced-data": [
+      [
+        "rag-documents",
+        "文档"
+      ],
+      [
+        "rag-chunks",
+        "Chunk"
+      ],
+      [
+        "rag-upload-preview-items",
+        "上传预览原始数据"
+      ],
+      [
+        "rag-import-templates",
+        "导入模板原始表"
+      ],
+      [
+        "rag-eval-cases",
+        "评估样本"
+      ],
+      [
+        "rag-eval-runs",
+        "评估运行"
+      ],
+      [
+        "rag-eval-results",
+        "评估结果"
+      ]
+    ]
+  },
+  "settingsCategories": [
+    {
+      "key": "base-entry",
+      "label": "基础入口",
+      "sections": [
+        "settings-brand-identity",
+        "settings-tls-certificates"
+      ]
+    },
+    {
+      "key": "security",
+      "label": "安全防护",
+      "sections": [
+        "settings-entry-security"
+      ]
+    },
+    {
+      "key": "governance",
+      "label": "治理告警",
+      "sections": [
+        "settings-retention-export",
+        "settings-alert-thresholds"
+      ]
+    },
+    {
+      "key": "rag",
+      "label": "RAG 设置",
+      "sections": [
+        "settings-rag-upload-review",
+        "settings-rag-package-upload",
+        "settings-rag-ai-image-processing",
+        "settings-rag-vectorization-monitoring"
+      ]
+    }
+  ],
+  "permissions": [
+    [
+      "dashboard.read",
+      "仪表盘查看"
+    ],
+    [
+      "departments.read",
+      "部门查看"
+    ],
+    [
+      "departments.manage",
+      "部门管理"
+    ],
+    [
+      "users.read",
+      "用户查看"
+    ],
+    [
+      "users.manage",
+      "用户管理"
+    ],
+    [
+      "api_catalog.read",
+      "厂商与模型查看"
+    ],
+    [
+      "api_catalog.manage",
+      "厂商与模型管理"
+    ],
+    [
+      "api_keys.read",
+      "API 密钥查看"
+    ],
+    [
+      "api_keys.manage",
+      "API 密钥管理"
+    ],
+    [
+      "quotas.read",
+      "配额查看"
+    ],
+    [
+      "quotas.manage",
+      "配额管理"
+    ],
+    [
+      "usage.read",
+      "用量查看"
+    ],
+    [
+      "usage.manage",
+      "用量管理"
+    ],
+    [
+      "content.read",
+      "内容查看"
+    ],
+    [
+      "content.manage",
+      "内容管理"
+    ],
+    [
+      "content.export",
+      "内容导出"
+    ],
+    [
+      "rag.read",
+      "RAG 查看"
+    ],
+    [
+      "rag.manage",
+      "RAG 管理"
+    ],
+    [
+      "operations.read",
+      "运营查看"
+    ],
+    [
+      "operations.manage",
+      "运营管理"
+    ],
+    [
+      "security.read",
+      "安全查看"
+    ],
+    [
+      "security.manage",
+      "安全管理"
+    ],
+    [
+      "logs.read",
+      "日志查看"
+    ],
+    [
+      "logs.manage",
+      "日志管理"
+    ],
+    [
+      "logs.export",
+      "日志导出"
+    ],
+    [
+      "system.read",
+      "系统设置查看"
+    ],
+    [
+      "system.manage",
+      "系统设置管理"
+    ],
+    [
+      "admins.manage",
+      "管理员账号管理"
+    ]
+  ]
+}

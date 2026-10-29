@@ -23,7 +23,7 @@ function Record([string]$Status, [string]$Name, [string]$Detail = '') {
 
 "TokenHub verification $((Get-Date).ToUniversalTime().ToString('o'))  tag=$($envValues['TOKENHUB_IMAGE_TAG'])  url=$($envValues['APP_URL'])" | Tee-Object -FilePath $report
 
-foreach ($service in @('mysql', 'redis', 'qdrant', 'php', 'queue-worker', 'scheduler', 'rag-worker', 'caddy', 'init')) {
+foreach ($service in @('mysql', 'redis', 'qdrant', 'php', 'queue-worker', 'scheduler', 'rag-worker', 'realtime-gateway', 'caddy', 'init')) {
     $id = (& docker @compose ps -a -q $service | Select-Object -First 1)
     $state = if ($id) { (& docker inspect -f '{{.State.Status}} {{.State.ExitCode}} {{if .State.Health}}{{.State.Health.Status}}{{end}}' $id) } else { 'missing' }
     if ($service -eq 'init') {
@@ -35,9 +35,13 @@ foreach ($service in @('mysql', 'redis', 'qdrant', 'php', 'queue-worker', 'sched
 
 $url = [Uri]$envValues['APP_URL']
 $port = if ($url.Scheme -eq 'https') { $envValues['TOKENHUB_HTTPS_PORT'] } else { $envValues['TOKENHUB_HTTP_PORT'] }
+$connectAddress = $envValues['TOKENHUB_BIND_ADDRESS']
+if ([string]::IsNullOrEmpty($connectAddress) -or $connectAddress -eq '0.0.0.0') { $connectAddress = '127.0.0.1' }
+elseif ($connectAddress -eq '::') { $connectAddress = '[::1]' }
+elseif ($connectAddress.Contains(':') -and -not $connectAddress.StartsWith('[')) { $connectAddress = "[$connectAddress]" }
 foreach ($check in @(@('/health', 200), @('/ready', 200), @('/admin/', 200), @('/v1/models', 401))) {
     # curl.exe ships with Windows 10+; --resolve keeps the Host header of domain sites while connecting locally.
-    $code = & curl.exe -s -k -o NUL -w '%{http_code}' --max-time 15 --resolve "$($url.Host):${port}:127.0.0.1" "$($url.Scheme)://$($url.Host):$port$($check[0])"
+    $code = & curl.exe -s -k -o NUL -w '%{http_code}' --max-time 15 --noproxy "*" --resolve "$($url.Host):${port}:$connectAddress" "$($url.Scheme)://$($url.Host):$port$($check[0])"
     if ("$code" -eq "$($check[1])") { Record 'PASS' "GET $($check[0])" "HTTP $code" } else { Record 'FAIL' "GET $($check[0])" "HTTP $code, expected $($check[1])" }
 }
 

@@ -1,0 +1,14 @@
+HTTP/1.1 200 OK
+Accept-Ranges: bytes
+Content-Length: 253936
+Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'
+Content-Type: text/javascript; charset=utf-8
+Etag: "dmgssk46ibcw5fxs"
+Last-Modified: Wed, 28 Oct 2026 21:43:44 GMT
+Permissions-Policy: geolocation=(), microphone=(), camera=()
+Referrer-Policy: no-referrer
+Vary: Accept-Encoding
+X-Content-Type-Options: nosniff
+X-Frame-Options: DENY
+Date: Thu, 29 Oct 2026 09:33:15 GMT
+

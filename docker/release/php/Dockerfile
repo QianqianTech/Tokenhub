@@ -3,8 +3,9 @@
 ARG PHP_VERSION=8.4
 FROM php:${PHP_VERSION}-fpm-bookworm AS php-base
 
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends git unzip libzip-dev libpng-dev libjpeg62-turbo-dev libfreetype6-dev default-mysql-client libfcgi-bin openssl \
+RUN sed -i 's|http://deb.debian.org|https://deb.debian.org|g' /etc/apt/sources.list.d/debian.sources \
+    && apt-get -o Acquire::Retries=3 update \
+    && apt-get -o Acquire::Retries=3 install -y --no-install-recommends git unzip libzip-dev libpng-dev libjpeg62-turbo-dev libfreetype6-dev default-mysql-client libfcgi-bin openssl \
     && docker-php-ext-configure gd --with-freetype --with-jpeg \
     && docker-php-ext-install pdo_mysql gd zip opcache pcntl \
     && pecl install redis \
@@ -47,7 +48,8 @@ COPY public ./public
 COPY scripts ./scripts
 COPY composer.json VERSION .env.example ./
 
-RUN mkdir -p storage/logs storage/exports storage/media storage/cache storage/caddy \
+RUN chmod -R a+rX app bin config database public scripts vendor composer.json VERSION .env.example \
+    && mkdir -p storage/logs storage/exports storage/media storage/cache storage/caddy \
     && chown -R www-data:www-data storage
 
 HEALTHCHECK --interval=15s --timeout=5s --retries=5 CMD ["tokenhub-healthcheck", "fpm"]
