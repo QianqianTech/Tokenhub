@@ -170,6 +170,7 @@ final class AdminUserService
         App::db()->execute('UPDATE users SET password_hash = ? WHERE id = ?', [password_hash($password, PASSWORD_DEFAULT), $id]);
         $this->revokeSessions($id, false);
         (new ApiKeyService())->invalidateByUser($id);
+        \TokenHub\Services\Mcp\OAuth\OAuthServer::revokeUserGrantsAfterPasswordChange($id);
         (new AuditService())->write('admin_user.password.reset', 'users', $id);
 
         return ['id' => $id, 'password_reset' => true];

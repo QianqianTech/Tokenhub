@@ -182,3 +182,23 @@ test("chat page API key trial mode lists granted supported models and sends api_
   assert.deepEqual(errors, []);
   await context.close();
 });
+
+test("API key MCP sign-ins can be listed and revoked", async () => {
+  const { page, errors, context } = await openPage(env);
+  await login(page, env.mock.baseUrl, { hash: "#/access/api-keys" });
+  const row = page.locator("tbody tr", { hasText: "密钥1" }).first();
+  await row.getByRole("button", { name: "MCP 授权" }).click();
+  const dialog = page.locator("dialog.modal-dialog").first();
+  await dialog.locator(".mcp-grants-table").waitFor();
+  const text = await dialog.innerText();
+  assert.match(text, /Claude/);
+  assert.match(text, /claude\.ai/, "metadata-document clients are shown by host");
+  assert.match(text, /已撤销（用户改了密码）/);
+  await dialog.getByRole("button", { name: "撤销" }).click();
+  await page.locator("dialog.modal-dialog--confirm").getByRole("button", { name: "撤销" }).click();
+  await settle(page);
+  assert.equal(requests("POST", "/admin-api/api-keys/mcp-oauth-grants/grt_claude/revoke").length, 1);
+  assert.match(await page.locator("dialog.modal-dialog").first().innerText(), /已撤销授权/);
+  assert.deepEqual(errors, []);
+  await context.close();
+});

@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace TokenHub\Middleware;
 
+use TokenHub\Http\Controllers\OAuthController;
+use TokenHub\Services\ExternalRateLimitService;
+use TokenHub\Services\Mcp\OAuth\OAuthServer;
 use TokenHub\Support\App;
 use TokenHub\Support\Request;
 use TokenHub\Support\Response;
@@ -11,7 +14,10 @@ use TokenHub\Support\Response;
 /**
  * Guards /mcp: feature switch, Origin check (the MCP transport spec requires
  * servers to reject unexpected browser origins to stop DNS rebinding), then
- * the regular API key authentication and per-key rate limit.
+ * either an OAuth access token from the built-in authorization server (bound
+ * to one API key) or the regular API key authentication, and the per-key rate
+ * limit. A 401 carries the RFC 9728 resource_metadata challenge so clients
+ * can discover how to sign in.
  */
 final class McpAuthMiddleware
 {
@@ -24,9 +30,31 @@ final class McpAuthMiddleware
             return Response::error('MCP_ORIGIN_FORBIDDEN', 'Origin is not allowed to use the MCP endpoint', 403);
         }
 
+        $oauthEnabled = OAuthServer::enabled();
+        $bearer = (string) ($request->bearerToken() ?? '');
+        if ($oauthEnabled && OAuthServer::looksLikeAccessToken($bearer)) {
+            $server = OAuthController::serverFor($request);
+            $clientIp = $request->clientIp();
+            $result = $server->authenticateAccessToken($bearer, $clientIp);
+            if (!$result['ok']) {
+                $status = (int) ($result['status'] ?? 401);
+                $response = Response::error($status === 403 ? 'IP_FORBIDDEN' : 'API_KEY_INVALID', (string) $result['message'], $status);
+
+                return $response->withHeader('WWW-Authenticate', $server->challenge((string) $result['code'], (string) $result['message']));
+            }
+            App::context()->setApiKey($result['data']);
+            $limit = (int) App::config()->get('app.external_api_rate_limits.other_per_minute', 120);
+            $attempt = (new ExternalRateLimitService())->attempt('other', (int) ($result['data']['id'] ?? 0), $limit);
+            if (($attempt['allowed'] ?? false) !== true) {
+                return Response::error('RATE_LIMITED', 'Too many requests', 429)->withHeader('Retry-After', (string) ($attempt['retry_after'] ?? 1));
+            }
+
+            return $next($request);
+        }
+
         $response = (new ApiKeyAuthMiddleware())($request, $next);
         if ($response->status === 401) {
-            return $response->withHeader('WWW-Authenticate', 'Bearer realm="tokenhub"');
+            return $response->withHeader('WWW-Authenticate', $oauthEnabled ? OAuthController::serverFor($request)->challenge() : 'Bearer realm="tokenhub"');
         }
 
         return $response;

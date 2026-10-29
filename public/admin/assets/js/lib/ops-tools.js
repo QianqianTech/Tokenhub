@@ -1017,3 +1017,91 @@ export function createApiKeyManagementScopeEditor(initialScopes, options = {}) {
     }
   };
 }
+
+// --- MCP OAuth sign-ins bound to an API key ---------------------------------
+
+const MCP_GRANT_LOGIN_LABELS = { password: "账号密码", api_key: "粘贴 API Key" };
+const MCP_GRANT_REVOKE_REASONS = {
+  admin: "管理员撤销",
+  password_changed: "用户改了密码",
+  refresh_replay: "检测到令牌重放",
+  code_replay: "检测到授权码重放",
+  client_revoked: "客户端注销"
+};
+
+function mcpGrantClientLabel(grant) {
+  if (grant.client_name) {
+    return grant.client_name;
+  }
+  const clientId = String(grant.client_id || "");
+  if (clientId.startsWith("https://")) {
+    try {
+      return new URL(clientId).host;
+    } catch {
+      return clientId;
+    }
+  }
+  return clientId || "-";
+}
+
+export async function showApiKeyMcpGrants(row) {
+  const body = el("div", { className: "mcp-grants" }, [statusMessage("正在加载 MCP 授权...")]);
+  showModal(`MCP 授权 · ${row.name || row.id}`, body);
+  const load = async (flash = "") => {
+    let grants;
+    try {
+      const result = await api("/admin-api/api-keys/mcp-oauth-grants", { query: { api_key_id: row.id, status: "all", limit: 100 } });
+      grants = Array.isArray(result.data) ? result.data : [];
+    } catch (error) {
+      body.replaceChildren(statusMessage(adminErrorMessage(error, "MCP 授权加载失败"), "error"));
+      return;
+    }
+    const children = [];
+    if (flash) {
+      children.push(statusMessage(flash));
+    }
+    children.push(el("p", { className: "muted", text: "MCP 客户端（Claude、ChatGPT、Codex、Cursor 等）通过 OAuth 登录后，以这个 API 密钥的权限调用 TokenHub 的 MCP 工具。撤销后客户端需要重新登录。" }));
+    if (grants.length === 0) {
+      children.push(statusMessage("还没有 MCP 客户端用这个密钥登录"));
+      body.replaceChildren(...children);
+      return;
+    }
+    const table = el("table", { className: "resource-table mcp-grants-table" });
+    table.append(el("thead", {}, [el("tr", {}, ["客户端", "登录方式", "登录用户", "授权时间", "最近使用", "状态", "操作"].map((label) => el("th", { text: label })))]));
+    table.append(el("tbody", {}, grants.map((grant) => {
+      const actions = el("td", {});
+      if (grant.status === "active" && adminViewerCan("api_keys.manage")) {
+        actions.append(button("撤销", async () => {
+          if (!await confirmDialog({
+            title: "撤销 MCP 授权",
+            message: "撤销后该客户端的访问令牌和刷新令牌立即失效，需要重新登录。",
+            details: [["客户端", mcpGrantClientLabel(grant)], ["API 密钥", row.name || `#${row.id}`]],
+            confirmLabel: "撤销"
+          })) {
+            return;
+          }
+          try {
+            await api(`/admin-api/api-keys/mcp-oauth-grants/${encodeURIComponent(grant.grant_id)}/revoke`, { method: "POST" });
+            await load("已撤销授权");
+          } catch (error) {
+            await load();
+            body.prepend(statusMessage(adminErrorMessage(error, "撤销失败"), "error"));
+          }
+        }, "danger mcp-grant-revoke"));
+      }
+      const statusText = grant.status === "active" ? "有效" : `已撤销${MCP_GRANT_REVOKE_REASONS[grant.revoked_reason] ? `（${MCP_GRANT_REVOKE_REASONS[grant.revoked_reason]}）` : ""}`;
+      return el("tr", {}, [
+        el("td", { text: mcpGrantClientLabel(grant), title: String(grant.client_id || "") }),
+        el("td", { text: MCP_GRANT_LOGIN_LABELS[grant.login_method] || opsText(grant.login_method) }),
+        el("td", { text: opsText(grant.username) }),
+        el("td", { text: opsUtcTime(grant.created_at) }),
+        el("td", { text: grant.last_used_at ? opsUtcTime(grant.last_used_at) : "未使用" }),
+        el("td", { text: statusText }),
+        actions
+      ]);
+    })));
+    children.push(el("div", { className: "quota-status-table-wrap" }, [table]));
+    body.replaceChildren(...children);
+  };
+  await load();
+}

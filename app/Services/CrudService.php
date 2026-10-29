@@ -396,6 +396,9 @@ final class CrudService
         if ($table === 'users' && isset($data['password'])) {
             $data['password_hash'] = password_hash((string) $data['password'], PASSWORD_DEFAULT);
             unset($data['password']);
+            if (!$creating && $id !== null) {
+                \TokenHub\Services\Mcp\OAuth\OAuthServer::revokeUserGrantsAfterPasswordChange((int) $id);
+            }
         }
         if ($table === 'providers' && array_key_exists('default_headers', $data)) {
             $storedHeaders = null;

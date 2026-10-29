@@ -390,6 +390,49 @@ final class ApiKeyService
                 App::redis()->set($this->missCacheKey($hash), '1', self::MISS_CACHE_TTL_SECONDS);
             }
         }
+        return $this->verifyRow(is_array($row) ? $row : null, $clientIp, $modelName);
+    }
+
+    /**
+     * Authenticates a key by id for credentials that stand in for it (MCP
+     * OAuth access tokens): the same status, owner, expiry and IP checks as a
+     * presented key, so disabling or expiring the key ends the token too.
+     */
+    public function authenticateById(int $id, string $clientIp, ?string $modelName = null): array
+    {
+        if ($id <= 0) {
+            return ['ok' => false, 'code' => 'API_KEY_INVALID', 'message' => 'Invalid API key', 'status' => 401];
+        }
+        $hash = App::redis()->get($this->idHashCacheKey($id));
+        if (!is_string($hash) || $hash === '') {
+            $hash = (string) (App::db()->first('SELECT key_hash FROM api_keys WHERE id = ?', [$id])['key_hash'] ?? '');
+            if ($hash === '') {
+                return ['ok' => false, 'code' => 'API_KEY_INVALID', 'message' => 'Invalid API key', 'status' => 401];
+            }
+            App::redis()->set($this->idHashCacheKey($id), $hash, self::CACHE_TTL_SECONDS);
+        }
+        $row = App::redis()->get($this->cacheKey($hash));
+        if (!is_array($row) || (int) ($row['id'] ?? 0) !== $id) {
+            $row = App::db()->first(
+                'SELECT k.*, u.status AS user_status, d.status AS department_status FROM api_keys k JOIN users u ON u.id = k.user_id JOIN departments d ON d.id = k.department_id WHERE k.id = ?',
+                [$id]
+            );
+            if ($row) {
+                $row['allowed_model_names'] = $this->allowedModelNames((int) $row['id']);
+                $row['allowed_model_ids'] = $this->activeModelIds((int) $row['id']);
+                App::redis()->set($this->cacheKey((string) $row['key_hash']), $row, self::CACHE_TTL_SECONDS);
+            }
+        }
+
+        return $this->verifyRow($row ?: null, $clientIp, $modelName);
+    }
+
+    /**
+     * @param array<string, mixed>|null $row
+     * @return array{ok: bool, code?: string, message?: string, status?: int, data?: array<string, mixed>}
+     */
+    private function verifyRow(?array $row, string $clientIp, ?string $modelName): array
+    {
         if (!$row || $row['status'] !== 'active' || $row['user_status'] !== 'active' || $row['department_status'] !== 'active') {
             return ['ok' => false, 'code' => 'API_KEY_INVALID', 'message' => 'Invalid API key', 'status' => 401];
         }
@@ -405,6 +448,11 @@ final class ApiKeyService
 
         $this->touchLastUsed((int) $row['id']);
         return ['ok' => true, 'data' => $row];
+    }
+
+    private function idHashCacheKey(int $id): string
+    {
+        return 'api_key_id_hash:' . $id;
     }
 
     /**

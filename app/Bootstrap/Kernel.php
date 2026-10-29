@@ -12,6 +12,7 @@ use TokenHub\Http\Controllers\FileController;
 use TokenHub\Http\Controllers\GatewayController;
 use TokenHub\Http\Controllers\HealthController;
 use TokenHub\Http\Controllers\McpController;
+use TokenHub\Http\Controllers\OAuthController;
 use TokenHub\Http\Controllers\RagController;
 use TokenHub\Http\Controllers\ScreenController;
 use TokenHub\Http\Controllers\SyncController;
@@ -33,6 +34,7 @@ final class Kernel
         $router = new Router();
         $health = new HealthController();
         $mcp = new McpController();
+        $oauth = new OAuthController();
         $admin = new AdminController();
         $agentManagement = new AgentManagementController();
         $download = new DownloadController();
@@ -97,6 +99,8 @@ final class Kernel
         $router->post('/admin-api/admin-users/{id}/reset-password', [$admin, 'resetAdminUserPassword'], [new AdminAuthMiddleware(), new CsrfMiddleware()]);
         $router->post('/admin-api/admin-users/{id}/revoke-sessions', [$admin, 'revokeAdminUserSessions'], [new AdminAuthMiddleware(), new CsrfMiddleware()]);
         $router->get('/admin-api/api-keys', [$admin, 'apiKeys'], [new AdminAuthMiddleware()]);
+        $router->get('/admin-api/api-keys/mcp-oauth-grants', [$admin, 'mcpOAuthGrants'], [new AdminAuthMiddleware()]);
+        $router->post('/admin-api/api-keys/mcp-oauth-grants/{grant_id}/revoke', [$admin, 'revokeMcpOAuthGrant'], [new AdminAuthMiddleware(), new CsrfMiddleware()]);
         $router->post('/admin-api/api-keys', [$admin, 'createApiKey'], [new AdminAuthMiddleware(), new CsrfMiddleware()]);
         $router->post('/admin-api/api-keys/batch', [$admin, 'batchApiKeys'], [new AdminAuthMiddleware(), new CsrfMiddleware()]);
         $router->put('/admin-api/api-keys/{id}', [$admin, 'updateApiKey'], [new AdminAuthMiddleware(), new CsrfMiddleware()]);
@@ -255,6 +259,16 @@ final class Kernel
         // Model Context Protocol (Streamable HTTP, stateless). See docs/mcp.md.
         $router->post('/mcp', [$mcp, 'handle'], [new McpAuthMiddleware()]);
         $router->get('/mcp', [$mcp, 'methodNotAllowed']);
+        // Built-in OAuth 2.1 server so MCP clients can sign in (docs/mcp.md).
+        $router->get('/.well-known/oauth-protected-resource', [$oauth, 'protectedResource']);
+        $router->get('/.well-known/oauth-protected-resource/mcp', [$oauth, 'protectedResource']);
+        $router->get('/.well-known/oauth-authorization-server', [$oauth, 'serverMetadata']);
+        $router->get('/.well-known/openid-configuration', [$oauth, 'serverMetadata']);
+        $router->post('/oauth/register', [$oauth, 'register']);
+        $router->get('/oauth/authorize', [$oauth, 'authorize']);
+        $router->post('/oauth/authorize', [$oauth, 'approve']);
+        $router->post('/oauth/token', [$oauth, 'token']);
+        $router->post('/oauth/revoke', [$oauth, 'revoke']);
         $router->delete('/mcp', [$mcp, 'methodNotAllowed']);
 
         $router->post('/screen-api/auth/login', [$screen, 'login']);

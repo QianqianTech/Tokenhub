@@ -8,7 +8,7 @@ import { pager, PAGE_SIZES } from "../components/pager.js";
 import { renderTableCell } from "../lib/resource-table.js";
 import { columnLabel, formatResourceValue, resources } from "../resources.js";
 import { confirmDialog } from "../components/modal.js";
-import { API_KEY_DISABLED_BY_LABELS, apiKeyManagementBadge, showApiKeyQuota, showApiKeyRotate } from "../lib/ops-tools.js";
+import { API_KEY_DISABLED_BY_LABELS, apiKeyManagementBadge, showApiKeyMcpGrants, showApiKeyQuota, showApiKeyRotate } from "../lib/ops-tools.js";
 
 const apiKeyPageColumns = [
   ["id", "编号"],
@@ -285,6 +285,17 @@ function renderApiKeyTable(rows, config, onRefresh, context = {}) {
         "M3.34 19a10 10 0 1 1 17.32 0"
       ]));
       actions.append(quotaButton);
+    }
+    if (row.id) {
+      const mcpButton = button("", () => showApiKeyMcpGrants(row), "secondary api-key-icon-button api-key-mcp-button");
+      mcpButton.title = "MCP 授权：查看并撤销用这个密钥登录的 MCP 客户端";
+      mcpButton.ariaLabel = "MCP 授权";
+      mcpButton.append(apiKeyActionIcon([
+        "M9 7V3M15 7V3",
+        "M6 7h12v4a6 6 0 0 1-12 0Z",
+        "M12 17v4"
+      ]));
+      actions.append(mcpButton);
     }
     if (row.id && row.status === "active") {
       const rotateButton = button("", () => showApiKeyRotate(row, onRefresh), "secondary api-key-icon-button api-key-rotate-button");

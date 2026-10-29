@@ -73,6 +73,9 @@ final class AgentManagementUserService
                 // departed user must stop authenticating immediately.
                 (new ApiKeyService())->invalidateByUser($id);
             }
+            if (isset($updates['password_hash'])) {
+                \TokenHub\Services\Mcp\OAuth\OAuthServer::revokeUserGrantsAfterPasswordChange($id);
+            }
             (new AuditService())->write('agent_management.user.update', 'users', $id, array_diff_key($updates, ['password_hash' => true]));
         }
         return $this->user($id, $apiKey);

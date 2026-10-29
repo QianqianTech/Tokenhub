@@ -99,6 +99,17 @@
 		}
 	}
 
+	# Built-in OAuth server for MCP clients (discovery, sign-in page, tokens).
+	# The consent form is redirected to the client's callback after submission,
+	# which form-action 'self' would block, so this path sets its own policy.
+	@oauth path /oauth/* /.well-known/oauth-protected-resource /.well-known/oauth-protected-resource/* /.well-known/oauth-authorization-server /.well-known/oauth-authorization-server/* /.well-known/openid-configuration
+	handle @oauth {
+		header Content-Security-Policy "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'"
+		php_fastcgi {$TOKENHUB_PHP_FASTCGI:unix//run/php/php8.2-fpm-tokenhub.sock} {
+			root {$TOKENHUB_APP_DIR:/var/www/tokenhub}/public
+		}
+	}
+
 	handle /health {
 		php_fastcgi {$TOKENHUB_PHP_FASTCGI:unix//run/php/php8.2-fpm-tokenhub.sock} {
 			root {$TOKENHUB_APP_DIR:/var/www/tokenhub}/public

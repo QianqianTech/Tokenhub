@@ -24,6 +24,7 @@ const TOKENHUB_SCHEDULE = [
     'cleanup.exports' => 300,
     'cleanup.media' => 600,
     'cleanup.external-events' => 3600,
+    'cleanup.mcp-oauth' => 3600,
 ];
 
 $config = new Config($basePath . '/config', $basePath . '/.env');

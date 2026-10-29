@@ -96,6 +96,10 @@ function nextId(rows) {
 }
 
 const sessions = new Map();
+const mcpGrants = [
+  { grant_id: "grt_claude", client_id: "thmcp_client_1", client_name: "Claude", api_key_id: 1, user_id: 1, username: "user001", login_method: "password", status: "active", revoked_reason: null, created_at: timestamp(30), last_used_at: timestamp(5), revoked_at: null },
+  { grant_id: "grt_cc", client_id: "https://claude.ai/oauth/claude-code-client-metadata", client_name: null, api_key_id: 1, user_id: 1, username: "user001", login_method: "api_key", status: "revoked", revoked_reason: "password_changed", created_at: timestamp(90), last_used_at: null, revoked_at: timestamp(60) }
+];
 
 function json(res, status, payload, headers = {}) {
   const requestId = `req_${randomUUID().slice(0, 8)}`;
@@ -279,6 +283,16 @@ async function handleApi(req, res, url) {
       policies: [{ policy_id: 3, name: "研发部月度额度", target_type: "department", target_id: 2, period: "monthly", reset_at: timestamp(-60), limits: { total_tokens: 1000000, request_count: null }, usage: { total_tokens: 920000, request_count: 12, reserved_in_flight: { total_tokens: 4000 } }, remaining: { total_tokens: 80000 } }],
       per_model: []
     });
+  }
+  if (path === "/admin-api/api-keys/mcp-oauth-grants" && method === "GET") {
+    return ok(res, mcpGrants.filter((grant) => String(grant.api_key_id) === url.searchParams.get("api_key_id")));
+  }
+  const grantRevoke = path.match(/^\/admin-api\/api-keys\/mcp-oauth-grants\/([^/]+)\/revoke$/);
+  if (grantRevoke && method === "POST") {
+    const grant = mcpGrants.find((item) => item.grant_id === decodeURIComponent(grantRevoke[1]));
+    if (!grant) return fail(res, 404, "ADMIN_NOT_FOUND", "Authorization not found");
+    Object.assign(grant, { status: "revoked", revoked_reason: "admin", revoked_at: timestamp() });
+    return ok(res, { grant_id: grant.grant_id, revoked: true, status: "revoked" });
   }
   if (path === "/admin-api/quota-adjustments" && method === "POST") {
     const body = req.__body || {};

@@ -87,6 +87,15 @@
 		reverse_proxy realtime-gateway:8090
 	}
 
+	# Built-in OAuth server for MCP clients: discovery documents, the sign-in
+	# page and the token endpoints. The consent form is redirected to the MCP
+	# client's callback after submission, which form-action 'self' would block.
+	@oauth path /oauth/* /.well-known/oauth-protected-resource /.well-known/oauth-protected-resource/* /.well-known/oauth-authorization-server /.well-known/oauth-authorization-server/* /.well-known/openid-configuration
+	handle @oauth {
+		header Content-Security-Policy "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'"
+		php_fastcgi php:9000
+	}
+
 	@php path /health /ready /admin-api/* /screen-api/* /v1/* /download/* /mcp
 	handle @php {
 		php_fastcgi php:9000

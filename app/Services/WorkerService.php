@@ -26,6 +26,7 @@ final class WorkerService
             'cleanup.exports' => $this->cleanupExports(),
             'cleanup.media' => $this->cleanupMedia(),
             'cleanup.external-events' => $this->cleanupExternalEvents(),
+            'cleanup.mcp-oauth' => \TokenHub\Support\SchemaInspector::hasColumn('oauth_grants', 'grant_id') ? (new \TokenHub\Services\Mcp\OAuth\OAuthServer(''))->cleanup() : null,
             'logs.rotate' => $this->rotateLogs($job),
             'logs.archive' => $this->archiveLogs(),
             'logs.cleanup' => $this->cleanupLogs(),

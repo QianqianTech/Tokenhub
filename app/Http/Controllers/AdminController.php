@@ -36,7 +36,24 @@ final class AdminController
     public function login(Request $request): Response
     {
         $data = $request->json();
-        $result = (new AuthService())->login((string) ($data['username'] ?? ''), (string) ($data['password'] ?? ''), $request->clientIp(), $request->header('user-agent', '') ?? '');
+        $username = (string) ($data['username'] ?? '');
+        // Console sign-in throttling, per address and per username, so password
+        // guessing is slow and spreading guesses over addresses does not help.
+        $limit = (int) App::config()->get('app.admin_login_attempts_per_minute', 10);
+        if ($limit > 0) {
+            $limiter = new \TokenHub\Services\ExternalRateLimitService();
+            foreach ([['admin-login-ip', $request->clientIp()], ['admin-login-user', strtolower(trim($username))]] as [$scope, $identity]) {
+                if ($identity === '') {
+                    continue;
+                }
+                $attempt = $limiter->attempt($scope, $identity, $limit);
+                if (($attempt['allowed'] ?? true) !== true) {
+                    return Response::error('ADMIN_LOGIN_RATE_LIMITED', 'Too many sign-in attempts, try again in a minute', 429)
+                        ->withHeader('Retry-After', (string) ($attempt['retry_after'] ?? 60));
+                }
+            }
+        }
+        $result = (new AuthService())->login($username, (string) ($data['password'] ?? ''), $request->clientIp(), $request->header('user-agent', '') ?? '');
         if ($result === null) {
             return Response::error('ADMIN_UNAUTHENTICATED', 'Invalid username or password', 401);
         }
@@ -332,6 +349,7 @@ final class AdminController
         $this->requireNonAdminUserTarget($userId);
         App::db()->execute('UPDATE users SET password_hash = ? WHERE id = ?', [password_hash($password, PASSWORD_DEFAULT), $userId]);
         App::db()->execute('UPDATE admin_sessions SET revoked_at = COALESCE(revoked_at, NOW()) WHERE user_id = ?', [$userId]);
+        \TokenHub\Services\Mcp\OAuth\OAuthServer::revokeUserGrantsAfterPasswordChange($userId);
         (new ApiKeyService())->invalidateByUser($userId);
         (new \TokenHub\Services\AuditService())->write('user.password.reset', 'users', $userId);
 
@@ -502,6 +520,20 @@ final class AdminController
         $ids = is_array($body['model_ids'] ?? null) ? array_map('intval', $body['model_ids']) : null;
 
         return Response::ok((new \TokenHub\Services\ProviderModelSyncService())->catalogPrices((int) $request->params['id'], ($body['apply'] ?? false) === true, $ids));
+    }
+
+    public function mcpOAuthGrants(Request $request): Response
+    {
+        $actor = App::context()->adminUser() ?? [];
+
+        return Response::ok((new \TokenHub\Services\Mcp\OAuth\OAuthServer(''))->listGrants($actor, $request->query));
+    }
+
+    public function revokeMcpOAuthGrant(Request $request): Response
+    {
+        $actor = App::context()->adminUser() ?? [];
+
+        return Response::ok((new \TokenHub\Services\Mcp\OAuth\OAuthServer(''))->adminRevoke($actor, (string) ($request->params['grant_id'] ?? '')));
     }
 
     public function rotateApiKey(Request $request): Response
