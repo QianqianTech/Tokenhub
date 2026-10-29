@@ -145,6 +145,7 @@ final class RagRetrievalService
         }
 
         usort($rankedLists['vector'], static fn (array $a, array $b): int => $b['score'] <=> $a['score']);
+        $rankedLists['vector'] = $this->rehydrateVectorHits($rankedLists['vector'], $datasets);
         $sources = $this->rrfFuse($rankedLists);
         $sources = $this->rerankSources($sources, $queryProfile);
         $sources = $this->applyConfidenceThresholds($sources, $datasets, $queryProfile);
@@ -452,6 +453,71 @@ final class RagRetrievalService
 
         usort($sources, static fn (array $a, array $b): int => ($b['score'] <=> $a['score']) ?: strcmp((string) ($a['chunk_id'] ?? ''), (string) ($b['chunk_id'] ?? '')));
         return array_slice($sources, 0, max(1, $limit));
+    }
+
+    /**
+     * Vector hits carry the payload written at index time. The database is the
+     * source of truth: hits whose chunk is disabled, expired, superseded,
+     * deleted, or no longer in one of the caller's datasets are dropped, and
+     * title/content come from the current row (RAG-003).
+     *
+     * @param list<array<string, mixed>> $hits
+     * @param list<array<string, mixed>> $datasets
+     * @return list<array<string, mixed>>
+     */
+    private function rehydrateVectorHits(array $hits, array $datasets): array
+    {
+        $chunkIds = array_values(array_unique(array_filter(array_map(static fn (array $hit): string => (string) ($hit['chunk_id'] ?? ''), $hits))));
+        if ($chunkIds === []) {
+            return [];
+        }
+        $allowed = [];
+        foreach ($datasets as $dataset) {
+            $allowed[(string) ($dataset['dataset_id'] ?? '')] = true;
+        }
+        $now = gmdate('Y-m-d H:i:s');
+        $rows = App::db()->select(
+            'SELECT c.chunk_id, c.chunk_type, c.title, c.content, c.metadata, d.dataset_id AS external_dataset_id, doc.title AS document_title
+             FROM rag_chunks c
+             JOIN rag_documents doc ON doc.id = c.document_id
+             JOIN rag_uploads u ON u.id = doc.upload_id
+             JOIN rag_vector_datasets d ON d.id = COALESCE(c.dataset_id, doc.dataset_id, u.dataset_id)
+             WHERE c.chunk_id IN (' . implode(',', array_fill(0, count($chunkIds), '?')) . ')
+               AND c.enabled = 1 AND c.lifecycle_status = "active"
+               AND (c.expires_at IS NULL OR c.expires_at > ?)
+               AND doc.deleted_at IS NULL
+               AND (doc.expires_at IS NULL OR doc.expires_at > ?)',
+            [...$chunkIds, $now, $now]
+        );
+        $current = [];
+        foreach ($rows as $row) {
+            if (isset($allowed[(string) $row['external_dataset_id']])) {
+                $current[(string) $row['chunk_id']] = $row;
+            }
+        }
+        $kept = [];
+        foreach ($hits as $hit) {
+            $row = $current[(string) ($hit['chunk_id'] ?? '')] ?? null;
+            if ($row === null || (string) $row['external_dataset_id'] !== (string) ($hit['dataset_id'] ?? '')) {
+                continue;
+            }
+            $hit['title'] = (string) ($row['title'] ?? '');
+            if (!in_array((string) $row['chunk_type'], ['image', 'image_text'], true) || trim((string) ($row['content'] ?? '')) !== '') {
+                $hit['content'] = (string) ($row['content'] ?? '');
+            }
+            $metadata = json_decode((string) ($row['metadata'] ?? '{}'), true);
+            if (is_array($metadata)) {
+                foreach (['heading_path', 'page', 'document_key', 'parent_chunk_id', 'segment_ordinal'] as $field) {
+                    if (isset($metadata[$field]) && $metadata[$field] !== '' && $metadata[$field] !== []) {
+                        $hit[$field] = $metadata[$field];
+                    }
+                }
+            }
+            $hit['document_title'] = (string) ($row['document_title'] ?? '');
+            $kept[] = $hit;
+        }
+
+        return $kept;
     }
 
     /**

@@ -165,21 +165,18 @@ final class RagChunkingService
     private function reconcileDocumentSegments(int $documentId, array $expectedChunkIds): void
     {
         $chunks = App::db()->select('SELECT id, chunk_id, enabled, lifecycle_status FROM rag_chunks WHERE document_id = ?', [$documentId]);
+        $retired = [];
         foreach ($chunks as $chunk) {
             if (in_array((string) $chunk['chunk_id'], $expectedChunkIds, true)) {
                 continue;
             }
-            $chunkId = (int) $chunk['id'];
-            App::db()->execute('UPDATE rag_chunks SET enabled = 0, lifecycle_status = "superseded" WHERE id = ?', [$chunkId]);
-            App::db()->execute(
-                'UPDATE rag_embedding_jobs SET status = "cancelled", locked_at = NULL, lock_token = NULL, dispatched_at = NULL, next_run_at = NULL WHERE chunk_id = ?',
-                [$chunkId]
-            );
-            App::db()->execute(
-                'UPDATE rag_vector_records SET index_status = "deleted", status = "deleted", deleted_at = NOW() WHERE chunk_id = ?',
-                [$chunkId]
-            );
+            if ((string) $chunk['lifecycle_status'] === 'superseded' && (int) $chunk['enabled'] === 0) {
+                continue;
+            }
+            $retired[] = (int) $chunk['id'];
         }
+        // Removes the vectors from the store as well, not only the DB records (RAG-004).
+        (new RagChunkLifecycleService())->disable($retired, 'superseded');
     }
 
     private function id(string $prefix): string

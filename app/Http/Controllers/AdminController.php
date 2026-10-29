@@ -319,6 +319,8 @@ final class AdminController
         $this->requireNonAdminUserTarget($userId);
         $this->requireDepartmentScope($departmentId);
         App::db()->execute('UPDATE users SET department_id = ? WHERE id = ?', [$departmentId, $userId]);
+        // Keys follow their user: RAG grants and quotas of the old department stop applying (RAG-005).
+        App::db()->execute('UPDATE api_keys SET department_id = ? WHERE user_id = ?', [$departmentId, $userId]);
         App::db()->execute('UPDATE admin_sessions SET revoked_at = COALESCE(revoked_at, NOW()) WHERE user_id = ?', [$userId]);
         (new ApiKeyService())->invalidateByUser($userId);
         (new \TokenHub\Services\AuditService())->write('user.department.move', 'users', $userId, ['department_id' => $departmentId]);

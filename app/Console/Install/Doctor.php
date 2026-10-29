@@ -50,6 +50,7 @@ final class Doctor
             'vector_store' => (string) $config->get('rag.vector_store.primary', 'qdrant'),
             'qdrant_url' => (string) $config->get('rag.qdrant.url', ''),
             'qdrant_api_key' => (string) $config->get('rag.qdrant.api_key', ''),
+            'rag_local_embedding_fallback' => (bool) $config->get('rag.embedding.allow_local_fallback', false),
             'paths' => array_filter([
                 'logs' => (string) $config->get('paths.logs', ''),
                 'exports' => (string) $config->get('paths.exports', ''),
@@ -114,6 +115,10 @@ final class Doctor
             $results[] = self::result('fail', 'RAG_VECTOR_STORE', 'RAG_VECTOR_STORE must be qdrant or mysql_fallback.');
         } elseif ($store === 'qdrant' && (string) $settings['qdrant_url'] === '') {
             $results[] = self::result('fail', 'QDRANT_URL', 'QDRANT_URL is required when RAG_VECTOR_STORE=qdrant.');
+        }
+        if (!empty($settings['rag_local_embedding_fallback'])) {
+            // The local fallback is a hashing placeholder, not a model: retrieval quality is random.
+            $results[] = self::result($failOrWarn, 'RAG_ALLOW_LOCAL_EMBEDDING_FALLBACK', 'placeholder hash embeddings are enabled; bind every RAG vector config to an embedding model and set it to false.');
         }
 
         return $results;
@@ -216,6 +221,15 @@ final class Doctor
 
             if ((string) ($settings['initial_admin_password'] ?? '') !== '' && !EnvFile::isPlaceholder((string) $settings['initial_admin_password'])) {
                 $results[] = self::result('warn', 'TOKENHUB_ADMIN_PASSWORD', 'the initial administrator password is still stored in the environment file; remove it after the first login.');
+            }
+
+            try {
+                $unbound = $database->first('SELECT COUNT(*) AS total FROM rag_vector_configs WHERE enabled = 1 AND (provider_id IS NULL OR model_id IS NULL)');
+                $total = (int) ($unbound['total'] ?? 0);
+                $results[] = $total === 0
+                    ? self::result('ok', 'RAG embedding models', 'every enabled vector config is bound to a model')
+                    : self::result('warn', 'RAG embedding models', $total . ' enabled vector config(s) have no embedding model; their datasets cannot be indexed (placeholder vectors are refused unless RAG_ALLOW_LOCAL_EMBEDDING_FALLBACK=true).');
+            } catch (Throwable) {
             }
 
             try {

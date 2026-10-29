@@ -17,11 +17,21 @@ final class RagVectorConfigService
     {
     }
 
+    /** @var null|callable(): QdrantVectorStore process-wide override (tests, tooling) */
+    private static mixed $defaultQdrantFactory = null;
+
+    /** @param null|callable(): QdrantVectorStore $factory */
+    public static function useQdrantFactory(?callable $factory): void
+    {
+        self::$defaultQdrantFactory = $factory;
+    }
+
     public function store(?array $config = null): RagVectorStoreInterface
     {
         $store = (string) ($config['vector_store'] ?? App::config()->get('rag.vector_store.primary', 'qdrant'));
         if ($store === 'qdrant') {
-            $qdrant = is_callable($this->qdrantFactory) ? ($this->qdrantFactory)() : new QdrantVectorStore();
+            $factory = is_callable($this->qdrantFactory) ? $this->qdrantFactory : self::$defaultQdrantFactory;
+            $qdrant = is_callable($factory) ? $factory() : new QdrantVectorStore();
             if ($qdrant->healthy()) {
                 return $qdrant;
             }
