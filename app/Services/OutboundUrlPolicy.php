@@ -111,6 +111,14 @@ final class OutboundUrlPolicy
         if (filter_var($address, FILTER_VALIDATE_IP) === false) {
             return 'invalid';
         }
+        // IPv6 forms that carry an IPv4 address (mapped ::ffff:a.b.c.d,
+        // compatible ::a.b.c.d, NAT64 64:ff9b::/96, 6to4 2002::/16) reach that
+        // IPv4 host: judge them by the embedded address, so e.g.
+        // ::ffff:169.254.169.254 is still the metadata service.
+        $embedded = self::embeddedIpv4($address);
+        if ($embedded !== null) {
+            return $this->category($embedded);
+        }
         if (in_array($address, ['0.0.0.0', '::'], true)) {
             return 'unspecified';
         }
@@ -188,5 +196,28 @@ final class OutboundUrlPolicy
         $mask = (0xFF << (8 - $remainder)) & 0xFF;
 
         return (ord($addressBin[$bytes]) & $mask) === (ord($subnetBin[$bytes]) & $mask);
+    }
+
+    public static function embeddedIpv4(string $address): ?string
+    {
+        if (!str_contains($address, ':')) {
+            return null;
+        }
+        $packed = @inet_pton($address);
+        if ($packed === false || strlen($packed) !== 16) {
+            return null;
+        }
+        $prefix12 = substr($packed, 0, 12);
+        if ($prefix12 === str_repeat("\0", 10) . "\xff\xff" || ($prefix12 === str_repeat("\0", 12) && substr($packed, 12) !== "\0\0\0\0" && substr($packed, 12) !== "\0\0\0\1")) {
+            return inet_ntop(substr($packed, 12)) ?: null;
+        }
+        if ($prefix12 === "\x00\x64\xff\x9b" . str_repeat("\0", 8)) {
+            return inet_ntop(substr($packed, 12)) ?: null;
+        }
+        if (substr($packed, 0, 2) === "\x20\x02") {
+            return inet_ntop(substr($packed, 2, 4)) ?: null;
+        }
+
+        return null;
     }
 }

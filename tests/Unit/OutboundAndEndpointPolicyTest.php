@@ -76,3 +76,12 @@ $mapped = $resolver->resolve('https://example.test/root', '/v1/chat/completions'
 assert_same('https://example.test/root/llm/chat', $mapped['url'], 'Explicit endpoint map wins.');
 assert_same(false, $resolver->resolve('https://example.test', '/v1/responses', ['tokenhub_unsupported_endpoints' => ['/v1/responses']])['ok'], 'Unsupported endpoints are rejected explicitly.');
 assert_same(false, $resolver->resolve('https://example.test', '/v1/embeddings', ['tokenhub_endpoint_map' => '{"/v1/embeddings": null}'])['ok'], 'A null mapping marks an endpoint unsupported.');
+
+// IPv6 addresses that embed an IPv4 address are judged by that address (SSRF).
+$embeddedPolicy = new \TokenHub\Services\OutboundUrlPolicy(static fn (string $host): array => []);
+foreach (['::ffff:169.254.169.254' => 'metadata', '64:ff9b::a9fe:a9fe' => 'metadata', '2002:a9fe:a9fe::1' => 'metadata', '::ffff:10.0.0.1' => 'private', '::ffff:127.0.0.1' => 'loopback', '2606:4700::1111' => 'public'] as $embeddedAddress => $expectedCategory) {
+    assert_same($expectedCategory, $embeddedPolicy->category($embeddedAddress), 'IPv4-embedded IPv6 ' . $embeddedAddress . ' is ' . $expectedCategory . '.');
+}
+$mapped = new \TokenHub\Services\OutboundUrlPolicy(static fn (string $host): array => ['::ffff:169.254.169.254']);
+assert_same('forbidden_address', $mapped->check('https://sneaky.example.com/', \TokenHub\Services\OutboundUrlPolicy::PURPOSE_PROVIDER, ['allow_private' => true])['reason'] ?? null, 'Mapped metadata addresses stay forbidden even where private networks are allowed.');
+
