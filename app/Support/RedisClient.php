@@ -63,6 +63,48 @@ final class RedisClient
         return $value === false ? null : (json_decode($value, true) ?? $value);
     }
 
+    /**
+     * Values of several keys in one round trip (MGET), keyed like the input.
+     *
+     * @param list<string> $keys
+     * @return array<string, mixed>
+     */
+    public function getMany(array $keys): array
+    {
+        if ($keys === []) {
+            return [];
+        }
+        if (!$this->available()) {
+            $values = [];
+            foreach ($keys as $key) {
+                $values[$key] = $this->memoryGet($key);
+            }
+            return $values;
+        }
+        $raw = $this->connection()->mGet($keys);
+        $values = [];
+        foreach ($keys as $index => $key) {
+            $value = is_array($raw) ? ($raw[$index] ?? false) : false;
+            $values[$key] = $value === false ? null : (json_decode((string) $value, true) ?? $value);
+        }
+
+        return $values;
+    }
+
+    /** SET key value NX EX ttl: true when this caller created the key. */
+    public function setIfAbsent(string $key, string $value, int $ttlSeconds): bool
+    {
+        if (!$this->available()) {
+            if ($this->memoryGet($key) !== null) {
+                return false;
+            }
+            $this->memory[$key] = ['value' => $value, 'expires_at' => time() + max(1, $ttlSeconds)];
+            return true;
+        }
+
+        return (bool) $this->connection()->set($key, $value, ['nx', 'ex' => max(1, $ttlSeconds)]);
+    }
+
     public function set(string $key, mixed $value, int $ttlSeconds = 0): bool
     {
         if (!$this->available()) {

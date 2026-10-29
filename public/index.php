@@ -28,8 +28,17 @@ use TokenHub\Support\Response;
 
 App::bootstrap($basePath);
 
+// JSON bodies are decoded in full and take several times their size in
+// memory; cap them below the 32 MB transport limit that file uploads use.
+$jsonLimit = (int) env_value('GATEWAY_MAX_JSON_BYTES', 16 * 1024 * 1024);
+$tooLarge = $jsonLimit > 0
+    && str_contains(strtolower((string) ($_SERVER['CONTENT_TYPE'] ?? '')), 'json')
+    && (int) ($_SERVER['CONTENT_LENGTH'] ?? 0) > $jsonLimit;
+
 try {
-    $response = Kernel::router()->dispatch($_SERVER['REQUEST_METHOD'] ?? 'GET', $_SERVER['REQUEST_URI'] ?? '/');
+    $response = $tooLarge
+        ? Response::error('REQUEST_TOO_LARGE', 'JSON request body exceeds ' . $jsonLimit . ' bytes; upload large media as files instead', 413)
+        : Kernel::router()->dispatch($_SERVER['REQUEST_METHOD'] ?? 'GET', $_SERVER['REQUEST_URI'] ?? '/');
 
     if ($response === null) {
         $response = Response::error('NOT_FOUND', 'Route not found', 404);

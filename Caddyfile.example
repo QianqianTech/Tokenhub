@@ -16,7 +16,8 @@
 }
 
 {$TOKENHUB_SITE_ADDRESS:localhost} {
-	encode zstd gzip
+	# Compression is applied to the static UI only: compressing API responses
+	# buffers server-sent events (/v1 streaming) and delays the first token.
 	{$TOKENHUB_CADDY_TLS}
 	import {$TOKENHUB_TLS_FRAGMENT:/var/lib/tokenhub/caddy/tls-current.caddy}
 
@@ -49,6 +50,7 @@
 
 	handle_path /admin/* {
 		root * {$TOKENHUB_APP_DIR:/var/www/tokenhub}/public/admin
+		encode zstd gzip
 		# ES modules carry no version query: always revalidate (ETag).
 		header Cache-Control "no-cache"
 		try_files {path} /index.html
@@ -57,6 +59,7 @@
 
 	handle_path /screen/* {
 		root * {$TOKENHUB_APP_DIR:/var/www/tokenhub}/public/screen
+		encode zstd gzip
 		# ES modules carry no version query: always revalidate (ETag).
 		header Cache-Control "no-cache"
 		try_files {path} /index.html

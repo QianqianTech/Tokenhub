@@ -14,8 +14,9 @@ use TokenHub\Support\App;
  * open       GATEWAY_CIRCUIT_FAILURES consecutive retryable failures (429,
  *            5xx, timeouts) opened it; the channel is skipped while another
  *            candidate exists, for GATEWAY_CIRCUIT_COOLDOWN_SECONDS.
- * half_open  cooldown elapsed: the next request is allowed as a probe; a
- *            success closes the circuit, a failure re-opens it.
+ * half_open  cooldown elapsed: one request at a time is let through as a
+ *            probe (a short Redis claim); others keep treating the channel as
+ *            open. A success closes the circuit, a failure re-opens it.
  *
  * Client errors (400/401/403/422) never count: they say nothing about the
  * channel's health.
@@ -49,7 +50,13 @@ final class RouteHealth
         if ($modelId <= 0) {
             return;
         }
-        $this->write($modelId, ['failures' => 0, 'open_until' => 0, 'last_success_at' => time()] + $this->read($modelId));
+        $data = $this->read($modelId);
+        // Healthy and recently confirmed: skip the write (hot path).
+        if ((int) ($data['failures'] ?? 0) === 0 && (int) ($data['open_until'] ?? 0) === 0 && (int) ($data['last_success_at'] ?? 0) > time() - 60) {
+            return;
+        }
+        $this->write($modelId, ['failures' => 0, 'open_until' => 0, 'last_success_at' => time()] + $data);
+        $this->releaseProbe($modelId);
     }
 
     public function recordFailure(int $modelId, string $reason, ?int $now = null): void
@@ -71,6 +78,9 @@ final class RouteHealth
             $data['opened_at'] = $now;
         }
         $this->write($modelId, $data);
+        if ($wasHalfOpen) {
+            $this->releaseProbe($modelId);
+        }
     }
 
     /**
@@ -80,12 +90,21 @@ final class RouteHealth
      * @param list<array<string, mixed>> $candidates
      * @return list<array<string, mixed>>
      */
-    public function order(array $candidates): array
+    public function order(array $candidates, ?int $now = null): array
     {
+        $now ??= time();
         $healthy = [];
         $open = [];
+        $ids = array_values(array_unique(array_map(static fn (array $candidate): int => (int) ($candidate['id'] ?? 0), $candidates)));
+        $states = $this->readMany($ids);
         foreach ($candidates as $candidate) {
-            $state = $this->state((int) ($candidate['id'] ?? 0));
+            $id = (int) ($candidate['id'] ?? 0);
+            $openUntil = (int) ($states[$id]['open_until'] ?? 0);
+            $state = $openUntil === 0 ? 'closed' : ($now < $openUntil ? 'open' : 'half_open');
+            if ($state === 'half_open' && !$this->claimProbe($id)) {
+                // Another request is already probing this channel.
+                $state = 'open';
+            }
             $candidate['circuit_state'] = $state;
             if ($state === 'open') {
                 $open[] = $candidate;
@@ -104,6 +123,48 @@ final class RouteHealth
         }
 
         return $status === 0 || $status === 408 || $status === 429 || $status >= 500;
+    }
+
+    private function claimProbe(int $modelId): bool
+    {
+        try {
+            $ttl = max(5, (int) env_value('GATEWAY_CIRCUIT_COOLDOWN_SECONDS', 30));
+            return App::redis()->setIfAbsent(self::PREFIX . 'probe:' . $modelId, (string) time(), $ttl);
+        } catch (Throwable) {
+            return true;
+        }
+    }
+
+    private function releaseProbe(int $modelId): void
+    {
+        try {
+            App::redis()->delete(self::PREFIX . 'probe:' . $modelId);
+        } catch (Throwable) {
+        }
+    }
+
+    /**
+     * @param list<int> $modelIds
+     * @return array<int, array<string, mixed>>
+     */
+    private function readMany(array $modelIds): array
+    {
+        $modelIds = array_values(array_filter($modelIds, static fn (int $id): bool => $id > 0));
+        if ($modelIds === []) {
+            return [];
+        }
+        try {
+            $values = App::redis()->getMany(array_map(static fn (int $id): string => self::PREFIX . $id, $modelIds));
+        } catch (Throwable) {
+            return [];
+        }
+        $states = [];
+        foreach ($modelIds as $id) {
+            $value = $values[self::PREFIX . $id] ?? null;
+            $states[$id] = is_array($value) ? $value : [];
+        }
+
+        return $states;
     }
 
     /**

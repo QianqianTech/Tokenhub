@@ -768,6 +768,17 @@ final class GatewayService
     private function pinStatefulContinuation(GatewayRequest $request, array $candidates, array $apiKey): array
     {
         $previous = $request->payload['previous_response_id'] ?? null;
+        if (is_string($previous) && $previous !== '' && $candidates !== []) {
+            $remembered = \TokenHub\Services\Gateway\GatewayUsageRecorder::rememberedResponseChannel($previous, $apiKey['id'] ?? null);
+            if ($remembered !== null) {
+                foreach ($candidates as $candidate) {
+                    if ((int) ($candidate['id'] ?? 0) === $remembered) {
+                        return [$candidate];
+                    }
+                }
+                return [];
+            }
+        }
         if (!is_string($previous) || $previous === '' || $candidates === [] || !SchemaInspector::hasColumn('usage_records', 'upstream_request_id')) {
             return $previous !== null && $candidates !== [] ? [$candidates[0]] : $candidates;
         }

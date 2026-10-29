@@ -91,6 +91,10 @@ assert_same('open', $health->state($modelId), 'Consecutive failures open the cir
 $ordered = $health->order([['id' => $modelId], ['id' => $modelId + 1]]);
 assert_same($modelId + 1, $ordered[0]['id'], 'Open channels move behind healthy candidates.');
 assert_same('half_open', $health->state($modelId, time() + 3600), 'Cooldown leads to half-open probing.');
+$probeOne = $health->order([['id' => $modelId], ['id' => $modelId + 1]], time() + 3600);
+assert_same([$modelId, 'half_open'], [$probeOne[0]['id'], $probeOne[0]['circuit_state']], 'The first request after the cooldown probes the channel.');
+$probeTwo = $health->order([['id' => $modelId], ['id' => $modelId + 1]], time() + 3600);
+assert_same([$modelId + 1, 'open'], [$probeTwo[0]['id'], $probeTwo[1]['circuit_state']], 'Concurrent requests do not pile onto a half-open channel.');
 $health->recordSuccess($modelId);
 assert_same('closed', $health->state($modelId), 'A success closes the circuit.');
 assert_same(false, RouteHealth::countsAsFailure(400, 'PROVIDER_REJECTED'), 'Client errors do not trip the breaker.');

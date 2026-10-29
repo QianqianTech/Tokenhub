@@ -192,6 +192,21 @@ final class Doctor
         $results[] = $redis->isHealthy()
             ? self::result('ok', 'Redis', 'reachable')
             : self::result('fail', 'Redis', 'cannot connect or authenticate (check REDIS_HOST / REDIS_PASSWORD).');
+        if ($redis->isHealthy()) {
+            // Quota counters and leases live only in Redis: an eviction policy
+            // other than noeviction can silently reset a quota.
+            try {
+                $policy = $redis->connection()->config('GET', 'maxmemory-policy');
+                $value = is_array($policy) ? (string) ($policy['maxmemory-policy'] ?? (array_values($policy)[1] ?? '')) : '';
+                if ($value !== '') {
+                    $results[] = $value === 'noeviction'
+                        ? self::result('ok', 'Redis eviction', 'maxmemory-policy noeviction')
+                        : self::result('warn', 'Redis eviction', "maxmemory-policy is {$value}; set noeviction so quota counters are never evicted.");
+                }
+            } catch (\Throwable) {
+                // CONFIG may be disabled on managed Redis; nothing to report.
+            }
+        }
 
         if ((string) $settings['vector_store'] === 'qdrant') {
             $results[] = self::qdrantResult((string) $settings['qdrant_url'], (string) $settings['qdrant_api_key']);

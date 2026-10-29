@@ -354,26 +354,16 @@ final class WebhookService
      */
     private function post(string $url, string $payload, array $headers): array
     {
-        $context = stream_context_create([
-            'http' => [
-                'method' => 'POST',
-                'header' => implode("\r\n", $headers),
-                'content' => $payload,
-                'ignore_errors' => true,
-                'timeout' => 10,
-                'follow_location' => 0,
-                'max_redirects' => 0,
-            ],
-        ]);
-        $body = @file_get_contents($url, false, $context);
-        $status = 0;
-        foreach ($http_response_header ?? [] as $header) {
-            if (preg_match('/^HTTP\/\S+\s+(\d{3})/', $header, $matches) === 1) {
-                $status = (int) $matches[1];
-                break;
-            }
+        // Re-check at delivery time (DNS may have changed since registration)
+        // and connect to exactly the checked address (no DNS rebinding).
+        $check = (new OutboundUrlPolicy())->check($url, OutboundUrlPolicy::PURPOSE_WEBHOOK);
+        if (!($check['ok'] ?? false)) {
+            return ['status' => 0, 'error' => 'outbound_blocked:' . ($check['reason'] ?? 'denied')];
         }
-        return ['status' => $status, 'error' => $status >= 200 && $status < 300 ? '' : substr(is_string($body) ? $body : 'delivery failed', 0, 500)];
+        $result = PinnedHttpPost::send($url, (string) (($check['addresses'] ?? [])[0] ?? ''), $payload, $headers, 10);
+        $status = $result['status'];
+
+        return ['status' => $status, 'error' => $status >= 200 && $status < 300 ? '' : substr($result['body'] !== '' ? $result['body'] : ($result['error'] !== '' ? $result['error'] : 'delivery failed'), 0, 500)];
     }
 
     /**

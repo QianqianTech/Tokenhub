@@ -278,8 +278,11 @@ fi
 if [ "$INSTALL_REDIS" = 1 ]; then
   info "Configuring Redis ($REDIS_CONF)"
   [ -f "$REDIS_CONF" ] || die "Redis configuration not found."
-  sed -i -E '/^[#[:space:]]*requirepass[[:space:]]/d' "$REDIS_CONF"
-  printf '\n# TokenHub\nrequirepass %s\n' "$REDIS_PASSWORD" >>"$REDIS_CONF"
+  sed -i -E '/^[#[:space:]]*(requirepass|maxmemory-policy|appendonly)[[:space:]]/d' "$REDIS_CONF"
+  # Quota counters, concurrency leases and the job queue live only in Redis:
+  # never evict keys (an evicted counter would silently reset a quota) and
+  # keep an append-only file so a restart does not lose them.
+  printf '\n# TokenHub\nrequirepass %s\nmaxmemory-policy noeviction\nappendonly yes\n' "$REDIS_PASSWORD" >>"$REDIS_CONF"
   grep -Eq '^bind ' "$REDIS_CONF" || printf 'bind 127.0.0.1 -::1\n' >>"$REDIS_CONF"
   systemctl enable "$REDIS_SERVICE" >/dev/null 2>&1 || true
   systemctl restart "$REDIS_SERVICE"

@@ -125,23 +125,9 @@ final class AlertNotifier
             return ['status' => 0, 'error' => 'outbound_blocked:' . ($check['reason'] ?? 'denied')];
         }
         try {
-            $context = stream_context_create(['http' => [
-                'method' => 'POST',
-                'header' => "Content-Type: application/json\r\nUser-Agent: TokenHub-Alerts/1",
-                'content' => $payload,
-                'timeout' => 10,
-                'ignore_errors' => true,
-                'follow_location' => 0,
-            ]]);
-            @file_get_contents($url, false, $context);
-            $status = 0;
-            foreach ($http_response_header ?? [] as $header) {
-                if (preg_match('/^HTTP\/\S+\s+(\d{3})/', $header, $matches) === 1) {
-                    $status = (int) $matches[1];
-                }
-            }
+            $result = PinnedHttpPost::send($url, (string) (($check['addresses'] ?? [])[0] ?? ''), $payload, ['Content-Type: application/json', 'User-Agent: TokenHub-Alerts/1'], 10);
 
-            return $status === 0 ? ['status' => 0, 'error' => 'connection_failed'] : ['status' => $status];
+            return $result['status'] === 0 ? ['status' => 0, 'error' => $result['error'] !== '' ? $result['error'] : 'connection_failed'] : ['status' => $result['status']];
         } catch (Throwable $throwable) {
             return ['status' => 0, 'error' => $throwable->getMessage()];
         }
