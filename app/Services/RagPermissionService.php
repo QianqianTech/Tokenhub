@@ -8,10 +8,11 @@ use TokenHub\Support\App;
 
 final class RagPermissionService
 {
-    private const ORDER = ['read' => 1, 'write' => 2, 'admin' => 3];
+    private const DATASET_SELECT = 'SELECT d.*, k.kb_id AS external_kb_id, k.chunking_profile AS kb_chunking_profile, k.retrieval_profile AS kb_retrieval_profile, k.department_id AS kb_department_id, k.visibility AS kb_visibility, k.owner_user_id AS kb_owner_user_id FROM rag_vector_datasets d JOIN rag_knowledge_bases k ON k.id = d.kb_id';
+    private const ACTIVE = 'd.deleted_at IS NULL AND d.status != "disabled" AND k.deleted_at IS NULL AND k.status != "disabled"';
 
-    /** @var array<string, list<array{type: string, id: int}>> */
-    private array $subjectsCache = [];
+    /** @var array<string, RagAccessResolver> */
+    private array $resolvers = [];
 
     /**
      * @param array<string, mixed> $apiKey
@@ -21,20 +22,30 @@ final class RagPermissionService
     public function listKnowledgeBases(array $apiKey, array $query = []): array
     {
         $limit = max(1, min(100, (int) ($query['limit'] ?? 50)));
+        $resolver = $this->resolver($apiKey);
+        [$where, $params] = $resolver->candidateKnowledgeBaseSql('k');
         $rows = App::db()->select(
-            'SELECT k.*, CASE MAX(CASE b.permission WHEN "admin" THEN 3 WHEN "write" THEN 2 ELSE 1 END) WHEN 3 THEN "admin" WHEN 2 THEN "write" ELSE "read" END AS bound_permission, MAX(b.is_default) AS is_default
-             FROM rag_knowledge_bases k
-             JOIN rag_knowledge_base_bindings b ON b.kb_id = k.id
-             WHERE k.deleted_at IS NULL
-               AND k.status != "disabled"
-               AND ' . $this->subjectWhere('b', $apiKey) . '
-             GROUP BY k.id
-             ORDER BY MAX(b.is_default) DESC, k.id DESC
-             LIMIT ' . $limit
+            'SELECT k.* FROM rag_knowledge_bases k WHERE k.deleted_at IS NULL AND k.status != "disabled" AND ' . $where . ' ORDER BY k.id DESC',
+            $params
         );
+        $defaults = $this->defaultKnowledgeBaseIds($resolver);
+        $visible = [];
+        foreach ($rows as $row) {
+            $level = $resolver->knowledgeBaseLevel($row);
+            if ($level < RagAccessResolver::READ) {
+                $level = $this->bestDatasetLevel($resolver, $row);
+            }
+            if ($level < RagAccessResolver::READ) {
+                continue;
+            }
+            $row['bound_permission'] = RagAccessResolver::name($level);
+            $row['is_default'] = isset($defaults[(int) $row['id']]) ? 1 : 0;
+            $visible[] = $row;
+        }
+        usort($visible, static fn (array $a, array $b): int => [(int) $b['is_default'], (int) $b['id']] <=> [(int) $a['is_default'], (int) $a['id']]);
 
         return [
-            'knowledge_bases' => array_map(fn (array $row): array => $this->publicKnowledgeBase($row), $rows),
+            'knowledge_bases' => array_map(fn (array $row): array => $this->publicKnowledgeBase($row), array_slice($visible, 0, $limit)),
         ];
     }
 
@@ -45,28 +56,29 @@ final class RagPermissionService
      */
     public function listDatasets(array $apiKey, string $kbId, array $query = []): array
     {
-        $kb = $this->knowledgeBase($apiKey, $kbId, 'read');
+        $kb = $this->knowledgeBaseRow($kbId);
+        $resolver = $this->resolver($apiKey);
         $limit = max(1, min(100, (int) ($query['limit'] ?? 50)));
-        $rows = App::db()->select(
-            'SELECT d.*, k.kb_id AS external_kb_id, k.chunking_profile AS kb_chunking_profile, k.retrieval_profile AS kb_retrieval_profile, CASE MAX(CASE b.permission WHEN "admin" THEN 3 WHEN "write" THEN 2 ELSE 1 END) WHEN 3 THEN "admin" WHEN 2 THEN "write" ELSE "read" END AS bound_permission, MAX(b.is_default) AS is_default
-             FROM rag_vector_datasets d
-             JOIN rag_knowledge_bases k ON k.id = d.kb_id
-             JOIN rag_dataset_bindings b ON b.dataset_id = d.id
-             WHERE d.kb_id = ?
-               AND d.deleted_at IS NULL
-               AND d.status != "disabled"
-               AND k.deleted_at IS NULL
-               AND k.status != "disabled"
-               AND ' . $this->subjectWhere('b', $apiKey) . '
-             GROUP BY d.id
-             ORDER BY MAX(b.is_default) DESC, d.id DESC
-             LIMIT ' . $limit,
-            [(int) $kb['id']]
-        );
+        $rows = App::db()->select(self::DATASET_SELECT . ' WHERE d.kb_id = ? AND ' . self::ACTIVE . ' ORDER BY d.id DESC', [(int) $kb['id']]);
+        $defaults = $this->defaultDatasetOrder($resolver);
+        $visible = [];
+        foreach ($rows as $row) {
+            $level = $resolver->datasetLevel($row, $this->kbFromDatasetRow($row));
+            if ($level < RagAccessResolver::READ) {
+                continue;
+            }
+            $row['bound_permission'] = RagAccessResolver::name($level);
+            $row['is_default'] = isset($defaults[(int) $row['id']]) ? 1 : 0;
+            $visible[] = $row;
+        }
+        if ($visible === []) {
+            abort_json('RAG_KB_FORBIDDEN', 'Knowledge base permission denied', 403);
+        }
+        usort($visible, static fn (array $a, array $b): int => [(int) $b['is_default'], (int) $b['id']] <=> [(int) $a['is_default'], (int) $a['id']]);
 
         return [
             'kb_id' => (string) $kb['kb_id'],
-            'datasets' => array_map(fn (array $row): array => $this->publicDataset($row), $rows),
+            'datasets' => array_map(fn (array $row): array => $this->publicDataset($row), array_slice($visible, 0, $limit)),
         ];
     }
 
@@ -76,10 +88,7 @@ final class RagPermissionService
      */
     public function knowledgeBase(array $apiKey, string $kbId, string $permission = 'read'): array
     {
-        $kb = App::db()->first('SELECT * FROM rag_knowledge_bases WHERE kb_id = ? AND deleted_at IS NULL AND status != "disabled"', [$kbId]);
-        if ($kb === null) {
-            abort_json('RAG_KB_NOT_FOUND', 'Knowledge base not found', 404);
-        }
+        $kb = $this->knowledgeBaseRow($kbId);
         if (!$this->hasKnowledgeBasePermission($apiKey, (int) $kb['id'], $permission)) {
             abort_json('RAG_KB_FORBIDDEN', 'Knowledge base permission denied', 403);
         }
@@ -93,14 +102,11 @@ final class RagPermissionService
      */
     public function datasetByExternalId(array $apiKey, string $datasetId, string $permission = 'read'): array
     {
-        $dataset = App::db()->first(
-            'SELECT d.*, k.kb_id AS external_kb_id, k.chunking_profile AS kb_chunking_profile, k.retrieval_profile AS kb_retrieval_profile FROM rag_vector_datasets d JOIN rag_knowledge_bases k ON k.id = d.kb_id WHERE d.dataset_id = ? AND d.deleted_at IS NULL AND d.status != "disabled" AND k.deleted_at IS NULL AND k.status != "disabled"',
-            [$datasetId]
-        );
+        $dataset = App::db()->first(self::DATASET_SELECT . ' WHERE d.dataset_id = ? AND ' . self::ACTIVE, [$datasetId]);
         if ($dataset === null) {
             abort_json('RAG_DATASET_NOT_FOUND', 'Vector dataset not found', 404);
         }
-        if (!$this->hasDatasetPermission($apiKey, (int) $dataset['id'], $permission) || !$this->hasKnowledgeBasePermission($apiKey, (int) $dataset['kb_id'], $permission)) {
+        if ($this->resolver($apiKey)->datasetLevel($dataset, $this->kbFromDatasetRow($dataset)) < RagAccessResolver::level($permission)) {
             abort_json('RAG_DATASET_FORBIDDEN', 'Vector dataset permission denied', 403);
         }
 
@@ -133,8 +139,12 @@ final class RagPermissionService
         }
 
         foreach ($knowledgeBaseIds as $kbId) {
-            $kb = $this->knowledgeBase($apiKey, $kbId, $permission);
-            $datasets = [...$datasets, ...$this->datasetsForKnowledgeBase($apiKey, (int) $kb['id'], $permission)];
+            $kb = $this->knowledgeBaseRow($kbId);
+            $accessible = $this->datasetsForKnowledgeBase($apiKey, (int) $kb['id'], $permission);
+            if ($accessible === []) {
+                abort_json('RAG_KB_FORBIDDEN', 'Knowledge base permission denied', 403);
+            }
+            $datasets = [...$datasets, ...$accessible];
         }
 
         if ($datasets === []) {
@@ -154,7 +164,21 @@ final class RagPermissionService
      */
     public function hasKnowledgeBasePermission(array $apiKey, int $kbId, string $permission): bool
     {
-        return $this->hasBinding('rag_knowledge_base_bindings', 'kb_id', $kbId, $apiKey, $permission);
+        if ($apiKey === []) {
+            return false;
+        }
+        $kb = App::db()->first('SELECT * FROM rag_knowledge_bases WHERE id = ?', [$kbId]);
+        if ($kb === null) {
+            return false;
+        }
+        $required = RagAccessResolver::level($permission);
+        $resolver = $this->resolver($apiKey);
+        if ($resolver->knowledgeBaseLevel($kb) >= $required) {
+            return true;
+        }
+
+        // Read access to any dataset of the knowledge base is enough to see the knowledge base.
+        return $required === RagAccessResolver::READ && $this->bestDatasetLevel($resolver, $kb) >= RagAccessResolver::READ;
     }
 
     /**
@@ -162,7 +186,100 @@ final class RagPermissionService
      */
     public function hasDatasetPermission(array $apiKey, int $datasetId, string $permission): bool
     {
-        return $this->hasBinding('rag_dataset_bindings', 'dataset_id', $datasetId, $apiKey, $permission);
+        if ($apiKey === []) {
+            return false;
+        }
+        $dataset = App::db()->first(self::DATASET_SELECT . ' WHERE d.id = ?', [$datasetId]);
+        if ($dataset === null) {
+            return false;
+        }
+
+        return $this->resolver($apiKey)->datasetLevel($dataset, $this->kbFromDatasetRow($dataset)) >= RagAccessResolver::level($permission);
+    }
+
+    /**
+     * Effective permission summary, used by the admin "access check" view.
+     *
+     * @param array<string, mixed> $apiKey
+     * @return list<array<string, mixed>>
+     */
+    public function effectiveAccess(array $apiKey): array
+    {
+        $resolver = $this->resolver($apiKey);
+        [$where, $params] = $resolver->candidateKnowledgeBaseSql('k');
+        $kbs = App::db()->select('SELECT k.* FROM rag_knowledge_bases k WHERE k.deleted_at IS NULL AND ' . $where . ' ORDER BY k.id', $params);
+        $result = [];
+        foreach ($kbs as $kb) {
+            $datasets = [];
+            foreach (App::db()->select(self::DATASET_SELECT . ' WHERE d.kb_id = ? AND d.deleted_at IS NULL ORDER BY d.id', [(int) $kb['id']]) as $dataset) {
+                $level = $resolver->datasetLevel($dataset, $kb);
+                if ($level >= RagAccessResolver::READ) {
+                    $datasets[] = ['id' => (int) $dataset['id'], 'dataset_id' => (string) $dataset['dataset_id'], 'name' => (string) $dataset['name'], 'acl_mode' => (string) ($dataset['acl_mode'] ?? 'inherit'), 'permission' => RagAccessResolver::name($level)];
+                }
+            }
+            $level = $resolver->knowledgeBaseLevel($kb);
+            if ($level < RagAccessResolver::READ && $datasets === []) {
+                continue;
+            }
+            $result[] = [
+                'id' => (int) $kb['id'],
+                'kb_id' => (string) $kb['kb_id'],
+                'name' => (string) $kb['name'],
+                'visibility' => (string) ($kb['visibility'] ?? 'private'),
+                'permission' => RagAccessResolver::name($level),
+                'datasets' => $datasets,
+            ];
+        }
+
+        return $result;
+    }
+
+    /** @param array<string, mixed> $apiKey */
+    public function resolver(array $apiKey): RagAccessResolver
+    {
+        $cacheKey = json_encode([
+            'id' => (int) ($apiKey['id'] ?? 0),
+            'user_id' => (int) ($apiKey['user_id'] ?? 0),
+            'department_id' => (int) ($apiKey['department_id'] ?? 0),
+        ]) ?: '';
+
+        return $this->resolvers[$cacheKey] ??= new RagAccessResolver($apiKey);
+    }
+
+    /** @return array<string, mixed> */
+    private function knowledgeBaseRow(string $kbId): array
+    {
+        $kb = App::db()->first('SELECT * FROM rag_knowledge_bases WHERE kb_id = ? AND deleted_at IS NULL AND status != "disabled"', [$kbId]);
+        if ($kb === null) {
+            abort_json('RAG_KB_NOT_FOUND', 'Knowledge base not found', 404);
+        }
+
+        return $kb;
+    }
+
+    /**
+     * @param array<string, mixed> $row dataset row from DATASET_SELECT
+     * @return array<string, mixed>
+     */
+    private function kbFromDatasetRow(array $row): array
+    {
+        return [
+            'id' => (int) $row['kb_id'],
+            'department_id' => $row['kb_department_id'] ?? null,
+            'visibility' => $row['kb_visibility'] ?? 'private',
+            'owner_user_id' => $row['kb_owner_user_id'] ?? null,
+        ];
+    }
+
+    /** @param array<string, mixed> $kb */
+    private function bestDatasetLevel(RagAccessResolver $resolver, array $kb): int
+    {
+        $best = RagAccessResolver::NONE;
+        foreach (App::db()->select('SELECT id, acl_mode FROM rag_vector_datasets WHERE kb_id = ? AND deleted_at IS NULL AND status != "disabled"', [(int) $kb['id']]) as $dataset) {
+            $best = max($best, $resolver->datasetLevel($dataset, $kb));
+        }
+
+        return $best;
     }
 
     /**
@@ -171,8 +288,11 @@ final class RagPermissionService
      */
     private function datasetsByName(array $apiKey, string $name, string $permission): array
     {
-        $rows = App::db()->select('SELECT d.*, k.kb_id AS external_kb_id, k.chunking_profile AS kb_chunking_profile, k.retrieval_profile AS kb_retrieval_profile FROM rag_vector_datasets d JOIN rag_knowledge_bases k ON k.id = d.kb_id WHERE d.name = ? AND d.deleted_at IS NULL AND d.status != "disabled" AND k.deleted_at IS NULL AND k.status != "disabled"', [$name]);
-        return array_values(array_filter($rows, fn (array $row): bool => $this->hasDatasetPermission($apiKey, (int) $row['id'], $permission) && $this->hasKnowledgeBasePermission($apiKey, (int) $row['kb_id'], $permission)));
+        $rows = App::db()->select(self::DATASET_SELECT . ' WHERE d.name = ? AND ' . self::ACTIVE, [$name]);
+        $resolver = $this->resolver($apiKey);
+        $required = RagAccessResolver::level($permission);
+
+        return array_values(array_filter($rows, fn (array $row): bool => $resolver->datasetLevel($row, $this->kbFromDatasetRow($row)) >= $required));
     }
 
     /**
@@ -181,83 +301,83 @@ final class RagPermissionService
      */
     private function datasetsForKnowledgeBase(array $apiKey, int $kbId, string $permission): array
     {
-        $rows = App::db()->select('SELECT d.*, k.kb_id AS external_kb_id, k.chunking_profile AS kb_chunking_profile, k.retrieval_profile AS kb_retrieval_profile FROM rag_vector_datasets d JOIN rag_knowledge_bases k ON k.id = d.kb_id WHERE d.kb_id = ? AND d.deleted_at IS NULL AND d.status != "disabled" AND k.deleted_at IS NULL AND k.status != "disabled" ORDER BY d.id', [$kbId]);
-        return array_values(array_filter($rows, fn (array $row): bool => $this->hasDatasetPermission($apiKey, (int) $row['id'], $permission)));
+        $rows = App::db()->select(self::DATASET_SELECT . ' WHERE d.kb_id = ? AND ' . self::ACTIVE . ' ORDER BY d.id', [$kbId]);
+        $resolver = $this->resolver($apiKey);
+        $required = RagAccessResolver::level($permission);
+
+        return array_values(array_filter($rows, fn (array $row): bool => $resolver->datasetLevel($row, $this->kbFromDatasetRow($row)) >= $required));
     }
 
     /**
+     * Default datasets: is_default grants of the caller's subjects, most
+     * specific subject first (key, user, own department, ancestors), then
+     * binding priority. A default knowledge-base grant contributes every
+     * dataset of that knowledge base the caller can read.
+     *
      * @param array<string, mixed> $apiKey
      * @return list<array<string, mixed>>
      */
     private function defaultDatasets(array $apiKey, string $permission): array
     {
-        $subjects = $this->subjects($apiKey);
-        $rows = [];
-        foreach ($subjects as $subject) {
-            $rows = [...$rows, ...App::db()->select(
-                'SELECT d.*, k.kb_id AS external_kb_id, k.chunking_profile AS kb_chunking_profile, k.retrieval_profile AS kb_retrieval_profile FROM rag_dataset_bindings b JOIN rag_vector_datasets d ON d.id = b.dataset_id JOIN rag_knowledge_bases k ON k.id = d.kb_id WHERE b.subject_type = ? AND b.subject_id = ? AND b.is_default = 1 AND d.deleted_at IS NULL AND d.status != "disabled" AND k.deleted_at IS NULL AND k.status != "disabled" ORDER BY b.priority, d.id',
+        $resolver = $this->resolver($apiKey);
+        $order = $this->defaultDatasetOrder($resolver);
+        if ($order === []) {
+            return [];
+        }
+        $ids = array_keys($order);
+        $rows = App::db()->select(self::DATASET_SELECT . ' WHERE d.id IN (' . implode(',', array_fill(0, count($ids), '?')) . ') AND ' . self::ACTIVE, $ids);
+        $required = RagAccessResolver::level($permission);
+        $rows = array_values(array_filter($rows, fn (array $row): bool => $resolver->datasetLevel($row, $this->kbFromDatasetRow($row)) >= $required));
+        usort($rows, static fn (array $a, array $b): int => ($order[(int) $a['id']] <=> $order[(int) $b['id']]) ?: ((int) $a['id'] <=> (int) $b['id']));
+
+        return $rows;
+    }
+
+    /** @return array<int, int> dataset id => sort rank */
+    private function defaultDatasetOrder(RagAccessResolver $resolver): array
+    {
+        $order = [];
+        $now = gmdate('Y-m-d H:i:s');
+        foreach ($resolver->subjects() as $subjectRank => $subject) {
+            $rows = App::db()->select(
+                'SELECT dataset_id, priority, expires_at FROM rag_dataset_bindings WHERE subject_type = ? AND subject_id = ? AND is_default = 1 ORDER BY priority, dataset_id',
                 [$subject['type'], $subject['id']]
-            )];
-        }
-
-        return array_values(array_filter($rows, fn (array $row): bool => $this->hasDatasetPermission($apiKey, (int) $row['id'], $permission) && $this->hasKnowledgeBasePermission($apiKey, (int) $row['kb_id'], $permission)));
-    }
-
-    /**
-     * @param array<string, mixed> $apiKey
-     */
-    private function hasBinding(string $table, string $column, int $id, array $apiKey, string $permission): bool
-    {
-        if ($apiKey === []) {
-            return false;
-        }
-        foreach ($this->subjects($apiKey) as $subject) {
-            $row = App::db()->first("SELECT permission FROM {$table} WHERE {$column} = ? AND subject_type = ? AND subject_id = ?", [$id, $subject['type'], $subject['id']]);
-            if ($row !== null && self::ORDER[(string) $row['permission']] >= self::ORDER[$permission]) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    /**
-     * @param array<string, mixed> $apiKey
-     * @return list<array{type: string, id: int}>
-     */
-    private function subjects(array $apiKey): array
-    {
-        $cacheKey = json_encode([
-            'id' => (int) ($apiKey['id'] ?? 0),
-            'user_id' => (int) ($apiKey['user_id'] ?? 0),
-            'department_id' => (int) ($apiKey['department_id'] ?? 0),
-        ]);
-        if (isset($this->subjectsCache[$cacheKey])) {
-            return $this->subjectsCache[$cacheKey];
-        }
-        $subjects = [];
-        if (!empty($apiKey['id'])) {
-            $subjects[] = ['type' => 'api_key', 'id' => (int) $apiKey['id']];
-        }
-        if (!empty($apiKey['user_id'])) {
-            $subjects[] = ['type' => 'user', 'id' => (int) $apiKey['user_id']];
-        }
-        if (!empty($apiKey['department_id'])) {
-            $department = App::db()->first('SELECT path FROM departments WHERE id = ?', [(int) $apiKey['department_id']]);
-            if ($department === null) {
-                $subjects[] = ['type' => 'department', 'id' => (int) $apiKey['department_id']];
-            } else {
-                $departments = App::db()->select(
-                    'SELECT id FROM departments WHERE ? LIKE CONCAT(path, "%") ORDER BY level ASC',
-                    [(string) $department['path']]
-                );
-                foreach ($departments as $ancestor) {
-                    $subjects[] = ['type' => 'department', 'id' => (int) $ancestor['id']];
+            );
+            foreach ($rows as $row) {
+                if (!empty($row['expires_at']) && (string) $row['expires_at'] <= $now) {
+                    continue;
                 }
+                $order[(int) $row['dataset_id']] ??= $subjectRank * 100000 + (int) ($row['priority'] ?? 100);
+            }
+            $kbRows = App::db()->select(
+                'SELECT d.id AS dataset_id, b.expires_at FROM rag_knowledge_base_bindings b JOIN rag_vector_datasets d ON d.kb_id = b.kb_id WHERE b.subject_type = ? AND b.subject_id = ? AND b.is_default = 1 ORDER BY d.id',
+                [$subject['type'], $subject['id']]
+            );
+            foreach ($kbRows as $row) {
+                if (!empty($row['expires_at']) && (string) $row['expires_at'] <= $now) {
+                    continue;
+                }
+                $order[(int) $row['dataset_id']] ??= $subjectRank * 100000 + 99999;
             }
         }
 
-        return $this->subjectsCache[$cacheKey] = $subjects;
+        return $order;
+    }
+
+    /** @return array<int, true> */
+    private function defaultKnowledgeBaseIds(RagAccessResolver $resolver): array
+    {
+        $order = $this->defaultDatasetOrder($resolver);
+        if ($order === []) {
+            return [];
+        }
+        $ids = array_keys($order);
+        $result = [];
+        foreach (App::db()->select('SELECT DISTINCT kb_id FROM rag_vector_datasets WHERE id IN (' . implode(',', array_fill(0, count($ids), '?')) . ')', $ids) as $row) {
+            $result[(int) $row['kb_id']] = true;
+        }
+
+        return $result;
     }
 
     /**
@@ -300,21 +420,5 @@ final class RagPermissionService
             'created_at' => $row['created_at'] ?? null,
             'updated_at' => $row['updated_at'] ?? null,
         ];
-    }
-
-    private function subjectWhere(string $alias, array $apiKey): string
-    {
-        $parts = [];
-        foreach ($this->subjects($apiKey) as $subject) {
-            $parts[] = sprintf(
-                '(%s.subject_type = "%s" AND %s.subject_id = %d)',
-                $alias,
-                $subject['type'],
-                $alias,
-                $subject['id']
-            );
-        }
-
-        return $parts === [] ? '1 = 0' : '(' . implode(' OR ', $parts) . ')';
     }
 }

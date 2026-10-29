@@ -62,6 +62,7 @@ final class CrudService
         $this->assertWritableTable($table);
         $this->requireSuperAdminForGlobalWrite($table);
         $this->requireWritePermission($table, $data);
+        (new RagAdminScopeGuard())->assertCreateHasOwner(App::context()->adminUser() ?? [], $table, $data);
         $this->assertUserRoleWriteAllowed($table, $data);
         unset($data['expected_updated_at']);
         $this->validateConfigWrite($table, $data, null);
@@ -108,6 +109,14 @@ final class CrudService
         if ($table === 'departments' && array_key_exists('status', $data)) {
             (new DepartmentService())->invalidateDepartmentApiKeys($id);
         }
+        if ($table === 'users' && array_key_exists('department_id', $data)) {
+            // API keys follow their user, so RAG and quota scope move with the user (RAG-005).
+            App::db()->execute('UPDATE api_keys SET department_id = ? WHERE user_id = ?', [(int) $data['department_id'], $id]);
+            $this->invalidateUserApiKeys($id);
+        }
+        if ($table === 'rag_chunks') {
+            (new RagChunkLifecycleService())->afterAdminUpdate($id, $data);
+        }
         (new AuditService())->write('admin.update', $table, $id, $this->auditDetails($table, $data));
         return (new SensitiveDataService())->sanitizeRow($table, App::db()->first("SELECT * FROM {$table} WHERE id = ?", [$id]) ?: ['id' => $id]);
     }
@@ -119,6 +128,17 @@ final class CrudService
         $this->requireSuperAdminForGlobalWrite($table);
         $this->assertExistingScope($table, $id);
         $this->requireWritePermission($table, []);
+        if (in_array($table, ['rag_knowledge_base_bindings', 'rag_dataset_bindings'], true)) {
+            // A grant has no status column: revoking it means removing the row.
+            App::db()->execute("DELETE FROM {$table} WHERE id = ?", [$id]);
+            (new AuditService())->write('rag.acl.revoke', $table, $id);
+            return ['id' => $id, 'disabled' => true];
+        }
+        if ($table === 'rag_chunks') {
+            (new RagChunkLifecycleService())->disable([$id]);
+            (new AuditService())->write('admin.disable', $table, $id);
+            return ['id' => $id, 'disabled' => true];
+        }
         $columns = App::db()->select("SHOW COLUMNS FROM {$table}");
         $names = array_column($columns, 'Field');
         if (in_array('status', $names, true)) {
@@ -803,6 +823,7 @@ final class CrudService
         if ($table === 'api_key_model_quotas' && isset($data['api_key_id']) && !$this->canManageApiKey($actor, (int) $data['api_key_id'])) {
             abort_json('ADMIN_PERMISSION_DENIED', 'API key is outside admin scope', 403);
         }
+        (new RagAdminScopeGuard())->assertWrite($actor, $table, $data);
     }
 
     private function assertUserRoleWriteAllowed(string $table, array $data, ?int $id = null): void
@@ -848,6 +869,11 @@ final class CrudService
             if (!$row || !$permission->canManage($actor, (int) $row['department_id'])) {
                 abort_json('ADMIN_PERMISSION_DENIED', 'Resource is outside admin scope', 403);
             }
+            return;
+        }
+
+        if ((new RagAdminScopeGuard())->handlesTable($table)) {
+            (new RagAdminScopeGuard())->assertExisting($actor, $table, $id);
             return;
         }
 

@@ -146,6 +146,9 @@ final class AdminUserService
         if ($updates !== []) {
             $sets = implode(', ', array_map(static fn (string $field): string => "{$field} = ?", array_keys($updates)));
             App::db()->execute("UPDATE users SET {$sets} WHERE id = ?", [...array_values($updates), $id]);
+            if (array_key_exists('department_id', $updates)) {
+                App::db()->execute('UPDATE api_keys SET department_id = ? WHERE user_id = ?', [$updates['department_id'], $id]);
+            }
             if ($permissionCodes !== null) {
                 $this->syncPermissions($id, $permissionCodes);
             }

@@ -185,15 +185,18 @@ final class ApiKeyService
             $this->assertKnowledgeBaseInAdminScope($dataset);
         }
 
-        App::db()->execute('DELETE FROM rag_knowledge_base_bindings WHERE subject_type = "api_key" AND subject_id = ?', [$id]);
-        App::db()->execute('DELETE FROM rag_dataset_bindings WHERE subject_type = "api_key" AND subject_id = ?', [$id]);
-        $bindings = new RagBindingService();
-        foreach ($knowledgeBaseIds as $knowledgeBaseId) {
-            $bindings->grantKnowledgeBase($knowledgeBaseId, 'api_key', $id);
-        }
-        foreach ($datasetIds as $datasetId) {
-            $bindings->grantDataset($datasetId, 'api_key', $id);
-        }
+        // One transaction: a failure part-way must not leave the key with its grants wiped.
+        App::db()->transaction(function () use ($id, $knowledgeBaseIds, $datasetIds): void {
+            App::db()->execute('DELETE FROM rag_knowledge_base_bindings WHERE subject_type = "api_key" AND subject_id = ?', [$id]);
+            App::db()->execute('DELETE FROM rag_dataset_bindings WHERE subject_type = "api_key" AND subject_id = ?', [$id]);
+            $bindings = new RagBindingService();
+            foreach ($knowledgeBaseIds as $knowledgeBaseId) {
+                $bindings->grantKnowledgeBase($knowledgeBaseId, 'api_key', $id);
+            }
+            foreach ($datasetIds as $datasetId) {
+                $bindings->grantDataset($datasetId, 'api_key', $id);
+            }
+        });
         (new AuditService())->write('api_key.rag_bindings.replace', 'api_keys', $id, ['knowledge_base_ids' => $knowledgeBaseIds, 'dataset_ids' => $datasetIds]);
         return $this->ragBindings($id);
     }

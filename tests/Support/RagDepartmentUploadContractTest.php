@@ -6,7 +6,7 @@ require __DIR__ . '/../bootstrap.php';
 
 $controller = file_get_contents(__DIR__ . '/../../app/Http/Controllers/RagController.php') ?: '';
 $uploads = file_get_contents(__DIR__ . '/../../app/Services/RagUploadService.php') ?: '';
-$permissions = file_get_contents(__DIR__ . '/../../app/Services/RagPermissionService.php') ?: '';
+$permissions = (file_get_contents(__DIR__ . '/../../app/Services/RagPermissionService.php') ?: '') . (file_get_contents(__DIR__ . '/../../app/Services/RagAccessResolver.php') ?: '');
 
 $adminUploadStart = strpos($controller, 'public function adminUpload');
 $adminUploadEnd = strpos($controller, 'public function upload', $adminUploadStart);
