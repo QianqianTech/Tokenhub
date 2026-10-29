@@ -5,7 +5,7 @@ declare(strict_types=1);
 require __DIR__ . '/../bootstrap.php';
 
 $styles = file_get_contents(__DIR__ . '/../../public/admin/assets/css/app.css') ?: '';
-$tableSource = file_get_contents(__DIR__ . '/../../public/admin/assets/js/table.js') ?: '';
+$tableSource = admin_js_bundle() ?: '';
 
 foreach (['name', 'user_name', 'key'] as $column) {
     preg_match(

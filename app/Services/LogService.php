@@ -91,10 +91,20 @@ final class LogService
      */
     public function query(array $filters): array
     {
+        return $this->queryPage($filters)['items'];
+    }
+
+    /**
+     * @param array<string, mixed> $filters
+     * @return array{items: list<array<string, mixed>>, total: int}
+     */
+    public function queryPage(array $filters): array
+    {
         $types = isset($filters['log_type']) && (string) $filters['log_type'] !== ''
             ? [$this->normalizeType((string) $filters['log_type'])]
             : self::LOG_TYPES;
         $limit = min(1000, max(1, (int) ($filters['limit'] ?? 100)));
+        $offset = max(0, (int) ($filters['offset'] ?? 0));
         $rows = [];
 
         foreach ($types as $type) {
@@ -116,7 +126,7 @@ final class LogService
         }
 
         usort($rows, static fn (array $a, array $b): int => strcmp((string) ($b['timestamp'] ?? ''), (string) ($a['timestamp'] ?? '')));
-        return array_slice($rows, 0, $limit);
+        return ['items' => array_slice($rows, $offset, $limit), 'total' => count($rows)];
     }
 
     public function activePath(string $logType): string

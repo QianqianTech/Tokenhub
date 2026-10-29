@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 require __DIR__ . '/../bootstrap.php';
 
-$tableJs = file_get_contents(__DIR__ . '/../../public/admin/assets/js/table.js') ?: '';
+$tableJs = admin_js_bundle() ?: '';
 $externalDoc = file_get_contents(__DIR__ . '/../../docs/external-api-sync.md') ?: '';
 $developmentDoc = file_get_contents(__DIR__ . '/../../docs/development-tasks/13-external-api-sync-agent-calls.md') ?: '';
 

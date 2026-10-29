@@ -1,11 +1,3 @@
-﻿const roleAccess = {
-  user: ["dashboard", "usage-records", "multimodal-tasks", "media-assets", "usage-contents", "content-archive", "export-tasks"],
-  admin: ["dashboard", "admin-chat-sessions", "departments", "users", "api-keys", "api-key-model-quotas", "quota-policies", "usage-records", "multimodal-tasks", "media-assets", "rag-build", "rag-retrieval-lab", "rag-quality", "rag-operations", "rag-dashboard", "rag-template-center", "rag-upload-workbench", "rag-upload-detail", "rag-knowledge-bases", "rag-vector-datasets", "rag-import-templates", "rag-uploads", "rag-image-preview", "rag-vectorization-metrics", "rag-retrieval-evaluation", "rag-image-assets", "rag-embedding-jobs", "rag-evaluation", "rag-answer-feedback", "rag-correction-tasks", "rag-eval-cases", "usage-contents", "content-archive", "export-tasks", "logs", "audit-logs"],
-  super_admin: ["dashboard", "admin-chat-sessions", "departments", "users", "admin-users", "providers", "models", "model-prices", "api-keys", "api-key-model-quotas", "quota-policies", "quota-bindings", "usage-records", "multimodal-tasks", "media-assets", "rag-build", "rag-retrieval-lab", "rag-quality", "rag-operations", "rag-dashboard", "rag-template-center", "rag-upload-workbench", "rag-upload-detail", "rag-knowledge-bases", "rag-knowledge-base-bindings", "rag-vector-datasets", "rag-dataset-bindings", "rag-vector-configs", "rag-import-templates", "rag-uploads", "rag-image-preview", "rag-vectorization-metrics", "rag-retrieval-evaluation", "rag-upload-preview-items", "rag-documents", "rag-chunks", "rag-image-assets", "rag-embedding-jobs", "rag-vector-records", "rag-retrieval-logs", "rag-evaluation", "rag-answer-feedback", "rag-correction-tasks", "rag-retention-policies", "rag-eval-cases", "rag-eval-runs", "rag-eval-results", "usage-contents", "content-archive", "export-tasks", "dashboard-share-links", "dashboard-share-access-logs", "desensitization-policies", "desensitization-events", "log-retention-policies", "log-archive-files", "logs", "alert-events", "audit-logs", "content-retention-policy", "settings-center", "system-settings"]
-};
-
-roleAccess.super_admin.push("permission-config");
-
 export const adminPermissionOptions = [
   ["dashboard.read", "仪表盘查看"],
   ["departments.read", "部门查看"], ["departments.manage", "部门管理"],
@@ -165,6 +157,8 @@ export function formatResourceValue(column, value) {
 
 const option = (column, value) => [value, valueLabel(column, value)];
 const statusOptions = [["", "全部状态"], ...["active", "disabled", "queued", "processing", "succeeded", "failed", "success", "blocked", "timeout"].map((value) => option("status", value))];
+// Metrics a shared screen may show; keys match DashboardService::screenMetric.
+const SCREEN_METRIC_OPTIONS = [["overview", "总览"], ["trends", "趋势"], ["rankings", "排行"], ["performance", "性能"], ["security", "安全"], ["multimodal", "多模态"]];
 const capabilityOptions = [["", "全部能力"], ...["text_generation", "vision_understanding", "video_understanding", "audio_understanding", "embedding", "asr", "tts", "image_generation", "video_generation", "rerank", "moderation", "music_generation", "realtime"].map((value) => option("capability", value))];
 
 export const columnLabels = {
@@ -305,17 +299,6 @@ export function columnLabel(column) {
   return columnLabels[column] || column;
 }
 
-export const navigationSections = [
-  { key: "operations", label: "运营", symbol: "运", defaultOpen: true, items: ["dashboard", "admin-chat-sessions", "dashboard-share-links", "dashboard-share-access-logs"] },
-  { key: "organization", label: "组织", symbol: "组", items: ["departments", "users"] },
-  { key: "models", label: "模型", symbol: "模", items: ["providers", "models", "model-prices"] },
-  { key: "access", label: "访问", symbol: "钥", items: ["api-keys", "api-key-model-quotas", "quota-policies", "quota-bindings"] },
-  { key: "usage", label: "用量", symbol: "量", items: ["usage-records", "multimodal-tasks", "media-assets"] },
-  { key: "security", label: "安全", symbol: "安", items: ["desensitization-policies", "desensitization-events"] },
-  { key: "logs", label: "日志", symbol: "志", items: ["usage-contents", "content-archive", "export-tasks", "logs", "log-retention-policies", "log-archive-files", "alert-events", "audit-logs"] },
-  { key: "system", label: "\u7cfb\u7edf\u8bbe\u7f6e", symbol: "设", items: ["content-retention-policy", "settings-center", "admin-users", "permission-config", "system-settings"] }
-];
-
 export const resources = {
   "dashboard": { label: "智慧分析", group: "运营" },
   "admin-chat-sessions": { label: "会话测试", group: "运营", readOnly: true },
@@ -340,17 +323,17 @@ export const resources = {
     ]
   },
   "admin-users": {
-    label: "\u7ba1\u7406\u5458\u7ba1\u7406", group: "\u7cfb\u7edf\u8bbe\u7f6e",
+    label: "管理员管理", group: "系统设置",
     columns: ["id", "username", "department_id", "role", "admin_type", "admin_scope", "permissions", "managed_department_ids", "status", "last_login_at", "created_at"],
     form: [
-      { name: "department_id", label: "\u6240\u5c5e\u90e8\u95e8", type: "select", coerce: "number", reference: "departments" },
-      { name: "username", label: "\u7ba1\u7406\u5458\u8d26\u53f7" },
-      { name: "password", label: "\u521d\u59cb\u5bc6\u7801", type: "password" },
-      { name: "role", label: "\u89d2\u8272", type: "select", options: ["admin", "super_admin"].map((value) => option("role", value)) },
+      { name: "department_id", label: "所属部门", type: "select", coerce: "number", reference: "departments" },
+      { name: "username", label: "管理员账号" },
+      { name: "password", label: "初始密码", type: "password" },
+      { name: "role", label: "角色", type: "select", options: ["admin", "super_admin"].map((value) => option("role", value)) },
       { name: "admin_type", label: "管理员类型", type: "select", options: [["full_admin", "普通管理员（全部业务能力）"], ["user_admin", "用户管理员"], ["rag_admin", "RAG 管理员"], ["api_admin", "API 管理员"], ["custom", "自定义管理员"]] },
       { name: "admin_scope", label: "数据范围", type: "select", options: [["global", "全局"], ["departments", "授权部门及子部门"]] },
       { name: "permissions", label: "单独授权（勾选后覆盖预设权限）", type: "multiselect", options: adminPermissionOptions, optional: true, size: 12 },
-      { name: "managed_department_ids", label: "\u6388\u6743\u7ba1\u7406\u90e8\u95e8", type: "multiselect", coerce: "number", reference: "departments", optional: true, size: 8 }
+      { name: "managed_department_ids", label: "授权管理部门", type: "multiselect", coerce: "number", reference: "departments", optional: true, size: 8 }
     ]
   },
   "permission-config": { label: "权限配置", group: "系统设置", readOnly: true },
@@ -437,7 +420,7 @@ export const resources = {
       { name: "input_token_limit", label: "输入 Token 限制，0 或留空表示不限制", type: "number" },
       { name: "output_token_limit", label: "输出 Token 限制，0 或留空表示不限制", type: "number" },
       { name: "total_token_limit", label: "总 Token 限制，0 或留空表示不限制", type: "number" },
-      { name: "cost_limit", label: "成本限制，0 或留空表示不限制" },
+      { name: "cost_limit", label: "成本限制，0 或留空表示不限制", optional: true },
       { name: "concurrency_limit", label: "并发限制，0 或留空表示不限制", type: "number" },
       { name: "status", label: "状态", type: "select", options: ["active", "disabled"].map((value) => option("status", value)) }
     ]
@@ -456,7 +439,7 @@ export const resources = {
   "usage-contents": { label: "内容留存", group: "日志", readOnly: true, columns: ["id", "usage_record_id", "retention_mode", "summary", "expires_at", "cleaned_at", "created_at"], exportType: "session_archive" },
   "content-archive": { label: "会话存档", group: "日志", readOnly: true, columns: ["content_id", "request_id", "session_id", "user_id", "department_id", "model_name", "status", "retention_mode", "created_at", "cleaned_at"], exportType: "session_archive" },
   "export-tasks": { label: "导出任务", group: "日志", readOnly: true, columns: ["id", "export_id", "export_type", "status", "file_path", "error_code", "expires_at", "created_at"] },
-  "dashboard-share-links": { label: "大屏分享", group: "运营", columns: ["id", "share_code", "name", "username", "scope_type", "scope_ids", "allowed_metrics", "allow_drilldown", "allowed_ip_cidrs", "expires_at", "status"], form: [{ name: "share_code", label: "链接码", optional: true }, { name: "name", label: "名称" }, { name: "scope_type", label: "范围", type: "select", options: ["global", "department", "user", "api_key"].map((value) => option("scope_type", value)) }, { name: "scope_ids", label: "范围 ID 列表 JSON", type: "json", optional: true }, { name: "allowed_metrics", label: "允许指标列表 JSON", type: "json", optional: true }, { name: "allow_drilldown", label: "允许下钻", type: "select", options: [[0, "否"], [1, "是"]] }, { name: "allowed_ip_cidrs", label: "允许 IP 网段（每行一个，留空不限）", type: "cidr-list", optional: true }, { name: "expires_at", label: "访问截止时间", optional: true }, { name: "status", label: "状态", type: "select", options: ["active", "disabled"].map((value) => option("status", value)) }] },
+  "dashboard-share-links": { label: "大屏分享", group: "运营", columns: ["id", "share_code", "name", "username", "scope_type", "scope_ids", "allowed_metrics", "allow_drilldown", "allowed_ip_cidrs", "expires_at", "status"], form: [{ name: "share_code", label: "链接码", optional: true }, { name: "name", label: "名称" }, { name: "scope_type", label: "范围", type: "select", options: ["global", "department", "user", "api_key"].map((value) => option("scope_type", value)) }, { name: "scope_ids", label: "范围对象", type: "remote-multiselect", lookup: "departments", coerce: "number", optional: true, scopeOf: "scope_type" }, { name: "allowed_metrics", label: "允许查看的指标（不选表示全部）", type: "multiselect", optional: true, options: SCREEN_METRIC_OPTIONS }, { name: "allow_drilldown", label: "允许下钻", type: "select", options: [[0, "否"], [1, "是"]] }, { name: "allowed_ip_cidrs", label: "允许 IP 网段（每行一个，留空不限）", type: "cidr-list", optional: true }, { name: "expires_at", label: "访问截止时间", optional: true }, { name: "status", label: "状态", type: "select", options: ["active", "disabled"].map((value) => option("status", value)) }] },
   "dashboard-share-access-logs": { label: "大屏访问日志", group: "运营", readOnly: true, columns: ["id", "share_link_id", "event_type", "client_ip", "reason", "created_at"] },
   "desensitization-policies": { label: "脱敏策略", group: "安全", columns: ["id", "name", "scope_type", "scope_id", "action", "status"], form: [{ name: "name", label: "名称" }, { name: "scope_type", label: "范围类型", type: "select", options: ["system", "department", "api_key", "model", "provider"].map((value) => option("scope_type", value)) }, { name: "scope_id", label: "范围 ID", type: "number", optional: true }, { name: "parsers", label: "解析器 JSON", type: "json" }, { name: "action", label: "动作", type: "select", options: ["block", "replace", "summary"].map((value) => option("action", value)) }] },
   "desensitization-events": { label: "脱敏事件", group: "安全", readOnly: true, columns: ["id", "policy_id", "request_id", "target_type", "action", "match_count", "summary", "created_at"] },
@@ -486,7 +469,7 @@ const navigationLabels = {
   "admin-chat-sessions": { label: "会话测试", group: "运营" },
   "departments": { label: "部门管理", group: "组织" },
   "users": { label: "用户管理", group: "组织" },
-  "admin-users": { label: "\u7ba1\u7406\u5458\u7ba1\u7406", group: "\u7cfb\u7edf\u8bbe\u7f6e" },
+  "admin-users": { label: "管理员管理", group: "系统设置" },
   "providers": { label: "厂商管理", group: "模型" },
   "models": { label: "模型管理", group: "模型" },
   "model-prices": { label: "价格配置", group: "模型" },
@@ -607,8 +590,6 @@ const ragResourceDefinitions = {
   "rag-eval-results": { label: "检索评估结果", group: "RAG知识库", columns: ["id", "run_id", "case_id", "hit_rank", "passed", "created_at"] }
 };
 Object.assign(resources, ragResourceDefinitions);
-const ragNavigationItems = ["rag-build", "rag-retrieval-lab", "rag-quality", "rag-operations"];
-navigationSections.splice(5, 0, { key: "rag", label: "RAG知识库", symbol: "知", items: ragNavigationItems });
 
 for (const [key, metadata] of Object.entries(navigationLabels)) {
   if (resources[key]) {
@@ -616,31 +597,20 @@ for (const [key, metadata] of Object.entries(navigationLabels)) {
   }
 }
 
-export function navSectionsForRole(role) {
-  const allowed = new Set(roleAccess[role] || roleAccess.user);
-  return navigationSections
-    .map((section) => ({
-      ...section,
-      items: section.items
-        .filter((key) => allowed.has(key) && resources[key])
-        .map((key) => [key, resources[key]])
-    }))
-    .filter((section) => section.items.length > 0);
-}
+// Pages that are not CRUD resources but still need a capability.
+const specialPageCapabilities = {
+  "operations-status": "operations.read"
+};
 
-export function resourcesForRole(role) {
-  const allowed = roleAccess[role] || roleAccess.user;
-  return allowed.map((key) => [key, resources[key]]).filter(([, value]) => value);
+// Single source of truth for "which capability opens this page".
+export function pageCapability(key) {
+  return specialPageCapabilities[key] || resourceCapability(key);
 }
 
 export function resourcesForUser(user) {
-  const role = user?.role || "user";
-  if (!Array.isArray(user?.permissions)) {
-    return resourcesForRole(role);
-  }
-  const permissions = new Set(user.permissions);
+  const permissions = new Set(Array.isArray(user?.permissions) ? user.permissions : []);
   return Object.entries(resources).filter(([key]) => {
-    const capability = resourceCapability(key);
+    const capability = pageCapability(key);
     return capability !== null && permissions.has(capability);
   });
 }
@@ -675,10 +645,14 @@ export function filterFields(resourceKey) {
     return fields;
   }
   if (resourceKey === "models") {
+    // Backend filters models by provider_id, capability and status (CrudService::filterColumns);
+    // keyword is a partial match on the model or upstream name; support defaults
+    // (empty) to only the models the gateway can serve (ModelSupportPolicy).
     return [
+      { name: "keyword", label: "模型名称", optional: true },
       { name: "status", label: "状态", type: "select", options: statusOptions },
+      { name: "provider_id", label: "厂商 ID", type: "number", optional: true },
       { name: "capability", label: "能力", type: "select", options: capabilityOptions },
-      // Server default (empty) = only models the gateway can serve.
       { name: "support", label: "网关支持", type: "select", options: [["", "仅可调用的模型"], ["unsupported", "不支持的模型"], ["all", "全部模型"]] }
     ];
   }

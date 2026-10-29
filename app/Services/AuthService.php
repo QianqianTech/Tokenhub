@@ -29,6 +29,38 @@ final class AuthService
         return ['user' => $this->publicUser($user), 'session' => $session, 'csrf' => $csrf];
     }
 
+    /**
+     * Expiry time (server clock, Y-m-d H:i:s) of an active admin session, or null.
+     */
+    public function sessionExpiresAt(string $session): ?string
+    {
+        if ($session === '') {
+            return null;
+        }
+        $row = App::db()->first(
+            'SELECT expires_at FROM admin_sessions WHERE session_hash = ? AND revoked_at IS NULL AND expires_at > NOW()',
+            [Crypto::hashKey($session)]
+        );
+        return $row ? (string) $row['expires_at'] : null;
+    }
+
+    /**
+     * Slides an active session forward by the configured TTL. Expired or revoked
+     * sessions cannot be renewed.
+     */
+    public function renew(string $session): ?string
+    {
+        if ($session === '') {
+            return null;
+        }
+        $ttlMinutes = (int) App::config()->get('app.admin_session_ttl_minutes', 120);
+        App::db()->execute(
+            'UPDATE admin_sessions SET expires_at = DATE_ADD(NOW(), INTERVAL ? MINUTE) WHERE session_hash = ? AND revoked_at IS NULL AND expires_at > NOW()',
+            [$ttlMinutes, Crypto::hashKey($session)]
+        );
+        return $this->sessionExpiresAt($session);
+    }
+
     public function logout(string $session): void
     {
         App::db()->execute('UPDATE admin_sessions SET revoked_at = NOW() WHERE session_hash = ?', [Crypto::hashKey($session)]);

@@ -5,7 +5,7 @@ declare(strict_types=1);
 require __DIR__ . '/../bootstrap.php';
 
 $resourcesJs = file_get_contents(__DIR__ . '/../../public/admin/assets/js/resources.js') ?: '';
-$tableJs = file_get_contents(__DIR__ . '/../../public/admin/assets/js/table.js') ?: '';
+$tableJs = admin_js_bundle() ?: '';
 
 assert_true(
     str_contains($resourcesJs, '"price_categories"'),

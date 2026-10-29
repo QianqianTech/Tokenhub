@@ -68,6 +68,9 @@ final class ApiKeyService
      */
     public function update(int $id, array $data, string $actorType = 'admin'): array
     {
+        $modelIds = array_key_exists('model_ids', $data) && is_array($data['model_ids'])
+            ? $this->normalizeModelIds($data['model_ids'])
+            : null;
         $fields = $this->sanitizeForStorage($data);
         $allowed = ['name', 'status', 'allowed_ip_cidrs', 'expires_at'];
         $updates = [];
@@ -99,29 +102,59 @@ final class ApiKeyService
             $updates['disabled_by'] = $updates['status'] === 'disabled' ? self::disabledByValue($actorType) : null;
         }
 
-        if ($updates !== []) {
-            $sets = implode(', ', array_map(fn (string $field): string => "{$field} = ?", array_keys($updates)));
-            App::db()->execute("UPDATE api_keys SET {$sets} WHERE id = ?", [...array_values($updates), $id]);
-        }
+        // Key attributes, model permissions and management scopes change
+        // together or not at all.
+        App::db()->transaction(function () use ($id, $updates, $modelIds, $scopeChange): void {
+            if ($updates !== []) {
+                $sets = implode(', ', array_map(fn (string $field): string => "{$field} = ?", array_keys($updates)));
+                App::db()->execute("UPDATE api_keys SET {$sets} WHERE id = ?", [...array_values($updates), $id]);
+            }
+            if ($modelIds !== null) {
+                $this->writeModelPermissions($id, $modelIds);
+            }
+            if ($scopeChange !== null) {
+                (new ApiKeyManagementScopeService())->replace($id, $scopeChange);
+                (new ApiKeyManagementScopeService())->pruneDescendants($id);
+            }
+        });
         if ($scopeChange !== null) {
-            (new ApiKeyManagementScopeService())->replace($id, $scopeChange);
-            (new ApiKeyManagementScopeService())->pruneDescendants($id);
             $updates['management_scopes'] = $scopeChange;
         }
 
         $this->invalidateById($id);
-        (new AuditService())->write('api_key.update', 'api_keys', $id, $updates);
-        return (new SensitiveDataService())->sanitizeRow('api_keys', App::db()->first('SELECT * FROM api_keys WHERE id = ?', [$id]) ?: ['id' => $id]);
+        (new AuditService())->write('api_key.update', 'api_keys', $id, $modelIds === null ? $updates : [...$updates, 'model_ids' => $modelIds]);
+        $row = (new SensitiveDataService())->sanitizeRow('api_keys', App::db()->first('SELECT * FROM api_keys WHERE id = ?', [$id]) ?: ['id' => $id]);
+        if ($modelIds !== null) {
+            $row['model_ids'] = $this->modelIds($id);
+        }
+        return $row;
+    }
+
+    /**
+     * @param array<int, mixed> $modelIds
+     * @return list<int>
+     */
+    private function normalizeModelIds(array $modelIds): array
+    {
+        return array_values(array_unique(array_filter(array_map('intval', $modelIds), fn (int $id): bool => $id > 0)));
+    }
+
+    /**
+     * @param list<int> $modelIds
+     */
+    private function writeModelPermissions(int $id, array $modelIds): void
+    {
+        App::db()->execute('DELETE FROM api_key_model_permissions WHERE api_key_id = ?', [$id]);
+        foreach ($modelIds as $modelId) {
+            App::db()->execute('INSERT IGNORE INTO api_key_model_permissions (api_key_id, model_id) VALUES (?, ?)', [$id, $modelId]);
+        }
     }
 
     public function replaceModels(int $id, array $modelIds): array
     {
-        $modelIds = array_values(array_unique(array_filter(array_map('intval', $modelIds), fn (int $id): bool => $id > 0)));
+        $modelIds = $this->normalizeModelIds($modelIds);
         App::db()->transaction(function () use ($id, $modelIds): void {
-            App::db()->execute('DELETE FROM api_key_model_permissions WHERE api_key_id = ?', [$id]);
-            foreach ($modelIds as $modelId) {
-                App::db()->execute('INSERT IGNORE INTO api_key_model_permissions (api_key_id, model_id) VALUES (?, ?)', [$id, $modelId]);
-            }
+            $this->writeModelPermissions($id, $modelIds);
         });
 
         $this->invalidateById($id);

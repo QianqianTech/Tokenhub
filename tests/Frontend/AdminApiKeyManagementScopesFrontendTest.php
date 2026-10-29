@@ -4,7 +4,8 @@ declare(strict_types=1);
 
 require __DIR__ . '/../bootstrap.php';
 
-$tableJs = file_get_contents(__DIR__ . '/../../public/admin/assets/js/table.js') ?: '';
+// The former single-file table.js is split into modules; assertions run on the whole admin bundle.
+$tableJs = admin_js_bundle();
 $adminCss = file_get_contents(__DIR__ . '/../../public/admin/assets/css/app.css') ?: '';
 
 $functionSource = static function (string $source, string $name): string {

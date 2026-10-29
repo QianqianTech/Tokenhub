@@ -1,6 +1,8 @@
 let csrfToken = "";
 let authRequiredHandler = () => {};
 let errorHandler = () => {};
+let routeSignal = null;
+let lastRequestId = "";
 
 const adminErrorMessages = {
   ADMIN_UNAUTHENTICATED: "登录状态已失效，请重新登录",
@@ -35,6 +37,8 @@ const adminErrorMessages = {
   PROVIDER_INVALID_RESPONSE: "上游模型返回格式异常",
   BAD_RESPONSE: "服务返回格式异常",
   BAD_INPUT: "输入内容格式不正确",
+  NETWORK_ERROR: "网络连接失败，请检查网络后重试",
+  FORM_INVALID: "请先修正标出的字段",
   REQUEST_FAILED: "请求失败，请稍后重试",
   NOT_FOUND: "请求的资源不存在",
   INTERNAL_ERROR: "服务内部异常，请稍后重试"
@@ -47,6 +51,10 @@ export function adminErrorMessage(error, fallback = "请求失败，请稍后重
   return requestId ? `${message}（请求编号：${requestId}）` : message;
 }
 
+export function isAbortError(error) {
+  return error?.name === "AbortError";
+}
+
 export function configureApi({ onAuthRequired, onError } = {}) {
   authRequiredHandler = typeof onAuthRequired === "function" ? onAuthRequired : authRequiredHandler;
   errorHandler = typeof onError === "function" ? onError : errorHandler;
@@ -56,74 +64,140 @@ export function setCsrf(token) {
   csrfToken = token || "";
 }
 
+// Read requests made while a page is shown are tied to that page: when the
+// user navigates away the router aborts the signal and the stale page code
+// simply stops (its pending promise never settles), so it cannot write into
+// the new page or report a spurious error.
+export function setRouteSignal(signal) {
+  routeSignal = signal || null;
+}
+
+
+function rememberRequestId(requestId) {
+  if (!requestId) {
+    return;
+  }
+  lastRequestId = requestId;
+  const node = typeof document !== "undefined" ? document.getElementById("request-id") : null;
+  if (node) {
+    node.textContent = requestId;
+  }
+}
+
 export function queryString(params = {}) {
   const search = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) {
     if (value !== undefined && value !== null && value !== "") {
-      search.set(key, value);
+      search.set(key, Array.isArray(value) ? value.join(",") : value);
     }
   }
   const text = search.toString();
   return text ? `?${text}` : "";
 }
 
-export async function api(path, options = {}) {
-  const { query, ...fetchOptions } = options;
-  const headers = {
-    "Accept": "application/json",
-    ...(fetchOptions.body ? { "Content-Type": "application/json" } : {}),
+function requestHeaders(fetchOptions, accept) {
+  return {
+    "Accept": accept,
+    ...(fetchOptions.body && !(fetchOptions.body instanceof FormData) ? { "Content-Type": "application/json" } : {}),
     ...(csrfToken ? { "X-CSRF-Token": csrfToken } : {}),
     ...(fetchOptions.headers || {})
   };
-  const response = await fetch(`${path}${queryString(query)}`, {
-    credentials: "same-origin",
-    ...fetchOptions,
-    headers
-  });
+}
+
+function resolveSignal(fetchOptions) {
+  if (fetchOptions.signal !== undefined) {
+    return { signal: fetchOptions.signal || undefined, routeBound: false };
+  }
+  const method = String(fetchOptions.method || "GET").toUpperCase();
+  // Writes are never aborted on navigation: the server may already have applied them.
+  if (method === "GET" && routeSignal) {
+    return { signal: routeSignal, routeBound: true };
+  }
+  return { signal: undefined, routeBound: false };
+}
+
+const never = () => new Promise(() => {});
+
+function buildError(payload, response, requestId) {
+  const error = new Error(payload?.error?.message || adminErrorMessages.REQUEST_FAILED);
+  error.code = payload?.error?.code || (response?.status === 404 ? "NOT_FOUND" : "REQUEST_FAILED");
+  error.status = response?.status || 0;
+  error.requestId = payload?.request_id || requestId;
+  error.details = payload?.error?.details;
+  return error;
+}
+
+function dispatchFailure(error) {
+  if (error.code === "ADMIN_UNAUTHENTICATED" || error.status === 401) {
+    authRequiredHandler(error);
+  } else if (error.code === "ADMIN_CSRF_INVALID" || error.status === 403 || error.status === 419) {
+    errorHandler(error);
+  }
+}
+
+export async function api(path, options = {}) {
+  // silent: the caller handles failures itself (no global error banner).
+  const { query, silent = false, ...fetchOptions } = options;
+  const { signal, routeBound } = resolveSignal(fetchOptions);
+  let response;
+  try {
+    response = await fetch(`${path}${queryString(query)}`, {
+      credentials: "same-origin",
+      ...fetchOptions,
+      signal,
+      headers: requestHeaders(fetchOptions, "application/json")
+    });
+  } catch (cause) {
+    if (isAbortError(cause)) {
+      if (routeBound) {
+        return never();
+      }
+      throw cause;
+    }
+    const error = new Error(adminErrorMessages.NETWORK_ERROR);
+    error.code = "NETWORK_ERROR";
+    error.status = 0;
+    throw error;
+  }
   const requestId = response.headers.get("X-Request-Id") || "";
-  const payload = await response.json().catch(() => ({
-    ok: false,
-    error: { code: "BAD_RESPONSE", message: "服务返回格式异常" },
-    request_id: requestId
-  }));
+  let payload;
+  try {
+    payload = await response.json();
+  } catch (cause) {
+    if (isAbortError(cause) && routeBound) {
+      return never();
+    }
+    payload = { ok: false, error: { code: "BAD_RESPONSE", message: "服务返回格式异常" }, request_id: requestId };
+  }
+  rememberRequestId(payload?.request_id || requestId);
   if (!response.ok || payload.ok === false) {
-    const error = new Error(payload.error?.message || adminErrorMessages.REQUEST_FAILED);
-    error.code = payload.error?.code || "REQUEST_FAILED";
-    error.status = response.status;
-    error.requestId = payload.request_id || requestId;
-    if (error.code === "ADMIN_UNAUTHENTICATED" || response.status === 401) {
-      authRequiredHandler(error);
-    } else if (error.code === "ADMIN_CSRF_INVALID" || response.status === 403 || response.status === 419) {
-      errorHandler(error);
+    const error = buildError(payload, response, requestId);
+    if (!silent || error.status === 401) {
+      dispatchFailure(error);
     }
     throw error;
   }
-  return { data: payload.data, requestId: payload.request_id || requestId };
+  const totalHeader = response.headers.get("X-Total-Count");
+  const total = totalHeader === null || totalHeader === "" ? null : Number(totalHeader);
+  return { data: payload.data, requestId: payload.request_id || requestId, total: Number.isFinite(total) ? total : null };
 }
 
 export async function streamApi(path, options = {}, onEvent = () => {}) {
   const { query, ...fetchOptions } = options;
-  const headers = {
-    "Accept": "text/event-stream",
-    ...(fetchOptions.body ? { "Content-Type": "application/json" } : {}),
-    ...(csrfToken ? { "X-CSRF-Token": csrfToken } : {}),
-    ...(fetchOptions.headers || {})
-  };
   const response = await fetch(`${path}${queryString(query)}`, {
     credentials: "same-origin",
     ...fetchOptions,
-    headers
+    headers: requestHeaders(fetchOptions, "text/event-stream")
   });
   const requestId = response.headers.get("X-Request-Id") || "";
+  rememberRequestId(requestId);
   if (!response.ok || !response.body) {
     const payload = await response.json().catch(() => ({
       error: { code: "BAD_RESPONSE", message: "服务返回格式异常" },
       request_id: requestId
     }));
-    const error = new Error(payload.error?.message || adminErrorMessages.REQUEST_FAILED);
-    error.code = payload.error?.code || "REQUEST_FAILED";
-    error.status = response.status;
-    error.requestId = payload.request_id || requestId;
+    const error = buildError(payload, response, requestId);
+    dispatchFailure(error);
     throw error;
   }
 

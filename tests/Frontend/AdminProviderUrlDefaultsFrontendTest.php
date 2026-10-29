@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 require __DIR__ . '/../bootstrap.php';
 
-$tableJs = file_get_contents(__DIR__ . '/../../public/admin/assets/js/table.js') ?: '';
+$tableJs = admin_js_bundle() ?: '';
 $domJs = file_get_contents(__DIR__ . '/../../public/admin/assets/js/dom.js') ?: '';
 $adminCss = file_get_contents(__DIR__ . '/../../public/admin/assets/css/app.css') ?: '';
 
@@ -31,11 +31,11 @@ foreach ([
 }
 
 foreach ([
-    '\\u9ed4\\u524d\\u667a\\u7b97',
-    '\\u706b\\u5c71\\u5f15\\u64ce',
-    '\\u817e\\u8baf\\u4e91',
-    '\\u517c\\u5bb9 openai',
-    '\\u517c\\u5bb9openai',
+    '黔前智算',
+    '火山引擎',
+    '腾讯云',
+    '兼容 openai',
+    '兼容openai',
 ] as $alias) {
     assert_true(
         str_contains($tableJs, "\"{$alias}\""),
@@ -59,11 +59,11 @@ assert_true(
 );
 
 foreach ([
-    '\\u9ed4\\u524d\\u667a\\u7b97',
+    '黔前智算',
     'DeepSeek',
-    '\\u706b\\u5c71\\u5f15\\u64ce',
-    '\\u817e\\u8baf\\u4e91',
-    '\\u517c\\u5bb9 OpenAI',
+    '火山引擎',
+    '腾讯云',
+    '兼容 OpenAI',
     'Kimi API / Moonshot',
     'Kimi Code',
 ] as $displayName) {
@@ -79,6 +79,6 @@ assert_true(
 );
 
 assert_true(
-    str_contains($domJs, 'control.autocomplete = "off"'),
+    str_contains($domJs, 'control.autocomplete = config.type === "password" ? "new-password" : "off"'),
     'Generic admin text inputs should disable browser autocomplete.'
 );

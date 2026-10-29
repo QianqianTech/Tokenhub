@@ -89,6 +89,12 @@ final class Database
     public function transaction(callable $callback): mixed
     {
         $pdo = $this->pdo();
+        if ($pdo->inTransaction()) {
+            // Nested call (e.g. a service that opens its own transaction is
+            // used inside another one): join the outer transaction so the
+            // whole unit commits or rolls back together.
+            return $callback($this);
+        }
         $pdo->beginTransaction();
 
         try {

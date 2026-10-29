@@ -6,9 +6,13 @@
     <title>TokenHub 管理后台</title>
     <link rel="icon" href="/admin/assets/brand/favicon.ico" sizes="any">
     <link rel="apple-touch-icon" href="/admin/assets/brand/apple-touch-icon.png">
-    <link rel="stylesheet" href="/admin/assets/css/app.css?v=20261028-admin-ops-v1">
+    <link rel="stylesheet" href="/admin/assets/css/tokens.css?v=20261028-integration-v1">
+    <link rel="stylesheet" href="/admin/assets/css/app.css?v=20261028-integration-v1">
+    <link rel="stylesheet" href="/admin/assets/css/components.css?v=20261028-integration-v1">
+    <link rel="stylesheet" href="/admin/assets/css/redesign.css?v=20261028-integration-v1">
   </head>
   <body>
+    <a class="skip-link" href="#content">跳到主要内容</a>
     <main id="app" class="app-shell theme-light is-login">
       <aside id="sidebar" class="sidebar" aria-label="管理菜单">
         <div class="sidebar-header">
@@ -22,10 +26,15 @@
         <header class="topbar">
           <div class="topbar-title">
             <button id="sidebar-toggle" class="sidebar-toggle" type="button" aria-label="打开菜单" aria-controls="sidebar" aria-expanded="false">☰</button>
+            <span id="page-crumb" class="page-crumb" hidden></span>
             <h1 id="page-title">智慧分析</h1>
             <span id="request-id" hidden></span>
           </div>
           <div class="topbar-actions">
+            <button id="palette-trigger" type="button" class="palette-trigger" aria-keyshortcuts="Control+K Meta+K" title="快速跳转（Ctrl+K）">
+              <svg viewBox="0 0 24 24" aria-hidden="true" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+              <span>快速跳转</span><kbd>Ctrl K</kbd>
+            </button>
             <div id="theme-switcher" class="theme-switcher" aria-label="界面主题">
               <button type="button" class="theme-choice" data-theme-choice="dark" aria-pressed="false" aria-label="深色主题" title="切换为深色主题"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.5 14.2A8.5 8.5 0 0 1 9.8 3.5 8.5 8.5 0 1 0 20.5 14.2Z"/></svg></button>
               <button type="button" class="theme-choice" data-theme-choice="light" aria-pressed="false" aria-label="浅色主题" title="切换为浅色主题"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg></button>
@@ -36,19 +45,31 @@
           </div>
         </header>
         <section id="global-error" class="global-error"></section>
-        <section id="login" class="login-panel">
+        <section class="login-hero" aria-hidden="true">
+          <div class="login-hero-brand"><img src="/admin/assets/brand/tokenhub-app-icon.svg" alt=""><span>TokenHub</span></div>
+          <div>
+            <h2>一个入口，管住所有模型调用</h2>
+            <ul>
+              <li>兼容 OpenAI 与 Anthropic 接口协议</li>
+              <li>按部门、员工、密钥计量 Token 与成本</li>
+              <li>调用全程留痕，敏感内容自动脱敏</li>
+            </ul>
+          </div>
+          <span></span>
+        </section>
+        <form id="login" class="login-panel" novalidate aria-labelledby="login-title">
           <div id="login-brand" class="login-brand"><img class="brand-logo" src="/admin/assets/brand/tokenhub-app-icon.svg" alt=""><span>TokenHub</span></div>
           <h2 id="login-title">管理员登录</h2>
-          <label>用户名<input id="username" autocomplete="username"></label>
-          <label>密码<input id="password" type="password" autocomplete="current-password"></label>
-          <button id="login-button" type="button">登录</button>
-          <p id="login-error" class="error"></p>
-        </section>
-        <section id="content" class="content" hidden></section>
+          <label>用户名<input id="username" name="username" autocomplete="username" required></label>
+          <label>密码<input id="password" name="password" type="password" autocomplete="current-password" required></label>
+          <button id="login-button" type="submit">登录</button>
+          <p id="login-error" class="error" role="alert" aria-live="assertive"></p>
+        </form>
+        <section id="content" class="content" tabindex="-1" hidden></section>
         <div id="modal-root"></div>
         <div class="app-copyright" aria-label="版权信息">黔前智算 TokenHub 版权所有</div>
       </section>
     </main>
-    <script type="module" src="/admin/assets/js/app.js?v=20261028-admin-ops-v1"></script>
+    <script type="module" src="/admin/assets/js/app.js?v=20261028-integration-v1"></script>
   </body>
 </html>

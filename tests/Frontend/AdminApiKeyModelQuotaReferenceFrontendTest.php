@@ -5,7 +5,7 @@ declare(strict_types=1);
 require __DIR__ . '/../bootstrap.php';
 
 $resources = file_get_contents(__DIR__ . '/../../public/admin/assets/js/resources.js') ?: '';
-$tableSource = file_get_contents(__DIR__ . '/../../public/admin/assets/js/table.js') ?: '';
+$tableSource = admin_js_bundle() ?: '';
 
 assert_true(
     str_contains($resources, 'reference: "apiKeys"') && str_contains($resources, 'reference: "models"'),

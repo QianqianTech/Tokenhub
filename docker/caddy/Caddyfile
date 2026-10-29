@@ -39,12 +39,20 @@
 
 	@admin path /admin /admin/*
 	handle @admin {
+		# Static UI: compress, and revalidate with ETag on every load so a
+		# deployment is picked up at once (ES modules carry no version query).
+		encode zstd gzip
+		header Cache-Control "no-cache"
 		try_files {path} /admin/index.html
 		file_server
 	}
 
 	@screen path /screen /screen/*
 	handle @screen {
+		# Static UI: compress, and revalidate with ETag on every load so a
+		# deployment is picked up at once (ES modules carry no version query).
+		encode zstd gzip
+		header Cache-Control "no-cache"
 		try_files {path} /screen/index.html
 		file_server
 	}

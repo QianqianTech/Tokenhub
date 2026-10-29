@@ -6,7 +6,7 @@ require __DIR__ . '/../bootstrap.php';
 
 $resources = file_get_contents(__DIR__ . '/../../public/admin/assets/js/resources.js');
 $apiSource = file_get_contents(__DIR__ . '/../../public/admin/assets/js/api.js');
-$tableSource = file_get_contents(__DIR__ . '/../../public/admin/assets/js/table.js');
+$tableSource = admin_js_bundle();
 $cssSource = file_get_contents(__DIR__ . '/../../public/admin/assets/css/app.css');
 
 assert_true(is_string($resources), 'Admin resources source should be readable.');
@@ -16,9 +16,8 @@ assert_true(is_string($cssSource), 'Admin CSS source should be readable.');
 
 assert_true(str_contains($resources, '"admin-chat-sessions"'), 'Operations navigation should include the admin chat session page.');
 assert_true(str_contains($resources, '"admin-chat-sessions": { label: "会话测试"'), 'Admin chat session resource should have a dedicated label.');
-assert_true((bool) preg_match('/key: "operations"[^\\]]*items: \\[[^\\]]*"admin-chat-sessions"/', $resources), 'Admin chat session page should be under the operations menu.');
-assert_true((bool) preg_match('/admin: \\[[^\\]]*"admin-chat-sessions"/', $resources), 'Admin role should be able to open the chat session page.');
-assert_true((bool) preg_match('/super_admin: \\[[^\\]]*"admin-chat-sessions"/', $resources), 'Super admin role should be able to open the chat session page.');
+assert_true(str_contains((string) file_get_contents(__DIR__ . '/../../public/admin/assets/js/domains.js'), '{ key: "operations", label: "运营中心", tabs: ["dashboard", "admin-chat-sessions"'), 'Admin chat session page should be under the operations menu.');
+assert_true(str_contains($resources, '["admin-chat-sessions", "dashboard-share-links", "dashboard-share-access-logs"].includes(resourceKey)) return "operations.read"'), 'Administrators with operations capability should be able to open the chat session page.');
 assert_true(!((bool) preg_match('/user: \\[[^\\]]*"admin-chat-sessions"/', $resources)), 'Ordinary user role should not receive the admin chat session page.');
 
 assert_true(str_contains($tableSource, 'renderAdminChatSessionPage'), 'Table renderer should expose a custom chat session page.');

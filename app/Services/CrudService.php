@@ -683,6 +683,14 @@ final class CrudService
             }
         }
 
+        if ($table === 'models' && isset($query['keyword']) && (string) $query['keyword'] !== '') {
+            // Partial match on the model name or its upstream name.
+            $keyword = str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], (string) $query['keyword']);
+            $pattern = '%' . $keyword . '%';
+            $conditions[] = "(models.name LIKE ? ESCAPE '\\\\' OR models.external_name LIKE ? ESCAPE '\\\\')";
+            array_push($bindings, $pattern, $pattern);
+        }
+
         if ($table === 'model_prices' && isset($query['effective_at']) && (string) $query['effective_at'] !== '') {
             $conditions[] = 'effective_at <= ?';
             $bindings[] = (string) $query['effective_at'];

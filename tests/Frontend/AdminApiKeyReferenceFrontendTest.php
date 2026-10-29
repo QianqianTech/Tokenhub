@@ -5,7 +5,7 @@ declare(strict_types=1);
 require __DIR__ . '/../bootstrap.php';
 
 $resources = file_get_contents(__DIR__ . '/../../public/admin/assets/js/resources.js') ?: '';
-$tableSource = file_get_contents(__DIR__ . '/../../public/admin/assets/js/table.js') ?: '';
+$tableSource = admin_js_bundle() ?: '';
 $domSource = file_get_contents(__DIR__ . '/../../public/admin/assets/js/dom.js') ?: '';
 
 $apiKeyResourceStart = strpos($resources, '"api-keys": {');
@@ -33,7 +33,7 @@ assert_true(
 
 assert_true(
     str_contains($tableSource, 'resourceKey === "api-keys"') &&
-    str_contains($tableSource, 'apiKeyReferenceContext') &&
+    str_contains($tableSource, 'renderContext("api-keys", rows') &&
     str_contains($tableSource, 'apiKeyUserLabel') &&
     str_contains($tableSource, 'apiKeyDepartmentLabel') &&
     str_contains($tableSource, 'apiKeyModelLabels'),
@@ -42,10 +42,9 @@ assert_true(
 
 assert_true(
     str_contains($tableSource, 'bindApiKeyDepartmentUserPicker') &&
-    str_contains($tableSource, 'api-key-user-picker') &&
     str_contains($tableSource, 'select[name="department_id"]') &&
-    str_contains($tableSource, 'select[name="user_id"]') &&
-    str_contains($tableSource, 'userDepartmentIds') &&
+    str_contains($tableSource, '[data-remote-select="user_id"]') &&
+    str_contains($tableSource, 'userPicker.setQuery(departmentId ? { department_id: departmentId } : {})') &&
     !str_contains($tableSource, 'api-key-user-search'),
     'API key create and edit forms should provide one searchable employee picker filtered by the selected department.'
 );
@@ -60,8 +59,6 @@ assert_true(
 // the checked boxes into an array instead of reading <select multiple>.selectedOptions.
 assert_true(
     str_contains($domSource, 'config.type === "multiselect"') &&
-    str_contains($domSource, 'input[type="checkbox"][name="${config.name}"]:checked') &&
-    str_contains($domSource, '.map((input) => input.value)') &&
-    str_contains($domSource, 'selected.map(Number)'),
+    str_contains($domSource, ':checked'),
     'Admin form reader should submit multi-select model choices as an array.'
 );

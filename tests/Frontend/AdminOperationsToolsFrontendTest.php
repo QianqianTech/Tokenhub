@@ -4,7 +4,11 @@ declare(strict_types=1);
 
 require __DIR__ . '/../bootstrap.php';
 
-$tableJs = file_get_contents(__DIR__ . '/../../public/admin/assets/js/table.js') ?: '';
+// The former single-file table.js is split into modules; assertions run on the whole admin bundle.
+$tableJs = admin_js_bundle();
+$opsJs = file_get_contents(__DIR__ . '/../../public/admin/assets/js/lib/ops-tools.js') ?: '';
+$sessionJs = file_get_contents(__DIR__ . '/../../public/admin/assets/js/core/session.js') ?: '';
+$lookupService = file_get_contents(__DIR__ . '/../../app/Services/LookupService.php') ?: '';
 $appJs = file_get_contents(__DIR__ . '/../../public/admin/assets/js/app.js') ?: '';
 $apiJs = file_get_contents(__DIR__ . '/../../public/admin/assets/js/api.js') ?: '';
 $adminCss = file_get_contents(__DIR__ . '/../../public/admin/assets/css/app.css') ?: '';
@@ -14,7 +18,7 @@ $contractSource = file_get_contents(__DIR__ . '/../../app/Services/Gateway/Model
 assert_true($tableJs !== '' && $appJs !== '' && $apiJs !== '' && $adminCss !== '', 'Admin frontend sources should be readable.');
 
 /**
- * Returns the source of one top-level function declared in table.js.
+ * Returns the source of one top-level function declared in the admin bundle.
  */
 $functionSource = static function (string $source, string $name): string {
     $start = strpos($source, 'function ' . $name . '(');
@@ -27,13 +31,13 @@ $functionSource = static function (string $source, string $name): string {
 };
 
 // All new calls must use the shared api() helper so the CSRF header is sent.
-assert_true(!str_contains($tableJs, 'fetch('), 'Admin table module must not call fetch() directly; mutating calls go through api() for the CSRF header.');
+assert_true($opsJs !== '' && !str_contains($opsJs, 'fetch('), 'Operations tools must not call fetch() directly; mutating calls go through api() for the CSRF header.');
 assert_true(str_contains($apiJs, '"X-CSRF-Token": csrfToken'), 'Shared api() helper should send the CSRF header.');
 
-// The current admin user is handed to the table module so super-admin-only actions can be hidden.
-assert_true(str_contains($tableJs, 'export function setAdminViewer(user)'), 'Table module should expose the current admin viewer setter.');
-assert_true(str_contains($appJs, 'setAdminViewer(adminState.user)'), 'Admin app should pass the signed-in user to the table module before rendering.');
-assert_true(str_contains($tableJs, 'adminViewer?.role === "super_admin"'), 'Super-admin gating should use the signed-in role.');
+// The signed-in admin user is shared through core/session.js so global-scope-only actions can be hidden.
+assert_true(str_contains($sessionJs, 'export function getCurrentUser()') && str_contains($sessionJs, 'export function setCurrentUser(user)'), 'Session module should expose the signed-in user.');
+assert_true(str_contains($appJs, 'setCurrentUser('), 'Admin app should hand the signed-in user to the session module.');
+assert_true(str_contains($opsJs, 'getCurrentUser()?.role === "super_admin"'), 'Super-admin gating should use the signed-in role.');
 
 // 1. Provider catalog sync preview / apply.
 $catalogSync = $functionSource($tableJs, 'showProviderCatalogSync');
@@ -41,7 +45,7 @@ assert_true($catalogSync !== '', 'Provider catalog sync modal should exist.');
 assert_true(str_contains($tableJs, 'resourceKey === "providers" && row.id && adminViewerCanSyncCatalog()') && str_contains($tableJs, 'button("目录同步", () => showProviderCatalogSync(row, onRefresh)'), 'Provider rows should expose catalog sync to global-scope admins only (matches the server rule).');
 assert_true(substr_count($catalogSync, '/admin-api/providers/${row.id}/catalog-sync') === 2, 'Catalog sync should call the preview and apply endpoint.');
 assert_true(str_contains($catalogSync, 'JSON.stringify({ apply: false })') && str_contains($catalogSync, 'JSON.stringify({ apply: true })'), 'Catalog sync should preview first and apply only after confirmation.');
-assert_true(str_contains($catalogSync, 'button("应用"') && str_contains($catalogSync, 'window.confirm('), 'Catalog sync apply should require an explicit confirmation.');
+assert_true(str_contains($catalogSync, 'button("应用"') && str_contains($catalogSync, 'await confirmDialog('), 'Catalog sync apply should require an explicit confirmation.');
 $catalogResult = $functionSource($tableJs, 'renderCatalogSyncResult');
 foreach (['data.added', 'data.changed', 'data.missing', 'data.unchanged', '"新增"', '"变更"', '"上游已下线"'] as $needle) {
     assert_true(str_contains($catalogResult, $needle), 'Catalog sync preview should render counts and lists for: ' . $needle);
@@ -118,9 +122,8 @@ assert_true(str_contains($chat, 'showRequestDiagnostics(requestId)'), 'API key t
 foreach (['.catalog-sync-summary', '.quota-status-card', '.request-diagnostics-lookup', '.request-diagnostics-explanation', '.api-key-rotate-secret', '.model-capability-editor', '.admin-chat-api-key-field', '.admin-chat-mode-hint'] as $selector) {
     assert_true(str_contains($adminCss, $selector), 'Admin CSS should style ' . $selector);
 }
-preg_match('/app\.js\?v=(\d{8}-[A-Za-z0-9._-]+)/', $adminHtml, $versionMatch);
-$version = $versionMatch[1] ?? '';
-assert_true($version !== '' && str_contains($appJs, './table.js?v=' . $version . '"'), 'The table module should be loaded with the current cache version.');
+assert_true((bool) preg_match('/app\.js\?v=\d{8}-[A-Za-z0-9._-]+/', $adminHtml), 'The admin entry module should carry the release cache version.');
+assert_true(!str_contains($tableJs, 'table.js?v='), 'The removed single-file table.js must not be imported any more.');
 
 // API key list shows who disabled a key (api_keys.disabled_by).
 $resourcesJs = file_get_contents(__DIR__ . '/../../public/admin/assets/js/resources.js') ?: '';
@@ -129,9 +132,11 @@ assert_true(str_contains($tableJs, 'const API_KEY_DISABLED_BY_LABELS = { admin: 
 assert_true(str_contains($resourcesJs, '"disabled_by": "停用来源"') && str_contains($resourcesJs, '"key_suffix", "status", "disabled_by"'), 'API key details should show the disable source.');
 
 // Only models the gateway can serve are shown (ModelSupportPolicy).
-assert_true(str_contains($tableJs, 'function modelIsGatewaySupported(model)') && str_contains($tableJs, '.filter(modelIsGatewaySupported)'), 'Model pickers should only offer supported models.');
-assert_true(str_contains($tableJs, 'resourceKey === "models" ? { limit: 500, support: "all" }'), 'Reference lookups should load all models so existing labels still resolve.');
-assert_true(substr_count($tableJs, 'providerCatalogModels(result.data)') === 2, 'Both provider import dialogs should use the supported-only catalog.');
+assert_true(str_contains($tableJs, 'function modelIsGatewaySupported(model)'), 'Model support helper should exist.');
+assert_true(str_contains($lookupService, "\$table === 'models' && \$ids === []") && str_contains($lookupService, 'ModelSupportPolicy())->modelIds(true)'), 'Model pickers (lookup search) should only offer supported models.');
+assert_true(str_contains($lookupService, 'ModelSupportPolicy())->annotate($rows)'), 'Resolving model ids for labels should return every model, annotated with gateway support.');
+assert_true(str_contains($tableJs, 'lookupRows("models", { query: { support: "all" } })'), 'The trial chat should load all models so it can explain unsupported grants.');
+assert_true(substr_count($tableJs, 'providerCatalogModels(result.data)') >= 1, 'The provider import dialog should use the supported-only catalog.');
 assert_true(str_contains($tableJs, '已隐藏 ${hiddenCount} 个 TokenHub 无法调用的模型'), 'Import dialogs should say how many models were hidden.');
 assert_true(str_contains($tableJs, 'data.hidden_unsupported'), 'Catalog sync preview should mention hidden unsupported models.');
 assert_true(str_contains($tableJs, 'modelIsGatewaySupported(model) && (!model.status'), 'Gateway trial chat should only list supported models.');

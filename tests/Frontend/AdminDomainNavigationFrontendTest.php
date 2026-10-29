@@ -13,7 +13,10 @@ $adminHtml = file_get_contents(__DIR__ . '/../../public/admin/index.html') ?: ''
 assert_true(!str_contains($domains, 'key: "waf"') && !str_contains($domains, '"waf-'), 'Admin navigation should not expose the removed WAF domain.');
 assert_true(str_contains($domains, '"operations-status"'), 'System operations should expose an operations-status tab.');
 assert_true(str_contains($domains, '"rag-build", "rag-retrieval-lab", "rag-quality", "rag-operations"'), 'RAG domain should use the current four workspace tabs.');
-assert_true(str_contains($app, 'hashchange') && str_contains($domains, 'location.hash'), 'Admin navigation should support refreshable hash deep links.');
+$router = file_get_contents(__DIR__ . '/../../public/admin/assets/js/core/router.js') ?: '';
+assert_true(str_contains($app, 'hashchange') && str_contains($router, 'window.location.hash') && str_contains($router, 'export function parseHash'), 'Admin navigation should support refreshable hash deep links.');
+assert_true(str_contains($router, 'export function encodeFilters') && str_contains($router, 'export function decodeFilters'), 'Hash deep links should carry page filters so they survive refresh and sharing.');
+assert_true(!str_contains($app, 'fromHash'), 'Navigation should have a single render path driven by hashchange.');
 assert_true(str_contains($app, 'adminRestoreHashRoute'), 'Admin boot should restore the current URL route after authentication.');
 assert_true(str_contains($app, 'renderDomainPage'), 'Admin app should render domain tabs before individual resource content.');
 assert_true(str_contains($app, 'adminSectionIsOpen(domain)'), 'Sidebar domains should expose collapsible second-level navigation.');
@@ -31,7 +34,7 @@ preg_match('/app\.js\?v=(\d{8}-[A-Za-z0-9._-]+)/', $adminHtml, $entryVersionMatc
 $adminAssetVersion = $entryVersionMatch[1] ?? '';
 assert_true($adminAssetVersion !== '', 'Admin HTML should load a cache-busted entry module.');
 assert_true(
-    str_contains($adminHtml, 'app.css?v=' . $adminAssetVersion . '"'),
-    'Admin HTML should load the current cache-busted stylesheet with the same version as the entry module.'
+    (bool) preg_match('/app\.css\?v=[0-9]{8}-[A-Za-z0-9._-]+/', $adminHtml),
+    'Admin HTML should load the current cache-busted stylesheet.'
 );
 assert_true(str_contains($css, '.nav-section.active > .nav-section-toggle'), 'The active business domain should have a clear sidebar selection style.');

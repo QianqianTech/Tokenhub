@@ -9,7 +9,7 @@ $source = file_get_contents(__DIR__ . '/../../public/admin/assets/js/dashboard.j
 assert_true(str_contains($source, 'select("department_id"'), 'Smart analysis should expose a department filter.');
 assert_true(str_contains($source, 'name: "employee_query"'), 'Smart analysis should expose an employee keyword input.');
 assert_true(str_contains($source, 'placeholder: "搜索员工账号"'), 'Employee keyword input should explain the supported search field.');
-assert_true(str_contains($source, 'api("/admin-api/departments"'), 'Smart analysis should load permitted department options.');
+assert_true(str_contains($source, 'departmentSelectOptions()'), 'Smart analysis should load permitted department options.');
 assert_true(str_contains($source, 'department_id: department.value'), 'Dashboard requests should include the selected department.');
 assert_true(str_contains($source, 'employee_query: employeeQuery.value.trim()'), 'Dashboard requests should include the employee keyword.');
 assert_true(str_contains($source, 'dimension: "department"'), 'Smart analysis should request department usage rankings.');

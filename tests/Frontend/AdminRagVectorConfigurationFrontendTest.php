@@ -5,7 +5,7 @@ declare(strict_types=1);
 require __DIR__ . '/../bootstrap.php';
 
 $resources = file_get_contents(__DIR__ . '/../../public/admin/assets/js/resources.js') ?: '';
-$table = file_get_contents(__DIR__ . '/../../public/admin/assets/js/table.js') ?: '';
+$table = admin_js_bundle() ?: '';
 
 $vectorStart = strpos($resources, '"rag-vector-configs": {');
 $vectorEnd = strpos($resources, '"rag-import-templates": {', $vectorStart);

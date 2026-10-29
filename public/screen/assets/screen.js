@@ -315,7 +315,7 @@ function renderModelShare(rows) {
     renderEmpty(host, "暂无模型占比数据");
     return;
   }
-  const colors = ["#38bdf8", "#2dd4bf", "#a78bfa", "#86efac", "#fbbf24", "#fb7185"];
+  const colors = ["#34d399", "#2a7d63", "#6aa8ff", "#fbbf24", "#8e9a95", "#fb923c"];
   let cursor = 0;
   const segments = data.map((row, index) => {
     const start = cursor;
@@ -323,7 +323,7 @@ function renderModelShare(rows) {
     return `${colors[index % colors.length]} ${start}% ${cursor}%`;
   });
   if (cursor < 100) {
-    segments.push(`rgba(148, 163, 184, 0.16) ${cursor}% 100%`);
+    segments.push(`rgba(142, 154, 149, 0.16) ${cursor}% 100%`);
   }
   const ring = document.createElement("div");
   ring.className = "model-chart-ring";

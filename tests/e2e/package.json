@@ -1,0 +1,13 @@
+{
+  "name": "tokenhub-admin-e2e",
+  "private": true,
+  "type": "module",
+  "description": "Browser tests for the TokenHub admin SPA against an in-memory mock admin API.",
+  "scripts": {
+    "test": "node --test --test-concurrency=1 \"*.test.mjs\"",
+    "mock": "node mock-server.mjs 8090"
+  },
+  "devDependencies": {
+    "playwright": "^1.48.0"
+  }
+}

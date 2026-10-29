@@ -5,7 +5,7 @@ declare(strict_types=1);
 require __DIR__ . '/../bootstrap.php';
 
 $resources = file_get_contents(__DIR__ . '/../../public/admin/assets/js/resources.js');
-$tableSource = file_get_contents(__DIR__ . '/../../public/admin/assets/js/table.js');
+$tableSource = admin_js_bundle();
 
 assert_true(is_string($resources), 'Admin resources source should be readable.');
 assert_true(is_string($tableSource), 'Admin table source should be readable.');
@@ -18,7 +18,7 @@ assert_true(str_contains($resources, '"api-keys": { label: "API 密钥"'), 'API 
 assert_true(str_contains($resources, '{ name: "name", label: "名称" }'), 'API key create form should use a Chinese name label.');
 assert_true(str_contains($resources, '{ name: "model_ids", label: "允许模型"'), 'API key create form should use Chinese allowed models label.');
 assert_true(str_contains($resources, '{ name: "allowed_ip_cidrs", label: "允许 IP 网段'), 'API key create form should use Chinese IP range label.');
-assert_true(str_contains($tableSource, '`API 密钥 / ${modelQuotaApiKeyLabel'), 'Quota target labels should display API key in Chinese.');
+assert_true(str_contains($tableSource, '{ lookup: "api-keys", prefix: "api_key", label: "API 密钥" }'), 'Quota target labels should display API key in Chinese.');
 
 assert_true(!str_contains($resources, '"api_key": "API Key"'), 'api_key enum labels should not use English API Key wording.');
 assert_true(!str_contains($resources, '"api_key_id": "API Key ID"'), 'api_key_id column label should not use English API Key ID wording.');

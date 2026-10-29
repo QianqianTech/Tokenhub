@@ -5,7 +5,7 @@ declare(strict_types=1);
 require __DIR__ . '/../bootstrap.php';
 
 $resources = file_get_contents(__DIR__ . '/../../public/admin/assets/js/resources.js') ?: '';
-$tableSource = file_get_contents(__DIR__ . '/../../public/admin/assets/js/table.js') ?: '';
+$tableSource = admin_js_bundle() ?: '';
 
 assert_true(
     preg_match('/"api-keys"\s*:\s*\{[^}]*columns:\s*\["id", "name", "created_at", "key", "status"\]/s', $resources) === 1,
@@ -31,11 +31,12 @@ assert_true(
 );
 
 assert_true(
-    str_contains($tableSource, 'API ID') &&
-    str_contains($tableSource, '状态码') &&
+    str_contains($tableSource, '["id", "编号"]') &&
+    str_contains($tableSource, '["status", "状态"]') &&
+    !str_contains($tableSource, '状态码') &&
     str_contains($tableSource, '新建 API 密钥') &&
     str_contains($tableSource, 'apiKeyDisplay'),
-    'API key table should expose the screenshot headers, create action, and masked key display.'
+    'API key table should use Chinese headers, the create action, and masked key display.'
 );
 
 assert_true(
@@ -63,11 +64,12 @@ assert_true(
 );
 
 assert_true(
-    str_contains($tableSource, 'pageSize: 20') &&
+    str_contains($tableSource, 'pageSize: PAGE_SIZES.includes(Number(initialLimit)) ? Number(initialLimit) : 20') &&
     str_contains($tableSource, 'offset: state.offset') &&
-    str_contains($tableSource, '共 ${total} 条') &&
-    str_contains($tableSource, '上一页') &&
-    str_contains($tableSource, '下一页'),
+    str_contains($tableSource, '"pager.summary": "共 {total} 条，第 {page} / {pages} 页"') &&
+    str_contains($tableSource, '"pager.previous": "上一页"') &&
+    str_contains($tableSource, '"pager.next": "下一页"') &&
+    str_contains($tableSource, 'label: "API 密钥分页"'),
     'API key page should provide server-backed pagination controls.'
 );
 

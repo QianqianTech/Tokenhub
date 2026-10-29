@@ -10,7 +10,7 @@ $uploads = file_get_contents(__DIR__ . '/../../app/Services/RagUploadService.php
 $controller = file_get_contents(__DIR__ . '/../../app/Http/Controllers/RagController.php') ?: '';
 $migration = file_get_contents(__DIR__ . '/../../database/migrations/2026_07_09_000008_rag_upload_review.sql') ?: '';
 $resources = file_get_contents(__DIR__ . '/../../public/admin/assets/js/resources.js') ?: '';
-$table = file_get_contents(__DIR__ . '/../../public/admin/assets/js/table.js') ?: '';
+$table = admin_js_bundle() ?: '';
 
 assert_true(str_contains($settings, "'rag_upload_review' => 'rag_upload_review'"), 'Settings center should expose rag_upload_review section.');
 assert_true(str_contains($settings, "'enabled' => false"), 'RAG upload review should default to disabled.');

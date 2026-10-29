@@ -55,6 +55,8 @@ final class Kernel
         $router->post('/admin-api/logout', [$admin, 'logout'], [new AdminAuthMiddleware(), new CsrfMiddleware()]);
         $router->get('/admin-api/me', [$admin, 'me'], [new AdminAuthMiddleware()]);
         $router->get('/admin-api/csrf', [$admin, 'csrf'], [new AdminAuthMiddleware()]);
+        $router->post('/admin-api/session/renew', [$admin, 'renewSession'], [new AdminAuthMiddleware(), new CsrfMiddleware()]);
+        $router->get('/admin-api/lookups/{type}', [$admin, 'lookup'], [new AdminAuthMiddleware()]);
         $router->get('/admin-api/dashboard-share-links', [$admin, 'dashboardShareLinks'], [new AdminAuthMiddleware()]);
         $router->post('/admin-api/dashboard-share-links', [$admin, 'createDashboardShareLink'], [new AdminAuthMiddleware(), new CsrfMiddleware()]);
         $router->put('/admin-api/dashboard-share-links/{id}', [$admin, 'updateDashboardShareLink'], [new AdminAuthMiddleware(), new CsrfMiddleware()]);

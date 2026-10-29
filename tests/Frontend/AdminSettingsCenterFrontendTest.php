@@ -5,14 +5,10 @@ declare(strict_types=1);
 require __DIR__ . '/../bootstrap.php';
 
 $resources = file_get_contents(__DIR__ . '/../../public/admin/assets/js/resources.js') ?: '';
-$tableSource = file_get_contents(__DIR__ . '/../../public/admin/assets/js/table.js') ?: '';
+$tableSource = admin_js_bundle() ?: '';
 $settingsServiceSource = file_get_contents(__DIR__ . '/../../app/Services/SystemSettingsService.php') ?: '';
 $adminCss = file_get_contents(__DIR__ . '/../../public/admin/assets/css/app.css') ?: '';
-$settingsFormPanelSource = substr(
-    $tableSource,
-    strpos($tableSource, 'function settingsFormPanel'),
-    strpos($tableSource, 'function contentArchiveQuery') - strpos($tableSource, 'function settingsFormPanel')
-);
+$settingsFormPanelSource = admin_js_function($tableSource, 'settingsFormPanel');
 $systemSettingsRendererStart = strpos($tableSource, 'async function renderSystemSettingsPage');
 $systemSettingsRendererEnd = $systemSettingsRendererStart === false ? false : strpos($tableSource, 'function systemSettingCard', $systemSettingsRendererStart);
 $systemSettingsRendererSource = $systemSettingsRendererStart === false || $systemSettingsRendererEnd === false
@@ -56,16 +52,14 @@ assert_true(str_contains($resources, '"settings-rag-upload-review"'), 'Admin res
 assert_true(str_contains($resources, '"settings-rag-package-upload"'), 'Admin resources should expose RAG image package upload settings as a subpage.');
 assert_true(str_contains($resources, '"settings-rag-ai-image-processing"'), 'Admin resources should expose RAG AI image processing settings as a subpage.');
 assert_true(str_contains($resources, '"settings-rag-vectorization-monitoring"'), 'Admin resources should expose RAG vectorization monitoring settings as a subpage.');
-assert_true(str_contains($resources, '{ key: "system", label: "\u7cfb\u7edf\u8bbe\u7f6e"'), 'System settings should be a left sidebar section.');
-$systemSectionStart = strpos($resources, '{ key: "system"');
-$systemSectionEnd = $systemSectionStart === false ? false : strpos($resources, "\n", $systemSectionStart);
+assert_true(str_contains((string) file_get_contents(__DIR__ . '/../../public/admin/assets/js/domains.js'), '{ key: "system", label: "系统运维"'), 'System settings should be a left sidebar section.');
+$domainsSource = (string) file_get_contents(__DIR__ . '/../../public/admin/assets/js/domains.js');
+$systemSectionStart = strpos($domainsSource, '{ key: "system"');
+$systemSectionEnd = $systemSectionStart === false ? false : strpos($domainsSource, "\n", $systemSectionStart);
 assert_true($systemSectionStart !== false && $systemSectionEnd !== false, 'System settings sidebar section should be inspectable.');
-$systemSection = substr($resources, (int) $systemSectionStart, (int) $systemSectionEnd - (int) $systemSectionStart);
-foreach (['content-retention-policy', 'settings-center', 'admin-users', 'permission-config', 'system-settings'] as $settingsItem) {
+$systemSection = substr($domainsSource, (int) $systemSectionStart, (int) $systemSectionEnd - (int) $systemSectionStart);
+foreach (['operations-status', 'content-retention-policy', 'system-settings'] as $settingsItem) {
     assert_true(str_contains($systemSection, '"' . $settingsItem . '"'), 'System settings should include ' . $settingsItem . ' in the left sidebar.');
-}
-foreach (['settings-brand-identity', 'settings-tls-certificates', 'settings-entry-security', 'settings-alert-thresholds', 'settings-rag-vectorization-monitoring'] as $settingsItem) {
-    assert_true(!str_contains($systemSection, '"' . $settingsItem . '"'), 'System settings should keep ' . $settingsItem . ' inside page tabs instead of the left sidebar.');
 }
 assert_true(str_contains($resources, '"settings-brand-identity": { label: "标题与标识"'), 'Brand identity subpage should be labeled clearly.');
 assert_true(str_contains($resources, '"settings-alert-thresholds": { label: "告警设置"'), 'Alert thresholds should be labeled as alert settings.');
@@ -75,7 +69,7 @@ assert_true(!str_contains($tableSource, '兼容证书清单 JSON'), 'Typed setti
 
 assert_true(str_contains($tableSource, 'renderSettingsCenterPage'), 'Table renderer should include a settings center renderer.');
 assert_true(str_contains($tableSource, 'renderSystemSettingsPage'), 'Table renderer should include a dedicated advanced settings form renderer.');
-assert_true(str_contains($tableSource, 'showSystemSettingEditor'), 'Advanced settings should open a visual form editor.');
+assert_true(str_contains($tableSource, 'createSystemSettingEditor'), 'Advanced settings should open a visual form editor.');
 assert_true(str_contains($tableSource, 'system-setting-editor'), 'Advanced settings editor should expose a stable form hook.');
 assert_true(str_contains($tableSource, 'SYSTEM_SETTING_PRESENTATIONS'), 'Advanced settings should describe built-in setting functions in Chinese.');
 assert_true(str_contains($tableSource, 'days: "保存天数"'), 'Content retention user policies should show a Chinese retention-days label.');
@@ -126,7 +120,7 @@ assert_true(str_contains($tableSource, 'renderCertificateRequestForm'), 'Certifi
 assert_true(str_contains($tableSource, 'certificate_request_type'), 'Certificate request form should expose domain/IP type selection.');
 assert_true(str_contains($tableSource, 'request_domain_names'), 'Certificate request form should expose requested domains.');
 assert_true(str_contains($tableSource, 'request_ip_addresses'), 'Certificate request form should expose requested IP addresses.');
-assert_true(str_contains($tableSource, 'autofillCertificateRequestIps'), 'Certificate request form should auto-fill requested IP addresses from server NICs.');
+assert_true(str_contains($tableSource, 'renderInternalIpChoices') && str_contains($tableSource, '/admin-api/system/network-interface-ips'), 'Certificate request form should offer server NIC IP addresses for internal certificates.');
 assert_true(str_contains($tableSource, 'certificate_mode'), 'Certificate settings should expose domain/IP certificate mode.');
 assert_true(str_contains($tableSource, 'domain_names'), 'Certificate settings should expose domain certificate targets.');
 assert_true(str_contains($tableSource, 'ip_addresses'), 'Certificate settings should expose IP certificate targets.');

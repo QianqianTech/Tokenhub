@@ -5,7 +5,7 @@ declare(strict_types=1);
 require __DIR__ . '/../bootstrap.php';
 
 $resources = file_get_contents(__DIR__ . '/../../public/admin/assets/js/resources.js') ?: '';
-$tableSource = file_get_contents(__DIR__ . '/../../public/admin/assets/js/table.js') ?: '';
+$tableSource = admin_js_bundle() ?: '';
 
 $quotaBindingStart = strpos($resources, '"quota-bindings": {');
 $quotaBindingEnd = strpos($resources, '"usage-records": {', $quotaBindingStart);
@@ -20,7 +20,7 @@ assert_true(
 
 assert_true(
     str_contains($tableSource, 'resourceKey === "quota-bindings"') &&
-    str_contains($tableSource, 'quotaBindingReferenceContext') &&
+    str_contains($tableSource, 'renderContext(resourceKey, rows') &&
     str_contains($tableSource, 'quotaPolicyLabel') &&
     str_contains($tableSource, 'quotaTargetLabel'),
     'Quota binding table cells should render readable policy and target labels.'

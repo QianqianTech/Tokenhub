@@ -8,7 +8,7 @@ $root = dirname(__DIR__, 2);
 $kernelSource = file_get_contents($root . '/app/Bootstrap/Kernel.php') ?: '';
 $controllerSource = file_get_contents($root . '/app/Http/Controllers/AdminController.php') ?: '';
 $crudSource = file_get_contents($root . '/app/Services/CrudService.php') ?: '';
-$tableSource = file_get_contents($root . '/public/admin/assets/js/table.js') ?: '';
+$tableSource = admin_js_bundle() ?: '';
 
 assert_true(str_contains($kernelSource, "delete('/admin-api/models/{id}'"), 'Kernel should route model DELETE to a dedicated delete handler.');
 assert_true(str_contains($controllerSource, 'deleteModel'), 'Admin controller should expose a model delete action.');

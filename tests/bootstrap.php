@@ -19,6 +19,42 @@ if (is_file($autoload)) {
     });
 }
 
+if (!function_exists('admin_js_bundle')) {
+    /**
+     * Concatenated source of every admin SPA module. Static frontend tests use it
+     * so they keep working when code moves between modules.
+     */
+    function admin_js_bundle(): string
+    {
+        $root = __DIR__ . '/../public/admin/assets/js';
+        $files = [];
+        $iterator = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($root, FilesystemIterator::SKIP_DOTS));
+        foreach ($iterator as $file) {
+            if ($file->isFile() && str_ends_with($file->getFilename(), '.js')) {
+                $files[] = $file->getPathname();
+            }
+        }
+        sort($files);
+        return implode("\n", array_map(static fn (string $path): string => (string) file_get_contents($path), $files));
+    }
+}
+
+if (!function_exists('admin_js_function')) {
+    /**
+     * Source of one top-level function (from "function name(" to its closing
+     * brace at column 0) inside the admin module bundle; '' when absent.
+     */
+    function admin_js_function(string $source, string $name): string
+    {
+        $start = strpos($source, "function {$name}(");
+        if ($start === false) {
+            return '';
+        }
+        $end = strpos($source, "\n}\n", $start);
+        return $end === false ? substr($source, $start) : substr($source, $start, $end - $start + 3);
+    }
+}
+
 if (!function_exists('assert_true')) {
     function assert_true(bool $condition, string $message): void
     {

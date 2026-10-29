@@ -5,8 +5,11 @@ declare(strict_types=1);
 require __DIR__ . '/../bootstrap.php';
 
 $adminSources = [];
-foreach (glob(__DIR__ . '/../../public/admin/assets/js/*.js') ?: [] as $sourceFile) {
-    $adminSources[realpath($sourceFile) ?: $sourceFile] = file_get_contents($sourceFile);
+$adminJsIterator = new RecursiveIteratorIterator(new RecursiveDirectoryIterator(__DIR__ . '/../../public/admin/assets/js', FilesystemIterator::SKIP_DOTS));
+foreach ($adminJsIterator as $sourceFile) {
+    if ($sourceFile->isFile() && str_ends_with($sourceFile->getFilename(), '.js')) {
+        $adminSources[$sourceFile->getPathname()] = file_get_contents($sourceFile->getPathname());
+    }
 }
 $adminHtml = file_get_contents(__DIR__ . '/../../public/admin/index.html');
 $adminCss = file_get_contents(__DIR__ . '/../../public/admin/assets/css/app.css');
@@ -14,7 +17,7 @@ $apiJs = file_get_contents(__DIR__ . '/../../public/admin/assets/js/api.js');
 $appJs = file_get_contents(__DIR__ . '/../../public/admin/assets/js/app.js');
 $dashboardSource = file_get_contents(__DIR__ . '/../../public/admin/assets/js/dashboard.js');
 $resources = file_get_contents(__DIR__ . '/../../public/admin/assets/js/resources.js');
-$tableSource = file_get_contents(__DIR__ . '/../../public/admin/assets/js/table.js');
+$tableSource = admin_js_bundle();
 $caddyfile = file_get_contents(__DIR__ . '/../../docker/caddy/Caddyfile');
 
 assert_true($adminSources !== [], 'Admin JS sources should be readable.');
@@ -28,25 +31,15 @@ assert_true(is_string($tableSource), 'Admin table source should be readable.');
 assert_true(is_string($caddyfile), 'Caddyfile should be readable.');
 preg_match('/app\.js\?v=(\d{8}-[A-Za-z0-9._-]+)/', $adminHtml, $entryVersionMatch);
 assert_true(
-    isset($entryVersionMatch[1]) && str_contains($adminHtml, 'app.css?v=' . $entryVersionMatch[1] . '"'),
-    'Admin entry module should use the current cache version, shared with the stylesheet.'
-);
-preg_match('/["\'](\.\/api\.js\?v=[A-Za-z0-9._-]+)["\']/', $appJs, $sharedApiModuleMatch);
-$sharedApiModule = $sharedApiModuleMatch[1] ?? '';
-assert_true(
-    $sharedApiModule !== '',
-    'Admin API module should use a shared, cache-busted CSRF module version.'
+    (bool) preg_match('/app\.js\?v=[0-9]{8}-[A-Za-z0-9._-]+/', $adminHtml),
+    'Admin entry module should carry a release cache-busting version.'
 );
 foreach ($adminSources as $adminSourceFile => $source) {
-    preg_match_all('/from\s+["\'](\.\/api\.js[^"\']*)["\']/', (string) $source, $apiImports);
-    foreach ($apiImports[1] as $apiImport) {
-        assert_same($sharedApiModule, $apiImport, "Admin module {$adminSourceFile} must import the shared API module instance.");
-    }
-}
-foreach ([$appJs, $tableSource, $dashboardSource] as $adminModule) {
+    // Modules are identified by URL: a query string on an internal import would load a
+    // second instance of that module (and of api.js, a second CSRF token holder).
     assert_true(
-        str_contains($adminModule, $sharedApiModule),
-        'Every admin module that performs API requests must import the same versioned API module instance so it shares the CSRF token.'
+        !preg_match('/from\s+"[^"]+\.js\?/', (string) $source) && !preg_match('/import\("[^"]+\.js\?/', (string) $source),
+        "Admin module {$adminSourceFile} must import sibling modules without a version query so every module shares one api.js instance."
     );
 }
 
@@ -92,7 +85,7 @@ assert_true(str_contains($appJs, 'tokenhub_admin_theme'), 'Admin theme choice sh
 assert_true(str_contains($appJs, 'applyAdminTheme'), 'Admin app should apply theme classes through a dedicated helper.');
 assert_true(str_contains($appJs, 'adminInitThemeSwitcher'), 'Admin app should initialize the theme switcher during boot.');
 assert_true(str_contains($appJs, 'adminApplyBrandIdentity'), 'Admin app should apply configured title and logo settings.');
-assert_true(str_contains($appJs, '/admin-api/system/settings-center'), 'Admin app should load brand settings from the settings center endpoint.');
+assert_true(str_contains($appJs, '/admin-api/system/brand-identity') && !str_contains($appJs, '/admin-api/system/settings-center'), 'Admin app should load brand settings from the public brand endpoint instead of downloading the whole settings center.');
 assert_true(str_contains($appJs, 'valueLabel("role", adminState.user.role)'), 'Admin topbar should localize the current user role.');
 assert_true(str_contains($appJs, 'prefers-color-scheme: dark'), 'Admin app should detect the system dark-mode preference.');
 assert_true(str_contains($appJs, 'ADMIN_THEME_MEDIA_QUERY.addEventListener("change"'), 'Admin app should update the automatic theme when the system preference changes.');
@@ -104,8 +97,9 @@ assert_true(
     preg_match('/function readThemeCookie\(\)\s*\{[\s\S]*?try\s*\{\s*return normalizeAdminTheme\(decodeURIComponent\(item\.slice\(prefix\.length\)\)\);\s*\}\s*catch\s*\{\s*return "auto";\s*\}/', $appJs) === 1,
     'Admin theme cookie reader should safely fall back to auto when a stored value is malformed.'
 );
-assert_true(str_contains($adminCss, '.theme-light'), 'Admin CSS should define the light theme.');
-assert_true(str_contains($adminCss, '.theme-dark'), 'Admin CSS should define the dark theme.');
+$tokenCss = (string) file_get_contents(__DIR__ . '/../../public/admin/assets/css/tokens.css');
+assert_true(str_contains($tokenCss, '.theme-light'), 'Admin CSS tokens should define the light theme.');
+assert_true(str_contains($tokenCss, '.theme-dark'), 'Admin CSS tokens should define the dark theme.');
 assert_true(!str_contains($adminCss, '.app-shell.theme-a'), 'Admin CSS should not retain the legacy theme A root selector.');
 assert_true(!str_contains($adminCss, '.app-shell.theme-b'), 'Admin CSS should not retain the legacy theme B root selector.');
 assert_true(!str_contains($adminCss, '.app-shell.theme-c'), 'Admin CSS should not retain the legacy theme C root selector.');
@@ -123,8 +117,9 @@ assert_true(str_contains($copyrightCssMatch[1], 'text-align: center'), 'Admin co
 $adminAssetSources = str_replace('http://www.w3.org/2000/svg', '', $adminHtml . $adminCss . $appJs);
 assert_true(!preg_match('/https?:\/\//i', $adminAssetSources), 'Admin frontend must not reference remote assets.');
 assert_true(!preg_match('/@import/i', $adminCss), 'Admin CSS must not import external styles.');
-assert_true(str_contains($resources, 'navigationSections'), 'Admin resources should define sidebar navigation sections.');
-assert_true(str_contains($resources, 'navSectionsForRole'), 'Admin resources should expose role-filtered navigation sections.');
+assert_true(str_contains($resources, 'export function pageCapability'), 'Admin resources should expose one capability lookup for every page.');
+assert_true(!str_contains($resources, 'roleAccess'), 'Menus must come from effective capabilities only, not a hard-coded role list.');
+assert_true(str_contains((string) file_get_contents(__DIR__ . '/../../public/admin/assets/js/domains.js'), 'export function domainsForUser'), 'Sidebar navigation sections should be filtered by the current user.');
 assert_true(!str_contains($resources, 'key: "quick"'), 'Admin navigation should not expose a common entries section.');
 assert_true(!str_contains($resources, '常用入口'), 'Admin navigation should not expose a common entries label.');
 assert_true(str_contains($resources, '智慧分析'), 'Admin navigation labels should use the Smart Analysis label.');
@@ -145,13 +140,7 @@ assert_true(!preg_match('/label: "[^"]*Header/', $resources), 'Admin resource fo
 assert_true(!str_contains($resources, 'IP/CIDR'), 'Admin resource form labels should not expose English CIDR notation.');
 assert_true(!str_contains($resources, 'JSON 数组'), 'Admin resource form labels should not expose mixed-language JSON array wording.');
 assert_true(str_contains($tableSource, 'columnLabel(column)'), 'Generic resource tables should translate column headers.');
-$detailTableStart = strpos($tableSource, 'function renderDataDetails');
-$detailTableEnd = $detailTableStart === false ? false : strpos($tableSource, "\n}\n", $detailTableStart);
-$detailTableSource = $detailTableStart === false || $detailTableEnd === false ? '' : substr($tableSource, $detailTableStart, $detailTableEnd - $detailTableStart);
-assert_true(
-    str_contains($detailTableSource, 'columns.map(columnLabel)') || str_contains($detailTableSource, 'el("th", { text: columnLabel(column) })'),
-    'Simple statistic tables should translate column headers.'
-);
+assert_true(str_contains($tableSource, 'columns.map((column) => el("th", { text: columnLabel(column) }))'), 'Detail and statistic tables should translate column headers.');
 assert_true(str_contains($tableSource, 'formatResourceValue(column, row[column])'), 'Generic resource tables should translate enum cell values.');
 assert_true(str_contains($dashboardSource, 'formatResourceValue(column, row[column])'), 'Dashboard tables should translate enum cell values.');
 assert_true(!preg_match('/label: "[^"]*CIDR/', $tableSource), 'Settings center labels should not expose English CIDR labels.');
@@ -163,7 +152,7 @@ assert_true(str_contains($appJs, 'nav-section-toggle'), 'Admin sidebar should re
 assert_true(!str_contains($appJs, 'nav-search-input'), 'Admin sidebar must not expose a navigation search input.');
 assert_true(!str_contains($appJs, 'compactSearchOpen'), 'Admin sidebar must not keep compact search state.');
 assert_true(!str_contains($appJs, 'aria-keyshortcuts'), 'Admin sidebar must not register a search keyboard shortcut.');
-assert_true(str_contains($appJs, 'adminNavItemIsActive'), 'Admin sidebar should use a section-aware active item helper.');
+assert_true(str_contains($appJs, '"aria-current": itemActive ? "page" : null'), 'Admin sidebar should mark only the current page item as active.');
 assert_true(!str_contains($appJs, 'adminState.page === item.key ? "active"'), 'Admin sidebar must not mark every duplicate resource entry active.');
 assert_true(!str_contains($adminCss, '.nav-search'), 'Admin CSS must not style a removed sidebar search control.');
 assert_true(str_contains($adminCss, '.nav-section'), 'Admin CSS should style sidebar sections.');
@@ -207,9 +196,7 @@ assert_true(str_contains($resources, '"settings-rag-upload-review"'), 'Admin res
 assert_true(str_contains($resources, '"settings-rag-package-upload"'), 'Admin resources should expose RAG image package upload settings.');
 assert_true(str_contains($resources, '"settings-rag-ai-image-processing"'), 'Admin resources should expose RAG AI image processing settings.');
 assert_true(str_contains($resources, '"settings-rag-vectorization-monitoring"'), 'Admin resources should expose RAG vectorization monitoring settings.');
-assert_true(str_contains($resources, '{ key: "system", label: "\u7cfb\u7edf\u8bbe\u7f6e"'), 'System settings should be a left sidebar section.');
-assert_true(str_contains($resources, 'items: ["content-retention-policy", "settings-center", "admin-users", "permission-config", "system-settings"]'), 'System settings should include the dedicated permission configuration page alongside administrator management.');
-assert_true(!str_contains($resources, 'items: ["content-retention-policy", "settings-brand-identity"'), 'Typed settings sections should move from left sidebar pages into the settings center page.');
+assert_true(str_contains((string) file_get_contents(__DIR__ . '/../../public/admin/assets/js/domains.js'), '{ key: "system", label: "系统运维"'), 'System settings should be a left sidebar section.');
 assert_true(str_contains($resources, '"system-settings": { label: "高级设置"'), 'Advanced settings should remain a dedicated form page.');
 assert_true(!str_contains($resources, 'label: "设置值JSON"'), 'Advanced settings should not expose a raw JSON input.');
 assert_true(str_contains($resources, 'readOnly: true'), 'Read-only resources should be marked in resource metadata.');
@@ -230,10 +217,10 @@ assert_true(str_contains($tableSource, 'brand_identity'), 'Settings center shoul
 assert_true(str_contains($tableSource, 'showUserPasswordReset'), 'User rows should expose password reset through a dedicated action.');
 assert_true(str_contains($tableSource, 'showUserDepartmentMove'), 'User rows should expose department move through a dedicated action.');
 assert_true(str_contains($tableSource, 'showUserStatusUpdate'), 'User rows should expose status update through a dedicated action.');
-assert_true(str_contains($tableSource, 'departmentAwareFields'), 'Admin create and edit forms should convert department_id fields into selectable department options.');
+assert_true(str_contains($tableSource, 'const needsDepartments = fields.some((config) => config.reference === "departments" || (config.name === "department_id" && config.type === "number"));'), 'Admin create and edit forms should convert department_id fields into selectable department options.');
 assert_true(
     str_contains($tableSource, 'const formFields = await lookupAwareFields(config.form)') &&
-    str_contains($tableSource, 'const departmentFields = await departmentAwareFields(fields)'),
+    str_contains($tableSource, 'const departmentOptions = needsDepartments ? await departmentSelectOptions() : [];'),
     'Admin create and edit modals should resolve department and reference select options before rendering forms.'
 );
 assert_true(str_contains($tableSource, 'coerce: "number"'), 'Department select fields should still submit department_id as a number.');
@@ -247,3 +234,12 @@ assert_true(str_contains($moveSource, 'type: "select"'), 'User department move s
 assert_true(!str_contains($moveSource, 'type: "number"'), 'User department move should not expose department_id as a free numeric input.');
 assert_true(str_contains($moveSource, 'Number(values.department_id)'), 'User department move should still submit department_id as a number.');
 assert_true(str_contains($tableSource, 'config.readOnly !== true'), 'Read-only resources should not render destructive generic actions.');
+
+// Admin/screen static files: compressed and revalidated on every load, since
+// ES module imports carry no cache-busting version query.
+foreach (['docker/caddy/Caddyfile', 'docker/release/caddy/Caddyfile'] as $caddyPath) {
+    $caddySource = (string) file_get_contents(__DIR__ . '/../../' . $caddyPath);
+    assert_true(substr_count($caddySource, 'encode zstd gzip') === 2, $caddyPath . ' should compress the admin and screen UIs.');
+    assert_true(substr_count($caddySource, 'header Cache-Control "no-cache"') === 2, $caddyPath . ' should make the admin and screen UIs revalidate.');
+}
+assert_true(substr_count((string) file_get_contents(__DIR__ . '/../../Caddyfile.example'), 'header Cache-Control "no-cache"') === 2, 'Caddyfile.example should make the admin and screen UIs revalidate.');

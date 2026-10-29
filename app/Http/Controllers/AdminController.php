@@ -20,6 +20,7 @@ use TokenHub\Services\DashboardService;
 use TokenHub\Services\DepartmentService;
 use TokenHub\Services\ExportService;
 use TokenHub\Services\LogService;
+use TokenHub\Services\LookupService;
 use TokenHub\Services\NetworkInterfaceIpService;
 use TokenHub\Services\PermissionService;
 use TokenHub\Services\ProviderModelSyncService;
@@ -41,7 +42,12 @@ final class AdminController
         }
 
         return $this->withSessionCookie(
-            Response::ok(['user' => $result['user'], 'csrf_token' => $result['csrf']]),
+            Response::ok([
+                'user' => $result['user'],
+                'csrf_token' => $result['csrf'],
+                'session_expires_at' => (new AuthService())->sessionExpiresAt($result['session']),
+                'server_time' => date('Y-m-d H:i:s'),
+            ]),
             $result['session'],
             time() + 86400
         );
@@ -55,7 +61,27 @@ final class AdminController
 
     public function me(Request $request): Response
     {
-        return Response::ok(['user' => App::context()->adminUser()]);
+        return Response::ok([
+            'user' => App::context()->adminUser(),
+            'session_expires_at' => (new AuthService())->sessionExpiresAt((string) ($_COOKIE['tokenhub_admin_session'] ?? '')),
+            'server_time' => date('Y-m-d H:i:s'),
+        ]);
+    }
+
+    public function renewSession(Request $request): Response
+    {
+        $expiresAt = (new AuthService())->renew((string) ($_COOKIE['tokenhub_admin_session'] ?? ''));
+        if ($expiresAt === null) {
+            return Response::error('ADMIN_UNAUTHENTICATED', 'Admin login required', 401);
+        }
+        return Response::ok(['session_expires_at' => $expiresAt, 'server_time' => date('Y-m-d H:i:s')]);
+    }
+
+    public function lookup(Request $request): Response
+    {
+        $type = (string) ($request->params['type'] ?? '');
+        $actor = App::context()->adminUser() ?? [];
+        return Response::ok((new LookupService())->find($actor, $type, $request->query));
     }
 
     public function csrf(Request $request): Response
@@ -84,7 +110,12 @@ final class AdminController
 
     public function index(Request $request, string $table): Response
     {
-        return Response::ok((new CrudService())->list($table, $request->query));
+        $service = new CrudService();
+        $response = Response::ok($service->list($table, $request->query));
+        if ((string) ($request->query['with_total'] ?? '') === '1') {
+            $response = $response->withHeader('X-Total-Count', (string) $service->count($table, $request->query));
+        }
+        return $response;
     }
 
     public function create(Request $request, string $table): Response
@@ -499,7 +530,8 @@ final class AdminController
     {
         $filters = $request->query;
         $filters['_scope'] = (new ExportService())->actorScope(App::context()->adminUser() ?? []);
-        return Response::ok((new LogService())->query($filters));
+        $page = (new LogService())->queryPage($filters);
+        return Response::ok($page['items'])->withHeader('X-Total-Count', (string) $page['total']);
     }
 
     public function exportDownloadUrl(Request $request): Response

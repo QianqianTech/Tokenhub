@@ -8,7 +8,7 @@ $root = dirname(__DIR__, 2);
 $kernelSource = file_get_contents($root . '/app/Bootstrap/Kernel.php') ?: '';
 $controllerSource = file_get_contents($root . '/app/Http/Controllers/AdminController.php') ?: '';
 $apiKeyServiceSource = file_get_contents($root . '/app/Services/ApiKeyService.php') ?: '';
-$tableSource = file_get_contents($root . '/public/admin/assets/js/table.js') ?: '';
+$tableSource = admin_js_bundle() ?: '';
 
 assert_true(str_contains($kernelSource, "post('/admin-api/api-keys/batch'"), 'Kernel should route API key batch operations through a dedicated endpoint.');
 assert_true(str_contains($controllerSource, 'batchApiKeys'), 'Admin controller should expose an API key batch action.');

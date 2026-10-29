@@ -49,12 +49,16 @@
 
 	handle_path /admin/* {
 		root * {$TOKENHUB_APP_DIR:/var/www/tokenhub}/public/admin
+		# ES modules carry no version query: always revalidate (ETag).
+		header Cache-Control "no-cache"
 		try_files {path} /index.html
 		file_server
 	}
 
 	handle_path /screen/* {
 		root * {$TOKENHUB_APP_DIR:/var/www/tokenhub}/public/screen
+		# ES modules carry no version query: always revalidate (ETag).
+		header Cache-Control "no-cache"
 		try_files {path} /index.html
 		file_server
 	}

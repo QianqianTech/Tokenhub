@@ -1,9 +1,13 @@
-import { adminErrorMessage, api, configureApi, login, setCsrf } from "./api.js?v=20261028-admin-ops-v1";
-import { $, button, clear, el, setText, statusMessage } from "./dom.js?v=20260722-modal-close-label-v1";
-import { renderDashboard as renderDashboardPage } from "./dashboard.js?v=20261028-admin-ops-v1";
-import { resources as resourceConfig, resourcesForUser, valueLabel } from "./resources.js?v=20261028-admin-ops-v1";
-import { renderResourcePage, setAdminViewer } from "./table.js?v=20261028-admin-ops-v1";
-import { domainsForUser, parseAdminHash, writeAdminHash } from "./domains.js?v=20261028-admin-ops-v1";
+import { adminErrorMessage, api, configureApi, login, setCsrf, setRouteSignal } from "./api.js";
+import { $, clear, el, setText, statusMessage } from "./dom.js";
+import { resources as resourceConfig, valueLabel } from "./resources.js";
+import { preloadPage, renderPage } from "./core/registry.js";
+import { setCurrentUser } from "./core/session.js";
+import { errorState } from "./components/feedback.js";
+import { bindPaletteShortcut, configurePalette, openPalette } from "./components/palette.js";
+import { requestRelogin, startSessionMonitor, stopSessionMonitor } from "./components/session.js";
+import { adminHash, domainForPage, domainsForUser, pageAllowed, parseAdminHash } from "./domains.js";
+import { buildHash, hasTransientFilters, replaceHash, withoutTransientFilters } from "./core/router.js";
 
 const adminState = {
   page: "dashboard",
@@ -28,7 +32,6 @@ const ADMIN_THEME_MEDIA_QUERY = window.matchMedia("(prefers-color-scheme: dark)"
 const NAV_OPEN_COOKIE = "tokenhub_admin_nav_open";
 const ADMIN_SIDEBAR_MODE_COOKIE = "tokenhub_admin_sidebar_mode";
 const ADMIN_NAV_RECENT_COOKIE = "tokenhub_admin_nav_recent";
-const ADMIN_SPECIAL_DOMAIN_TABS = new Set(["operations-status", "rag-settings"]);
 const ADMIN_DOMAIN_ICON_PATHS = {
   operations: ["M4 4h6v6H4z", "M14 4h6v6h-6z", "M4 14h6v6H4z", "M14 14h6v6h-6z"],
   organization: ["M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2", "M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z", "M22 21v-2a4 4 0 0 0-3-3.87", "M16 3.13a4 4 0 0 1 0 7.75"],
@@ -39,6 +42,7 @@ const ADMIN_DOMAIN_ICON_PATHS = {
   security: ["M5 11h14v10H5z", "M8 11V7a4 4 0 0 1 8 0v4", "M12 15v2"],
   system: ["M4 21v-7", "M4 10V3", "M12 21v-9", "M12 8V3", "M20 21v-5", "M20 12V3", "M1 14h6", "M9 8h6", "M17 16h6"]
 };
+let adminBrandTitle = "TokenHub 管理后台";
 const ADMIN_BRAND_DEFAULTS = {
   product_name: "TokenHub",
   admin_title: "TokenHub 管理后台",
@@ -130,6 +134,7 @@ function adminApplyBrandIdentity(settings = {}) {
   const logoUrl = adminSafeLocalAssetUrl(settings.logo_url || ADMIN_BRAND_DEFAULTS.logo_url);
   const faviconUrl = adminSafeLocalAssetUrl(settings.favicon_url || ADMIN_BRAND_DEFAULTS.favicon_url);
 
+  adminBrandTitle = adminTitle;
   document.title = adminTitle;
   const brand = document.querySelector(".brand");
   if (brand) {
@@ -160,15 +165,6 @@ function adminRenderBrandNode(node, productName, logoUrl) {
     node.append(el("img", { className: "brand-logo", src: logoUrl, alt: "" }));
   }
   node.append(el("span", { text: productName }));
-}
-
-async function adminRefreshBrandIdentity() {
-  try {
-    const result = await api("/admin-api/system/settings-center");
-    adminApplyBrandIdentity(result.data?.sections?.brand_identity || {});
-  } catch {
-    adminApplyBrandIdentity();
-  }
 }
 
 async function adminRefreshPublicBrandIdentity() {
@@ -251,15 +247,12 @@ function adminCreateDomainIcon(domainKey) {
 }
 
 function adminVisibleNavSections() {
-  const allowedResources = new Set(resourcesForUser(adminState.user).map(([key]) => key));
   return domainsForUser(adminState.user).map((domain) => ({
     key: domain.key,
     label: domain.label,
     defaultOpen: domain.key === "operations",
-    items: domain.tabs
-      .filter((key) => allowedResources.has(key) || ADMIN_SPECIAL_DOMAIN_TABS.has(key))
-      .map((key) => [key, resourceConfig[key] || { label: adminDomainTabLabel(key), group: domain.label }])
-  })).filter((section) => section.items.length > 0);
+    items: domain.tabs.map((key) => [key, resourceConfig[key] || { label: adminDomainTabLabel(key), group: domain.label }])
+  }));
 }
 
 function adminPrimarySectionKeyForPage(sections, page) {
@@ -363,10 +356,6 @@ function adminRestoreNavScroll() {
   }
 }
 
-function adminNavItemIsActive(section, item, activeSectionKey) {
-  return section.key === activeSectionKey && adminState.page === item.key;
-}
-
 function adminRenderRecentNav() {
   const host = $("nav-recent");
   if (!host) {
@@ -397,9 +386,18 @@ function adminRenderNavList() {
     return;
   }
   adminCaptureNavScroll();
-  clear(host);
   const sections = adminVisibleNavSections();
   const activeSectionKey = adminPrimarySectionKeyForPage(sections, adminState.page);
+  // Navigation and section toggles only change state classes: update the
+  // existing DOM in place so focus and scroll position are kept. The menu is
+  // rebuilt only when the set of visible pages changes (e.g. another user).
+  const signature = sections.map((domain) => `${domain.key}:${domain.items.map(([key]) => key).join(",")}`).join("|");
+  if (host.dataset.signature === signature && host.childElementCount > 0) {
+    adminUpdateNavState(host, sections, activeSectionKey);
+    return;
+  }
+  host.dataset.signature = signature;
+  clear(host);
   for (const domain of sections) {
     const visibleItems = domain.items.map(([key, config]) => {
       const label = config.label || adminDomainTabLabel(key);
@@ -435,12 +433,21 @@ function adminRenderNavList() {
     const list = el("div", { id: listId, className: "nav-list" });
     for (const item of visibleItems) {
       const itemActive = item.key === adminState.page;
-      list.append(el("button", {
-        type: "button",
+      list.append(el("a", {
         className: `nav-button ${itemActive ? "active" : ""}`.trim(),
+        href: buildHash(domain.key, item.key),
+        dataset: { page: item.key },
         text: item.label,
         "aria-current": itemActive ? "page" : null,
-        onClick: () => adminNavigateDomain(domain.key, item.key)
+        onMouseenter: () => preloadPage(item.key),
+        onFocus: () => preloadPage(item.key),
+        onClick: (event) => {
+          if (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) {
+            return;
+          }
+          event.preventDefault();
+          void adminNavigateDomain(domain.key, item.key);
+        }
       }));
     }
     section.append(toggle, list);
@@ -449,43 +456,111 @@ function adminRenderNavList() {
   adminRestoreNavScroll();
 }
 
-function adminDomainForTab(tabKey) {
-  return domainsForUser(adminState.user).find((domain) => domain.tabs.includes(tabKey));
-}
+let adminRouteSeq = 0;
+let adminRouteController = null;
 
-async function adminNavigateDomain(domainKey, tabKey, fromHash = false) {
-  const domain = domainsForUser(adminState.user).find((item) => item.key === domainKey);
-  if (!domain || !domain.tabs.includes(tabKey)) return;
-  if (tabKey !== adminState.page) {
-    adminRecordRecentPage(adminState.page);
-  }
-  adminSidebarState.transientOpenKey = domain.key;
-  adminCaptureNavScroll();
-  adminState.domain = domain.key;
-  adminState.page = tabKey;
-  adminState.filters = {};
-  if (!fromHash) writeAdminHash(domain.key, tabKey);
-  if (adminSidebarState.mobileOpen) {
-    adminCloseMobileNav({ restoreFocus: false });
-  }
-  await adminRender();
+function adminNavigateDomain(domainKey, tabKey) {
+  return adminNavigate(tabKey);
 }
 
 async function renderDomainPage(root) {
-  clear(root);
-  const domain = adminDomainForTab(adminState.page) || domainsForUser(adminState.user)[0];
+  adminRouteController?.abort();
+  adminRouteController = new AbortController();
+  setRouteSignal(adminRouteController.signal);
+  const seq = ++adminRouteSeq;
+  const domain = domainForPage(adminState.user, adminState.page) || domainsForUser(adminState.user)[0];
   adminState.domain = domain?.key || "operations";
-  const tabs = el("div", { className: "domain-tabs", role: "tablist" });
-  const panel = el("section", { className: "domain-page" });
+  const tabs = el("div", { className: "domain-tabs", role: "tablist", "aria-label": domain?.label || "页面" });
+  const panel = el("section", { className: "domain-page", role: "tabpanel" });
   for (const tabKey of domain?.tabs || []) {
-    const label = adminDomainTabLabel(tabKey);
-    tabs.append(el("button", { type: "button", className: `domain-tab ${tabKey === adminState.page ? "active" : ""}`, text: label, onClick: () => adminNavigateDomain(domain.key, tabKey) }));
+    const active = tabKey === adminState.page;
+    tabs.append(el("a", {
+      className: `domain-tab ${active ? "active" : ""}`.trim(),
+      href: buildHash(domain.key, tabKey),
+      role: "tab",
+      "aria-selected": active ? "true" : "false",
+      tabIndex: active ? 0 : -1,
+      text: adminDomainTabLabel(tabKey),
+      onClick: (event) => {
+        if (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) {
+          return;
+        }
+        event.preventDefault();
+        void adminNavigateDomain(domain.key, tabKey);
+      }
+    }));
   }
-  root.append(tabs, panel);
-  const content = panel;
-  setAdminViewer(adminState.user);
-  if (adminState.page === "dashboard") await renderDashboardPage(content, adminNavigate);
-  else await renderResourcePage(content, adminState.page, adminState.filters);
+  tabs.addEventListener("keydown", adminHandleTabKeydown);
+  root.replaceChildren(tabs, panel);
+  const page = adminState.page;
+  const domainKey = adminState.domain;
+  try {
+    await renderPage(page, panel, {
+      filters: adminState.filters,
+      navigate: adminNavigate,
+      signal: adminRouteController.signal,
+      setFilters: (filters) => {
+        if (seq === adminRouteSeq) {
+          adminState.filters = withoutTransientFilters(filters);
+          replaceHash(buildHash(domainKey, page, adminState.filters));
+        }
+      }
+    });
+  } catch (error) {
+    if (seq !== adminRouteSeq || error?.name === "AbortError") {
+      return;
+    }
+    // Any page whose initial load fails gets the same retryable error state.
+    const failure = errorState(error, { fallback: "页面加载失败，请刷新后重试", onRetry: () => renderDomainPage(root) });
+    failure.dataset.pageError = "true";
+    panel.replaceChildren(failure);
+  }
+}
+
+// Arrow-key navigation between domain tabs (WAI-ARIA tabs pattern).
+function adminHandleTabKeydown(event) {
+  if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) {
+    return;
+  }
+  const tabs = [...event.currentTarget.querySelectorAll('[role="tab"]')];
+  const index = tabs.indexOf(document.activeElement);
+  if (index < 0) {
+    return;
+  }
+  event.preventDefault();
+  const next = event.key === "Home" ? 0
+    : event.key === "End" ? tabs.length - 1
+      : (index + (event.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length;
+  tabs[next].focus();
+}
+
+function adminUpdateNavState(host, sections, activeSectionKey) {
+  for (const domain of sections) {
+    const section = host.querySelector(`[data-nav-section="${domain.key}"]`);
+    if (!section) {
+      continue;
+    }
+    const isOpen = adminSectionIsOpen(domain);
+    section.classList.toggle("active", domain.key === activeSectionKey);
+    section.classList.toggle("open", isOpen);
+    section.classList.toggle("collapsed", !isOpen);
+    const toggle = section.querySelector(".nav-section-toggle");
+    toggle?.setAttribute("aria-expanded", isOpen ? "true" : "false");
+    toggle?.setAttribute("aria-label", `${domain.label}，${isOpen ? "已展开" : "已收起"}`);
+    const caret = section.querySelector(".nav-caret");
+    if (caret) {
+      caret.textContent = isOpen ? "−" : "+";
+    }
+    for (const link of section.querySelectorAll("a.nav-button")) {
+      const itemActive = link.dataset.page === adminState.page;
+      link.classList.toggle("active", itemActive);
+      if (itemActive) {
+        link.setAttribute("aria-current", "page");
+      } else {
+        link.removeAttribute("aria-current");
+      }
+    }
+  }
 }
 
 function adminRenderNav() {
@@ -558,7 +633,7 @@ function adminInitSidebarControls() {
   });
   window.addEventListener("tokenhub-admin-navigate", (event) => {
     const detail = event instanceof CustomEvent ? event.detail || {} : {};
-    if (typeof detail.page === "string" && resourceConfig[detail.page]) {
+    if (typeof detail.page === "string" && pageAllowed(adminState.user, detail.page)) {
       adminNavigate(detail.page, detail.filters || {}).catch((error) => {
         setText($("global-error"), adminErrorMessage(error));
       });
@@ -566,30 +641,57 @@ function adminInitSidebarControls() {
   });
 }
 
+// Navigation only writes the URL; adminRenderRoute (hashchange) does the rendering.
 async function adminNavigate(page, filters = {}) {
-  if (page !== adminState.page) {
+  const hash = adminHash(adminState.user, page, filters);
+  if (!hash) {
+    return;
+  }
+  if (window.location.hash === hash) {
+    await adminRenderRoute();
+    return;
+  }
+  window.location.hash = hash;
+}
+
+async function adminRenderRoute() {
+  if (!adminState.user) {
+    return;
+  }
+  const route = parseAdminHash(adminState.user);
+  if (!route.exact) {
+    replaceHash(buildHash(route.domainKey, route.tabKey, route.filters));
+  }
+  if (route.tabKey !== adminState.page) {
     adminRecordRecentPage(adminState.page);
   }
-  const sections = adminVisibleNavSections();
-  adminSidebarState.transientOpenKey = adminPrimarySectionKeyForPage(sections, page);
+  adminSidebarState.transientOpenKey = route.domainKey;
   adminCaptureNavScroll();
-  adminState.page = page;
-  adminState.domain = adminDomainForTab(page)?.key || adminState.domain;
-  adminState.filters = filters;
-  if (adminState.domain) writeAdminHash(adminState.domain, page);
+  adminState.domain = route.domainKey;
+  adminState.page = route.tabKey;
+  adminState.filters = route.filters;
   if (adminSidebarState.mobileOpen) {
     adminCloseMobileNav({ restoreFocus: false });
   }
   await adminRender();
+  if (hasTransientFilters(route.filters) && adminState.page === route.tabKey) {
+    replaceHash(buildHash(route.domainKey, route.tabKey, withoutTransientFilters(route.filters)));
+  }
 }
 
 async function adminRender() {
   adminRenderNav();
-  const content = $("content");
-  const domain = adminDomainForTab(adminState.page);
-  setText($("page-title"), domain?.label || resourceConfig[adminState.page]?.label || "TokenHub");
+  const domain = domainForPage(adminState.user, adminState.page);
+  const pageLabel = adminDomainTabLabel(adminState.page) || resourceConfig[adminState.page]?.label || "TokenHub";
+  setText($("page-title"), pageLabel);
+  const crumb = $("page-crumb");
+  if (crumb) {
+    setText(crumb, domain?.label || "");
+    crumb.hidden = !domain?.label;
+  }
+  document.title = `${adminDomainTabLabel(adminState.page)} · ${adminBrandTitle}`;
   clear($("global-error"));
-  await renderDomainPage(content);
+  await renderDomainPage($("content"));
 }
 
 function adminShowLogin() {
@@ -623,7 +725,82 @@ function adminRestoreHashRoute() {
   const route = parseAdminHash(adminState.user);
   adminState.domain = route.domainKey;
   adminState.page = route.tabKey;
-  adminState.filters = {};
+  adminState.filters = route.filters;
+}
+
+function adminStartSession(data) {
+  if (!data?.session_expires_at) {
+    return;
+  }
+  startSessionMonitor({
+    expiresAt: data.session_expires_at,
+    serverTime: data.server_time,
+    username: adminState.user?.username || "",
+    onRelogin: (result) => {
+      if (result?.user) {
+        adminState.user = result.user;
+        setCurrentUser(result.user);
+      }
+      adminStartSession(result);
+    }
+  });
+}
+
+function adminPaletteEntries() {
+  if (!adminState.user) {
+    return [];
+  }
+  const recent = adminAllowedRecentPages(adminSidebarState.recentPages);
+  const entries = domainsForUser(adminState.user).flatMap((domain) => domain.tabs.map((key) => ({
+    key,
+    label: adminDomainTabLabel(key),
+    domain: domain.label,
+    href: buildHash(domain.key, key),
+    keywords: [resourceConfig[key]?.group || ""]
+  })));
+  return entries.sort((a, b) => {
+    const ra = recent.indexOf(a.key);
+    const rb = recent.indexOf(b.key);
+    return (ra < 0 ? 99 : ra) - (rb < 0 ? 99 : rb);
+  });
+}
+
+async function adminSignedIn(user, sessionData) {
+  adminState.user = user;
+  setCurrentUser(user);
+  adminRestoreHashRoute();
+  adminReadSidebarPreferences();
+  adminShowApp();
+  adminStartSession(sessionData);
+  await adminRenderRoute();
+}
+
+async function adminSubmitLogin(event) {
+  event.preventDefault();
+  const username = $("username");
+  const password = $("password");
+  const submit = $("login-button");
+  const errorNode = $("login-error");
+  if (!username.value.trim() || !password.value) {
+    setText(errorNode, "请输入用户名和密码");
+    (username.value.trim() ? password : username).focus();
+    return;
+  }
+  submit.disabled = true;
+  submit.setAttribute("aria-busy", "true");
+  setText(errorNode, "");
+  try {
+    const result = await login(username.value.trim(), password.value);
+    password.value = "";
+    await adminSignedIn(result.data.user, result.data);
+  } catch (error) {
+    setText(errorNode, adminErrorMessage(error, "登录失败，请检查账号或密码"));
+    password.value = "";
+    password.focus();
+  } finally {
+    submit.disabled = false;
+    submit.removeAttribute("aria-busy");
+  }
 }
 
 async function adminBoot() {
@@ -631,50 +808,44 @@ async function adminBoot() {
   adminInitThemeSwitcher();
   adminApplyBrandIdentity();
   configureApi({
-    onAuthRequired: () => adminShowLogin(),
+    // An expired session while working asks for the password on top of the
+    // current page instead of throwing the user (and unsaved input) out.
+    onAuthRequired: () => {
+      if (adminState.user) {
+        void requestRelogin();
+      } else {
+        adminShowLogin();
+      }
+    },
     onError: (error) => {
       clear($("global-error")).append(statusMessage(adminErrorMessage(error), "error"));
     }
   });
-  await adminRefreshPublicBrandIdentity();
-  $("login-button").addEventListener("click", async () => {
-    try {
-      const result = await login($("username").value, $("password").value);
-      adminState.user = result.data.user;
-      adminRestoreHashRoute();
-      adminReadSidebarPreferences();
-      await adminRefreshBrandIdentity();
-      adminShowApp();
-      await adminRender();
-    } catch (error) {
-      setText($("login-error"), adminErrorMessage(error, "登录失败，请检查账号或密码"));
-    }
-  });
+  configurePalette({ getEntries: adminPaletteEntries, navigate: (page) => void adminNavigate(page) });
+  bindPaletteShortcut();
+  $("palette-trigger")?.addEventListener("click", () => openPalette());
+  $("login").addEventListener("submit", adminSubmitLogin);
   $("logout").addEventListener("click", async () => {
     await api("/admin-api/logout", { method: "POST" }).catch(() => null);
+    stopSessionMonitor();
     adminState.user = null;
+    setCurrentUser(null);
     setCsrf("");
     adminShowLogin();
   });
+  await adminRefreshPublicBrandIdentity();
   try {
-    const csrf = await api("/admin-api/csrf");
+    const csrf = await api("/admin-api/csrf", { silent: true });
     setCsrf(csrf.data.csrf_token);
-    const me = await api("/admin-api/me");
-    adminState.user = me.data.user;
-    adminRestoreHashRoute();
-    adminReadSidebarPreferences();
-    await adminRefreshBrandIdentity();
-    adminShowApp();
-    await adminRender();
+    const me = await api("/admin-api/me", { silent: true });
+    await adminSignedIn(me.data.user, me.data);
   } catch {
     adminShowLogin();
   }
 }
 
 window.addEventListener("hashchange", () => {
-  if (!adminState.user) return;
-  const route = parseAdminHash(adminState.user);
-  adminNavigateDomain(route.domainKey, route.tabKey, true).catch((error) => setText($("global-error"), adminErrorMessage(error)));
+  adminRenderRoute().catch((error) => setText($("global-error"), adminErrorMessage(error)));
 });
 
 adminBoot();

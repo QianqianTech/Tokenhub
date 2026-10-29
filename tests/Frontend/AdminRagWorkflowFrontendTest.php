@@ -5,7 +5,7 @@ declare(strict_types=1);
 require __DIR__ . '/../bootstrap.php';
 
 $resources = file_get_contents(__DIR__ . '/../../public/admin/assets/js/resources.js') ?: '';
-$tableSource = file_get_contents(__DIR__ . '/../../public/admin/assets/js/table.js') ?: '';
+$tableSource = admin_js_bundle() ?: '';
 $adminCss = file_get_contents(__DIR__ . '/../../public/admin/assets/css/app.css') ?: '';
 
 function assert_ordered_contains(string $source, array $tokens, string $message): void
@@ -30,7 +30,7 @@ foreach ([
 }
 
 foreach ([
-    'label: "RAG知识库"',
+    'group: "RAG知识库"',
     'label: "RAG 控制台"',
     'label: "知识库管理"',
     'label: "导入与审核"',
@@ -205,7 +205,7 @@ assert_true(
 );
 
 assert_true(
-    str_contains($resources, 'const ragNavigationItems = ["rag-build", "rag-retrieval-lab", "rag-quality", "rag-operations"]'),
+    str_contains((string) file_get_contents(__DIR__ . '/../../public/admin/assets/js/domains.js'), '{ key: "rag", label: "RAG 知识库", tabs: ["rag-build", "rag-retrieval-lab", "rag-quality", "rag-operations"] }'),
     'RAG sidebar should expose four task workspaces instead of raw data categories.'
 );
 
@@ -240,6 +240,6 @@ assert_true(
     'RAG onboarding action should request the destination create dialog on its first click.'
 );
 assert_true(
-    str_contains($tableSource, 'const { openCreate = false, ...filterValues } = initialFilters;'),
+    str_contains($tableSource, 'const { openCreate = false, tab: _tab, ...filterValues } = initialFilters;'),
     'Generic resource pages should keep one-shot create navigation intent out of list filters.'
 );

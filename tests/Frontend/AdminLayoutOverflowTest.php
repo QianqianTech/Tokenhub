@@ -5,7 +5,7 @@ declare(strict_types=1);
 require __DIR__ . '/../bootstrap.php';
 
 $adminCss = file_get_contents(__DIR__ . '/../../public/admin/assets/css/app.css') ?: '';
-$tableSource = file_get_contents(__DIR__ . '/../../public/admin/assets/js/table.js') ?: '';
+$tableSource = admin_js_bundle() ?: '';
 
 assert_true(str_contains($tableSource, 'className: "panel table-panel"'), 'Generic admin tables should render inside a dedicated table-panel.');
 assert_true(substr_count($tableSource, 'className: "panel table-panel"') >= 2, 'Specialized table hosts should also use table-panel.');

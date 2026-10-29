@@ -32,3 +32,6 @@ Thumbs.db
 /*-status.txt
 /admin-docker-deploy-output.txt
 /deploy/docker/verify-report-*.txt
+
+# Browser test dependencies
+/tests/e2e/node_modules

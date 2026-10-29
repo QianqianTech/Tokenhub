@@ -35,7 +35,10 @@ foreach (\TokenHub\Bootstrap\Kernel::router()->routes() as $route) {
     if (!str_starts_with($route['path'], '/admin-api/') || in_array($name, $public, true)) {
         continue;
     }
-    if ($permissions->capabilityForAdminRequest($request($route['method'], $route['path'])) === 'unknown') {
+    // Lookup routes resolve their capability from the lookup type; probe with a real one
+    // (unknown types fail closed, asserted in AdminListAndLookupContractTest).
+    $probePath = str_replace('/admin-api/lookups/{type}', '/admin-api/lookups/users', $route['path']);
+    if ($permissions->capabilityForAdminRequest($request($route['method'], $probePath)) === 'unknown') {
         $unmapped[] = $name;
     }
 }

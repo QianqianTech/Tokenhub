@@ -81,8 +81,12 @@ final class PermissionService
     public function capabilityForAdminRequest(Request $request): ?string
     {
         $path = $request->path;
-        if (in_array($path, ['/admin-api/me', '/admin-api/csrf', '/admin-api/logout'], true)) {
+        if (in_array($path, ['/admin-api/me', '/admin-api/csrf', '/admin-api/logout', '/admin-api/session/renew'], true)) {
             return null;
+        }
+
+        if (str_starts_with($path, '/admin-api/lookups/')) {
+            return LookupService::capabilityFor(substr($path, strlen('/admin-api/lookups/'))) ?? 'unknown';
         }
 
         if (str_starts_with($path, '/admin-api/admin-users')) {
