@@ -31,6 +31,17 @@ preg_match_all("/env\\(['\"]([A-Z0-9_]+)['\"]/", implode("\n", array_map('file_g
 foreach (array_unique($matches[1]) as $key) {
     assert_true(preg_match('/^(# )?' . preg_quote($key, '/') . '=|' . preg_quote($key, '/') . ' is/m', $documented) === 1, '.env.example should document ' . $key . '.');
 }
+// Runtime settings read by services through env_value()/getenv() are documented too.
+$appSources = '';
+foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator($root . '/app', FilesystemIterator::SKIP_DOTS)) as $appFile) {
+    if ($appFile->isFile() && str_ends_with($appFile->getFilename(), '.php')) {
+        $appSources .= (string) file_get_contents($appFile->getPathname()) . "\n";
+    }
+}
+preg_match_all("/(?:env_value|getenv|env)\\(['\"]([A-Z][A-Z0-9_]+)['\"]/", $appSources, $runtimeMatches);
+foreach (array_unique($runtimeMatches[1]) as $key) {
+    assert_true(preg_match('/^(# )?' . preg_quote($key, '/') . '=|' . preg_quote($key, '/') . ' is/m', $documented) === 1, '.env.example should document runtime setting ' . $key . '.');
+}
 foreach (['APP_KEY', 'ADMIN_CSRF_SECRET', 'DB_PASSWORD', 'DB_ROOT_PASSWORD', 'REDIS_PASSWORD', 'TOKENHUB_ADMIN_PASSWORD'] as $secret) {
     assert_true(EnvFile::isPlaceholder((string) $template->get($secret)), '.env.example must not ship a real value for ' . $secret . '.');
 }
