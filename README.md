@@ -57,3 +57,14 @@ docker compose exec -T php php bin/run-tests.php
 - 智能体管理 API：`docs/agent-management-api.md`
 - MCP 接入（Claude Code / Cursor / Claude Desktop 等）：`docs/mcp.md`
 - 验收清单：`docs/acceptance/final-acceptance-checklist.md`
+
+## 许可 / License
+
+源代码公开。**个人免费，企业商用需要授权许可。** 详见[《TokenHub 软件许可协议》](LICENSE)，版权归黔前智算所有。
+
+- **个人免费**：个人学习、研究和自用，以及教育机构、非营利组织的非商业使用，可以免费使用、修改和非商业分发。
+- **企业商用需要授权**：企业及其他组织用于业务、内部办公、对外提供服务（含 SaaS、托管）或销售交付，须事先取得授权。组织可在内部非生产环境免费评估 30 天。
+
+企业商用授权请通过本仓库 [Issues](https://github.com/QianqianTech/Tokenhub/issues) 联系。
+
+Personal use is free. Enterprise and other commercial use requires a license. See [LICENSE](LICENSE).

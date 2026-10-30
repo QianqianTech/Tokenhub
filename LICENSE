@@ -1,0 +1,213 @@
+TokenHub 软件许可协议（个人免费 / 商业收费）
+TokenHub Software License (Free for Personal Use / Paid for Commercial Use)
+
+版本 1.0 · 2026 年 10 月
+Copyright (c) 2026 黔前智算. 保留所有权利 / All rights reserved.
+
+本协议提供中文与英文两个文本，两者如有不一致，以中文文本为准。
+This License is provided in Chinese and English. In case of any
+discrepancy, the Chinese version prevails.
+
+======================================================================
+中文文本
+======================================================================
+
+一、定义
+
+1. “本软件”：指 TokenHub 的源代码、目标代码、Docker 镜像、安装脚本、
+   文档、界面设计、标识（Logo）及其任何修改版本或衍生作品。
+2. “许可方”：指黔前智算。
+3. “您”：指获取、安装、使用、复制或修改本软件的个人或组织。
+4. “非商业使用”：指下列用途，且不直接或间接产生收入、不为营利性组织
+   的经营活动服务：
+   (a) 个人为学习、研究、个人兴趣或个人自用而使用；
+   (b) 学校、科研院所等教育机构，或依法登记的非营利/公益组织，
+       用于教学、科研或公益活动。
+5. “商业使用”：指非商业使用以外的任何使用，包括但不限于：
+   (a) 企业、个体工商户、政府机关、事业单位等组织在其业务、生产或
+       内部办公中部署或使用本软件（第三条所述评估试用除外）；
+   (b) 以本软件向第三方提供服务（含 SaaS、托管、API 转售、代运维）；
+   (c) 将本软件或其衍生作品出售、出租、捆绑销售，或作为付费产品、
+       解决方案、交付项目的一部分；
+   (d) 个人以本软件从事有偿服务或营利活动。
+
+二、非商业使用的免费许可
+
+在您遵守本协议的前提下，许可方授予您一项全球范围内、免费、非独占、
+不可转让、可撤销的许可，允许您仅为非商业使用目的：
+1. 使用、安装、运行本软件；
+2. 复制本软件并对其进行修改；
+3. 以非商业方式免费分发本软件或修改版本，但须完整保留本协议文本、
+   版权声明，并明确标注所做修改，且接收方同样受本协议约束。
+
+三、企业评估试用
+
+组织可在内部非生产环境中免费评估、测试本软件，期限为自首次安装之日起
+30 天。试用期满后如需继续使用，须取得商业授权；否则应停止使用并删除
+本软件。试用期间不得将本软件用于生产业务或对外提供服务。
+
+四、商业使用须获得授权
+
+任何商业使用均须事先与许可方签订书面商业授权协议并支付相应费用。
+未取得商业授权而进行商业使用的，构成侵权，许可方保留追究法律责任的
+权利。商业授权的范围、价格、服务与支持条款以双方签订的协议为准。
+
+商业授权联系方式：https://github.com/QianqianTech/Tokenhub/issues
+
+五、限制
+
+除本协议明确允许或另有书面授权外，您不得：
+1. 移除、遮挡或修改本软件中的版权声明、许可声明及界面中的
+   “黔前智算 TokenHub 版权所有”等版权标识；
+2. 以“TokenHub”“黔前智算”名称或其标识推广衍生产品，或暗示与许可方
+   存在关联或获得许可方认可；
+3. 规避、破解或移除本软件中的任何授权、计量或许可控制机制；
+4. 将本软件或其任何部分以其他许可证重新授权。
+
+六、第三方组件
+
+本软件包含或依赖的第三方开源组件，仍分别适用其各自的许可证，本协议
+不改变这些组件的许可条款。
+
+七、知识产权
+
+本软件的全部知识产权归许可方所有。本协议仅授予使用许可，不转让任何
+所有权。对于您向许可方提交的反馈、补丁或贡献，除另有约定外，视为您
+授予许可方永久、免费、可再许可地使用、修改及以任何许可方式分发该等
+内容的权利。
+
+八、免责声明
+
+本软件按“现状”提供，不附带任何明示或默示的担保，包括但不限于适销性、
+特定用途适用性及不侵权的担保。在适用法律允许的最大范围内，许可方对
+因使用或无法使用本软件而产生的任何直接、间接、偶然、特殊或后果性
+损害不承担责任。
+
+九、终止
+
+如您违反本协议任何条款，本协议授予您的许可自动终止。终止后，您应立即
+停止使用并销毁本软件的全部副本。第五、七、八、十条在终止后继续有效。
+
+十、适用法律
+
+本协议适用中华人民共和国法律（不含港澳台地区法律）。因本协议引起的
+争议，双方应友好协商；协商不成的，提交许可方所在地有管辖权的人民法院
+诉讼解决。
+
+======================================================================
+English Version
+======================================================================
+
+1. Definitions
+
+1.1 "Software" means TokenHub, including its source code, object code,
+    Docker images, installation scripts, documentation, UI designs,
+    logos, and any modifications or derivative works thereof.
+1.2 "Licensor" means 黔前智算 (Qianqian Zhisuan).
+1.3 "You" means any individual or organization that obtains, installs,
+    uses, copies, or modifies the Software.
+1.4 "Non-Commercial Use" means the following uses, provided they do not
+    directly or indirectly generate revenue or serve the business
+    operations of a for-profit organization:
+    (a) use by an individual for learning, research, hobby, or personal
+        purposes;
+    (b) use by an educational institution (such as a school or research
+        institute) or a legally registered non-profit/charitable
+        organization for teaching, research, or charitable activities.
+1.5 "Commercial Use" means any use other than Non-Commercial Use,
+    including without limitation:
+    (a) deployment or use by a company, sole proprietorship, government
+        agency, public institution, or other organization in its
+        business, production, or internal operations (except the
+        evaluation described in Section 3);
+    (b) providing services to third parties using the Software
+        (including SaaS, hosting, API resale, or managed operations);
+    (c) selling, renting, or bundling the Software or derivative works,
+        or including them in any paid product, solution, or delivery
+        project;
+    (d) use by an individual for paid services or for-profit activities.
+
+2. Free License for Non-Commercial Use
+
+Subject to your compliance with this License, Licensor grants you a
+worldwide, royalty-free, non-exclusive, non-transferable, revocable
+license, solely for Non-Commercial Use, to:
+(a) use, install, and run the Software;
+(b) copy and modify the Software;
+(c) redistribute the Software or modified versions free of charge for
+    Non-Commercial Use, provided that you retain this License and all
+    copyright notices in full, clearly mark your modifications, and
+    recipients are bound by this License.
+
+3. Evaluation by Organizations
+
+An organization may evaluate and test the Software free of charge in an
+internal non-production environment for 30 days from the date of first
+installation. To continue using the Software after the evaluation
+period, a commercial license is required; otherwise, the organization
+must stop using and delete the Software. During evaluation, the Software
+may not be used for production workloads or to provide services to
+others.
+
+4. Commercial Use Requires a License
+
+Any Commercial Use requires a prior written commercial license agreement
+with Licensor and payment of the applicable fees. Commercial Use without
+a commercial license constitutes infringement, and Licensor reserves all
+rights to pursue legal remedies. The scope, pricing, and service terms
+of a commercial license are governed by the agreement signed by the
+parties.
+
+Commercial licensing contact: https://github.com/QianqianTech/Tokenhub/issues
+
+5. Restrictions
+
+Except as expressly permitted by this License or otherwise authorized in
+writing, you may not:
+(a) remove, obscure, or alter any copyright or license notices in the
+    Software, including in-product notices such as
+    "黔前智算 TokenHub 版权所有";
+(b) use the names "TokenHub" or "黔前智算" or their logos to promote
+    derivative products, or imply any affiliation with or endorsement by
+    Licensor;
+(c) circumvent, crack, or remove any licensing, metering, or license
+    control mechanisms in the Software;
+(d) relicense the Software or any part of it under any other license.
+
+6. Third-Party Components
+
+Third-party open-source components included in or required by the
+Software remain subject to their respective licenses. This License does
+not change the license terms of those components.
+
+7. Intellectual Property
+
+All intellectual property rights in the Software belong to Licensor.
+This License grants a right of use only and transfers no ownership.
+Unless otherwise agreed, any feedback, patches, or contributions you
+submit to Licensor grant Licensor a perpetual, royalty-free,
+sublicensable right to use, modify, and distribute them under any
+license.
+
+8. Disclaimer of Warranty and Limitation of Liability
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND NON-INFRINGEMENT.
+TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, LICENSOR SHALL NOT BE
+LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, OR CONSEQUENTIAL
+DAMAGES ARISING FROM THE USE OF OR INABILITY TO USE THE SOFTWARE.
+
+9. Termination
+
+This License terminates automatically if you breach any of its terms.
+Upon termination, you must immediately stop using and destroy all copies
+of the Software. Sections 5, 7, 8, and 10 survive termination.
+
+10. Governing Law
+
+This License is governed by the laws of the People's Republic of China
+(excluding the laws of Hong Kong, Macao, and Taiwan). Disputes arising
+from this License shall first be resolved through friendly negotiation;
+failing that, they shall be submitted to the competent people's court
+at Licensor's place of business.
