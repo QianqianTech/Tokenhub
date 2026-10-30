@@ -1,3 +1,4 @@
+import { pageHead } from "../lib/resource-table.js";
 import { adminErrorMessage, api, isAbortError } from "../api.js";
 import { button, clear, el, field, readFields, showModal } from "../dom.js";
 import { emptyState, errorState, loadingState } from "../components/feedback.js";
@@ -55,7 +56,7 @@ export async function renderContentArchivePage(content, initialFilters = {}, con
     context.setFilters?.({});
     return renderContentArchivePage(content, {}, context);
   }, "secondary"));
-  form.append(button("导出", async () => {
+  const exportButton = button("导出", async () => {
     const query = contentArchiveQuery(form, filters, state);
     delete query.limit;
     delete query.offset;
@@ -64,8 +65,13 @@ export async function renderContentArchivePage(content, initialFilters = {}, con
       body: JSON.stringify(query)
     });
     showOperationResult("导出任务", result.data, "导出任务已创建，可在导出任务列表查看");
-  }, "secondary"));
-  content.append(form, tablePanel);
+  }, "secondary");
+  form.classList.add("archive-filters");
+  content.append(
+    pageHead("会话归档", "按用户、部门、密钥或会话查找已留存的调用内容；查看原文需要相应权限并会记入审计。", el("div", {}, [exportButton])),
+    form,
+    tablePanel
+  );
   await load();
 
   async function load() {
@@ -136,7 +142,7 @@ export async function renderContentRetentionPolicyPage(content) {
     form.append(field(config, values[config.name]));
   }
   const output = el("p", { className: "notice", hidden: true });
-  form.append(button("保存策略", async () => {
+  form.append(el("div", { className: "toolbar-actions" }, [button("保存策略", async () => {
     try {
       const payload = readFields(form, fields);
       payload.raw_allowed_roles = String(payload.raw_allowed_roles || "")
@@ -151,12 +157,12 @@ export async function renderContentRetentionPolicyPage(content) {
     } catch (error) {
       setErrorOutput(output, adminErrorMessage(error, "保存策略失败，请检查输入内容"));
     }
-  }));
+  })]));
   form.append(output);
-  content.append(el("section", { className: "panel" }, [
-    el("h2", { text: "内容留存策略" }),
-    form
-  ]));
+  content.append(
+    pageHead("内容留存策略", "调用内容默认保存摘要、脱敏内容还是原文，以及保存多久；可按部门、用户或密钥单独设置。"),
+    el("section", { className: "panel settings-form-panel" }, [form])
+  );
 }
 
 function contentArchiveQuery(form, filters, state) {

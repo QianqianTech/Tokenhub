@@ -15,7 +15,7 @@ const lastPost = (path) => {
 test("screen share form picks scope objects and metrics instead of JSON", async () => {
   const { page, errors, context } = await openPage(env);
   await login(page, env.mock.baseUrl, { hash: "#/operations/dashboard-share-links" });
-  await page.getByRole("button", { name: "新增", exact: true }).click();
+  await page.getByRole("button", { name: /^新建/ }).click();
   const dialog = page.locator("dialog.modal-dialog");
   await dialog.waitFor();
   assert.equal(await dialog.locator('textarea[name="scope_ids"], textarea[name="allowed_metrics"]').count(), 0, "no JSON textareas");
@@ -48,11 +48,11 @@ test("models can be filtered by name, provider and capability", async () => {
   await login(page, env.mock.baseUrl, { hash: "#/models/models" });
   assert.equal(await page.locator('form.filters [data-field="provider_id"] .remote-select-input').count(), 1);
   await page.locator('form.filters [name="keyword"]').fill("model-1");
-  await page.locator('form.filters select[name="capability"]').selectOption("embedding");
   env.mock.requestLog.length = 0;
-  await page.locator("form.filters").getByRole("button", { name: "筛选" }).click();
+  // Filters apply on change: the capability is a segmented control.
+  await page.locator('form.filters [data-field="capability"]').getByRole("button", { name: /向量检索/ }).click();
   await settle(page);
-  const request = env.mock.requestLog.filter((entry) => entry.method === "GET" && entry.path === "/admin-api/models").at(-1);
+  const request = env.mock.requestLog.filter((entry) => entry.method === "GET" && entry.path === "/admin-api/models" && /[?&]limit=20(&|$)/.test(entry.query)).at(-1);
   assert.ok(request.query.includes("capability=embedding"), request.query);
   assert.ok(request.query.includes("keyword=model-1"), request.query);
   assert.deepEqual(errors, []);

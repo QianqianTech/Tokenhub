@@ -82,7 +82,7 @@ test("department can be created from the department tree page", async () => {
 test("generic resource page creates a record through the modal form", async () => {
   const { page, errors, context } = await openPage(env);
   await login(page, env.mock.baseUrl, { hash: "#/access/quota-policies" });
-  await page.getByRole("button", { name: "新增", exact: true }).click();
+  await page.getByRole("button", { name: /^新建/ }).click();
   const dialog = page.locator(".modal-dialog");
   await dialog.waitFor();
   await dialog.locator('[name="name"]').fill("E2E 配额策略");

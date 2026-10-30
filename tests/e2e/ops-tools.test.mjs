@@ -17,7 +17,8 @@ test("API key quota view shows in-flight reservations and posts an audited adjus
   const { page, errors, context } = await openPage(env);
   await login(page, env.mock.baseUrl, { hash: "#/access/api-keys" });
   const row = page.locator("tbody tr", { hasText: "密钥1" }).first();
-  await row.getByRole("button", { name: "额度" }).click();
+  await row.getByRole("button", { name: "更多" }).click();
+  await row.getByRole("menuitem", { name: "额度" }).click();
   const dialog = page.locator("dialog.modal-dialog").last();
   await dialog.locator(".quota-status-card").first().waitFor();
   assert.match(await dialog.innerText(), /研发部月度额度/);
@@ -39,7 +40,8 @@ test("API key rotation validates the grace period and shows the new key once", a
   const { page, errors, context } = await openPage(env);
   await login(page, env.mock.baseUrl, { hash: "#/access/api-keys" });
   const row = page.locator("tbody tr", { hasText: "密钥1" }).first();
-  await row.getByRole("button", { name: "轮换" }).click();
+  await row.getByRole("button", { name: "更多" }).click();
+  await row.getByRole("menuitem", { name: "轮换" }).click();
   const dialog = page.locator("dialog.modal-dialog").last();
   await dialog.locator('[name="grace_minutes"]').fill("20000");
   await dialog.getByRole("button", { name: "确认轮换" }).click();
@@ -187,7 +189,8 @@ test("API key MCP sign-ins can be listed and revoked", async () => {
   const { page, errors, context } = await openPage(env);
   await login(page, env.mock.baseUrl, { hash: "#/access/api-keys" });
   const row = page.locator("tbody tr", { hasText: "密钥1" }).first();
-  await row.getByRole("button", { name: "MCP 授权" }).click();
+  await row.getByRole("button", { name: "更多" }).click();
+  await row.getByRole("menuitem", { name: "MCP 授权" }).click();
   const dialog = page.locator("dialog.modal-dialog").first();
   await dialog.locator(".mcp-grants-table").waitFor();
   const text = await dialog.innerText();

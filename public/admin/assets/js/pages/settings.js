@@ -3,6 +3,20 @@ import { button, clear, el, field, readFields, setText, statusMessage } from "..
 import { metric, operationSuccessText } from "../lib/output.js";
 import { SETTINGS_SECTION_CATEGORIES, SETTINGS_SECTION_PAGES } from "./settings-config.js";
 import { columnLabel, formatResourceValue } from "../resources.js";
+import { pageHead } from "../lib/resource-table.js";
+
+// What each settings page controls, shown under its title.
+const SETTINGS_DESCRIPTIONS = {
+  "settings-brand-identity": "产品名称、后台与大屏标题和图标；登录页、侧栏和浏览器标签会同步显示。",
+  "settings-tls-certificates": "申请、验证、部署和续期 HTTPS 证书，并查看服务器上的真实证书。",
+  "settings-entry-security": "限定管理后台与接口入口允许访问的网段。",
+  "settings-retention-export": "调用内容的留存方式和导出文件的保留时间。",
+  "settings-alert-thresholds": "厂商错误率、队列积压与证书到期等告警的触发阈值。",
+  "settings-rag-upload-review": "知识库上传后是否需要人工审核以及审核规则。",
+  "settings-rag-package-upload": "图片包上传的大小、数量与格式限制。",
+  "settings-rag-ai-image-processing": "上传图片的自动描述、识别与处理方式。",
+  "settings-rag-vectorization-monitoring": "向量化成功率的告警阈值与统计窗口。"
+};
 
 export async function renderSettingsCenterPage(content) {
   clear(content);
@@ -107,7 +121,8 @@ export async function renderSettingsSectionPage(content, resourceKey) {
     await renderCertificateSettingsPage(content, page, settingsFormValues(sections[page.section] || {}));
     return;
   }
-  content.append(settingsFormPanel(page.title, page.section, page.fields, settingsFormValues(sections[page.section] || {})));
+  const panel = settingsFormPanel(page.title, page.section, page.fields, settingsFormValues(sections[page.section] || {}), { standalone: true });
+  content.append(pageHead(page.title, SETTINGS_DESCRIPTIONS[resourceKey] || ""), panel);
 }
 
 function settingsFormValues(values) {
@@ -358,8 +373,8 @@ function renderCertificateAlertCheck() {
   ]);
 }
 
-function settingsFormPanel(title, section, fields, values) {
-  const form = el("form", { className: "edit-form", onSubmit: (event) => event.preventDefault() });
+function settingsFormPanel(title, section, fields, values, { standalone = false } = {}) {
+  const form = el("form", { className: "edit-form settings-form", onSubmit: (event) => event.preventDefault() });
   for (const config of fields) {
     form.append(field(config, values[config.name]));
   }
@@ -391,6 +406,10 @@ function settingsFormPanel(title, section, fields, values) {
     }, "secondary") : null
   ].filter(Boolean)));
   form.append(output);
+  if (standalone) {
+    // The page title sits above the panel (page head), so the panel is just the form.
+    return el("section", { className: "panel settings-form-panel" }, [form]);
+  }
   return el("section", { className: "panel" }, [
     el("h2", { text: title }),
     form

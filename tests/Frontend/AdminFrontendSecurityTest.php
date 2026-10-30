@@ -68,10 +68,10 @@ assert_true(str_contains($adminHtml, 'aria-label='), 'Theme icons should retain 
 assert_true(str_contains($adminHtml, 'title='), 'Theme icons should retain hover labels.');
 assert_true(str_contains($adminHtml, '深色'), 'Admin theme switcher should display the dark theme label in Chinese.');
 assert_true(str_contains($adminHtml, '浅色'), 'Admin theme switcher should display the light theme label in Chinese.');
-assert_true(str_contains($adminHtml, '自适应'), 'Admin theme switcher should display the automatic theme label in Chinese.');
+assert_true(str_contains($adminHtml, '跟随系统'), 'Admin theme switcher should display the automatic theme label in Chinese.');
 assert_true(str_contains($adminHtml, '黔前智算 TokenHub 版权所有'), 'Admin shell should display the TokenHub copyright owner.');
 $modalRootPosition = strpos($adminHtml, '<div id="modal-root"></div>');
-$copyrightPosition = strpos($adminHtml, '黔前智算 TokenHub 版权所有');
+$copyrightPosition = strrpos($adminHtml, '黔前智算 TokenHub 版权所有');
 $workspaceClosePosition = $modalRootPosition === false ? false : strpos($adminHtml, "      </section>\n    </main>", $modalRootPosition);
 assert_true(
     $modalRootPosition !== false
@@ -86,7 +86,7 @@ assert_true(str_contains($appJs, 'applyAdminTheme'), 'Admin app should apply the
 assert_true(str_contains($appJs, 'adminInitThemeSwitcher'), 'Admin app should initialize the theme switcher during boot.');
 assert_true(str_contains($appJs, 'adminApplyBrandIdentity'), 'Admin app should apply configured title and logo settings.');
 assert_true(str_contains($appJs, '/admin-api/system/brand-identity') && !str_contains($appJs, '/admin-api/system/settings-center'), 'Admin app should load brand settings from the public brand endpoint instead of downloading the whole settings center.');
-assert_true(str_contains($appJs, 'valueLabel("role", adminState.user.role)'), 'Admin topbar should localize the current user role.');
+assert_true(str_contains($appJs, 'valueLabel("role", user.role)'), 'Admin shell should localize the current user role.');
 assert_true(str_contains($appJs, 'prefers-color-scheme: dark'), 'Admin app should detect the system dark-mode preference.');
 assert_true(str_contains($appJs, 'ADMIN_THEME_MEDIA_QUERY.addEventListener("change"'), 'Admin app should update the automatic theme when the system preference changes.');
 assert_true(str_contains($appJs, 'theme-dark'), 'Admin app should apply the dark theme class.');

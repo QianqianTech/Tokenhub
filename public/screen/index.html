@@ -26,59 +26,85 @@
 
       <section id="screen" class="screen-stage" hidden>
         <header class="screen-topline">
-          <div>
-            <span class="screen-kicker">实时 Token 监测</span>
-            <h1 class="screen-title">白云区智慧政务 运营大屏</h1>
-            <p class="screen-subtitle">Token 消耗、调用、生成任务与性能状态一屏掌握</p>
+          <div class="screen-heading">
+            <img id="screen-logo" class="screen-logo" src="/screen/assets/brand/tokenhub-app-icon.svg" alt="">
+            <div>
+              <span class="screen-kicker">实时 Token 监测</span>
+              <h1 class="screen-title">白云区智慧政务 运营大屏</h1>
+              <p class="screen-subtitle">Token 消耗、调用、生成任务与性能状态一屏掌握</p>
+            </div>
           </div>
           <div class="screen-toolbar">
-            <div id="screen-clock" class="screen-clock">--:--:--</div>
             <div id="screen-status" class="screen-status">等待刷新</div>
+            <div id="screen-clock" class="screen-clock">--:--:--</div>
             <button id="fullscreen-toggle" class="secondary-button" type="button">全屏</button>
-            <button id="logout" type="button">退出</button>
+            <button id="logout" class="secondary-button" type="button">退出</button>
           </div>
         </header>
 
         <section class="screen-view active" data-screen-view="overview">
           <section class="screen-overview">
-            <article class="panel token-flow-panel">
-              <h2>实时 Token 消耗</h2>
-              <div id="token-summary" class="metrics metric-grid"></div>
-            </article>
-            <article class="panel token-detail-panel">
-              <h2>Token 细节</h2>
-              <div id="token-details" class="token-details"></div>
-            </article>
-          </section>
-
-          <section class="screen-grid screen-primary-grid">
-            <article class="panel">
-              <h2>大模型 Token 占比</h2>
-              <div id="model-share-chart" class="model-chart"></div>
-            </article>
-            <article class="panel">
-              <h2>大模型使用排行</h2>
-              <div id="model-usage" class="model-list"></div>
-            </article>
-            <article class="panel">
-              <h2>周期总词元量</h2>
-              <div id="period-totals" class="period-grid"></div>
-            </article>
-            <article class="panel">
-              <h2>正在生成</h2>
-              <div id="live-generations" class="live-list"></div>
-            </article>
+            <div class="screen-column">
+              <article class="panel model-share-panel">
+                <h2>大模型 Token 占比</h2>
+                <div id="model-share-chart" class="model-chart"></div>
+              </article>
+              <article class="panel panel-fill">
+                <h2>大模型使用排行</h2>
+                <div id="model-usage" class="model-list"></div>
+              </article>
+            </div>
+            <div class="screen-column screen-column-center">
+              <article class="panel token-flow-panel">
+                <header class="panel-head">
+                  <h2 id="token-title">今日实时 Token 消耗</h2>
+                  <div id="period-totals" class="period-grid"></div>
+                </header>
+                <div id="token-summary" class="metrics metric-grid"></div>
+                <div id="token-details" class="token-details" hidden></div>
+              </article>
+              <article class="panel panel-fill">
+                <header class="panel-head">
+                  <h2>调用趋势</h2>
+                  <div class="trend-legend" aria-hidden="true"><span class="is-today">今日</span><span class="is-yesterday">昨日</span></div>
+                </header>
+                <div id="overview-trend" class="trend-chart"></div>
+              </article>
+            </div>
+            <div class="screen-column">
+              <article class="panel">
+                <header class="panel-head">
+                  <h2>正在生成</h2>
+                  <span id="live-count" class="panel-meta"></span>
+                </header>
+                <div id="live-generations" class="live-list"></div>
+              </article>
+              <article class="panel panel-fill">
+                <h2>调用排行 · 部门</h2>
+                <div id="overview-rankings" class="rank-list"></div>
+              </article>
+              <div class="screen-mini-grid">
+                <article class="panel mini-panel">
+                  <h2>性能 · P95</h2>
+                  <div id="overview-performance" class="mini-metric"></div>
+                </article>
+                <article class="panel mini-panel">
+                  <h2>安全 · 脱敏事件</h2>
+                  <div id="overview-security" class="mini-metric"></div>
+                </article>
+              </div>
+            </div>
           </section>
         </section>
 
         <section class="screen-view" data-screen-view="operations">
-          <section class="screen-grid screen-secondary-grid">
+          <section class="screen-grid screen-primary-grid">
             <article class="panel panel-wide">
               <h2>调用趋势</h2>
               <div id="trends" class="trend-bars"></div>
             </article>
             <article class="panel">
-              <h2>调用排行</h2>
+              <h2>调用排行 · 部门</h2>
               <div id="rankings" class="rank-list"></div>
             </article>
             <article class="panel panel-wide">

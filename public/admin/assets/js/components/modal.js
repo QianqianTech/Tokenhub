@@ -123,7 +123,7 @@ export function openModal({ title, body, size = "md", onClose = null, guardDirty
  * requireText: the user must type this text (e.g. the record name) to confirm
  * irreversible operations.
  */
-export function confirmDialog({ title, message = "", details = [], confirmLabel = t("common.confirm"), cancelLabel = t("common.cancel"), tone = "danger", requireText = "" }) {
+export function confirmDialog({ title, message = "", details = [], confirmLabel = t("common.confirm"), cancelLabel = t("common.cancel"), tone = "danger", requireText = "", body: extra = null }) {
   return new Promise((resolve) => {
     let settled = false;
     const confirmButton = el("button", { type: "button", className: tone === "danger" ? "danger" : "", text: confirmLabel });
@@ -139,6 +139,7 @@ export function confirmDialog({ title, message = "", details = [], confirmLabel 
       message ? el("p", { className: "confirm-message", text: message }) : null,
       details.length ? el("dl", { className: "confirm-details" }, details.flatMap(([label, value]) => [el("dt", { text: label }), el("dd", { text: value })])) : null,
       typed ? el("label", { className: "field" }, [el("span", { text: t("confirm.typeToConfirm", { text: requireText }) }), typed]) : null,
+      extra,
       el("div", { className: "toolbar-actions confirm-actions" }, [cancelButton, confirmButton])
     ]);
     const handle = openModal({

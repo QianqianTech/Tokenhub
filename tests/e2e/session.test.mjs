@@ -26,7 +26,7 @@ test("login form submits with Enter and reports missing fields", async () => {
 test("an expired session asks for the password on top of the page and keeps unsaved input", async () => {
   const { page, context } = await openPage(env);
   await login(page, env.mock.baseUrl, { hash: "#/access/quota-policies" });
-  await page.getByRole("button", { name: "新增", exact: true }).click();
+  await page.getByRole("button", { name: /^新建/ }).click();
   const form = page.locator("dialog.modal-dialog").first();
   await form.locator('[name="name"]').fill("未提交的草稿");
   env.mock.expireSessions();

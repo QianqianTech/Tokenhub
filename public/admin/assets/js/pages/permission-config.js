@@ -1,3 +1,4 @@
+import { pageHead } from "../lib/resource-table.js";
 import { adminErrorMessage, api } from "../api.js";
 import { button, clear, el, readFields, showModal, statusMessage } from "../dom.js";
 import { resourceForm } from "../lib/forms.js";
@@ -17,19 +18,18 @@ export async function renderPermissionConfigPage(content) {
     ["自定义管理员", "仅使用单独勾选的权限", "可选"],
   ];
   const presetPanel = el("section", { className: "panel" }, [
-    el("h2", { text: "权限配置" }),
-    el("p", { text: "预设类型决定默认能力；勾选单独权限后将覆盖该账号的预设。管理员账号操作始终仅限超级管理员。" }),
+    el("h3", { className: "panel-title", text: "管理员类型与默认能力" }),
     el("table", { className: "resource-table" }, [
       el("thead", {}, [el("tr", {}, [el("th", { text: "管理员类型" }), el("th", { text: "默认能力" }), el("th", { text: "默认范围" })])]),
       el("tbody", {}, presets.map(([name, abilities, scope]) => el("tr", {}, [el("td", { text: name }), el("td", { text: abilities }), el("td", { text: scope })])))
     ])
   ]);
   const capabilityPanel = el("section", { className: "panel" }, [
-    el("h2", { text: "可授权权限点" }),
+    el("h3", { className: "panel-title", text: "可授权权限点" }),
     el("div", { className: "permission-config-options" }, adminPermissionOptions.map(([code, label]) => el("p", { text: `${label}（${code}）` })))
   ]);
   const administratorsPanel = el("section", { className: "panel" }, [
-    el("h2", { text: "管理员权限分配" }),
+    el("h3", { className: "panel-title", text: "管理员权限分配" }),
     administrators.length
       ? el("div", { className: "permission-config-admin-list" }, administrators.map((administrator) => el("article", { className: "permission-config-admin" }, [
         el("h3", { text: administrator.username || `管理员 #${administrator.id}` }),
@@ -39,7 +39,7 @@ export async function renderPermissionConfigPage(content) {
       ])))
       : statusMessage("暂无管理员账号")
   ]);
-  content.append(presetPanel, capabilityPanel, administratorsPanel);
+  content.append(pageHead("权限配置", "预设类型决定默认能力；勾选单独权限后将覆盖该账号的预设。管理员账号操作始终仅限超级管理员。"), presetPanel, administratorsPanel, capabilityPanel);
 }
 
 async function showPermissionConfigEditor(administrator, onSaved) {

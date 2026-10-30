@@ -53,7 +53,7 @@ foreach (['data.added', 'data.changed', 'data.missing', 'data.unchanged', '"新�
 
 // 2. Quota status and adjustment.
 $quota = $functionSource($tableJs, 'showApiKeyQuota');
-assert_true(str_contains($tableJs, '() => showApiKeyQuota(row)') && str_contains($tableJs, 'quotaButton.ariaLabel = "额度"'), 'API key rows should expose a quota action.');
+assert_true(str_contains($tableJs, 'button("额度", () => showApiKeyQuota(row)'), 'API key rows should expose a quota action.');
 assert_true(str_contains($quota, 'api("/admin-api/quota-status", { query: { api_key_id: row.id } })'), 'Quota view should load the API key quota status.');
 assert_true(str_contains($tableJs, 'reserved_in_flight'), 'Quota view should show in-flight reservations.');
 $adjust = $functionSource($tableJs, 'quotaAdjustmentForm');
@@ -79,7 +79,7 @@ foreach (['data.found', 'explanation.cause', 'explanation.action', 'explanation.
 
 // 4. API key rotation.
 $rotate = $functionSource($tableJs, 'showApiKeyRotate');
-assert_true(str_contains($tableJs, 'row.id && row.status === "active"') && str_contains($tableJs, '() => showApiKeyRotate(row, onRefresh)') && str_contains($tableJs, 'rotateButton.ariaLabel = "轮换"'), 'Active API key rows should expose a rotate action.');
+assert_true(str_contains($tableJs, 'row.id && row.status === "active"') && str_contains($tableJs, 'button("轮换", () => showApiKeyRotate(row, onRefresh)'), 'Active API key rows should expose a rotate action.');
 assert_true(str_contains($rotate, '/admin-api/api-keys/${row.id}/rotate') && str_contains($rotate, 'JSON.stringify({ grace_minutes: graceMinutes })'), 'Rotation should POST the grace period to the rotate endpoint.');
 assert_true(str_contains($rotate, 'grace_minutes: 60') && str_contains($rotate, 'graceMinutes > 10080') && str_contains($rotate, 'graceMinutes < 0'), 'Rotation should default to 60 minutes and validate 0-10080.');
 assert_true(str_contains($rotate, 'await onRefresh()'), 'Rotation should reload the API key table.');

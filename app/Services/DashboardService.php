@@ -81,7 +81,7 @@ final class DashboardService
         $sortColumn = $sort === 'modal_count' ? 'modal_count' : $sort;
         [$where, $bindings] = $this->aggregateWhere($query, 'day', App::context()->adminUser());
 
-        return App::db()->select(
+        $rows = App::db()->select(
             "SELECT {$column} AS id,
                     SUM(request_count) request_count,
                     SUM(input_tokens + output_tokens) total_tokens,
@@ -95,6 +95,45 @@ final class DashboardService
              LIMIT 20",
             $bindings
         );
+
+        return $this->withRankingNames($rows, $dimension);
+    }
+
+    /**
+     * Aggregates only carry ids; rankings are read by people, so each row
+     * also gets the department / user / key / model / provider name.
+     *
+     * @param list<array<string, mixed>> $rows
+     * @return list<array<string, mixed>>
+     */
+    private function withRankingNames(array $rows, string $dimension): array
+    {
+        [$table, $nameColumn] = match ($dimension) {
+            'department' => ['departments', 'name'],
+            'user' => ['users', 'username'],
+            'api_key' => ['api_keys', 'name'],
+            'provider' => ['providers', 'name'],
+            default => ['models', 'name'],
+        };
+        $ids = array_values(array_unique(array_filter(array_map(static fn (array $row): int => (int) ($row['id'] ?? 0), $rows), static fn (int $id): bool => $id > 0)));
+        if ($ids === []) {
+            return $rows;
+        }
+        try {
+            $placeholders = implode(', ', array_fill(0, count($ids), '?'));
+            $names = [];
+            foreach (App::db()->select("SELECT id, {$nameColumn} AS name FROM {$table} WHERE id IN ({$placeholders})", $ids) as $named) {
+                $names[(int) $named['id']] = (string) ($named['name'] ?? '');
+            }
+        } catch (\Throwable) {
+            return $rows;
+        }
+
+        return array_map(static function (array $row) use ($names): array {
+            $id = (int) ($row['id'] ?? 0);
+            $row['name'] = $names[$id] ?? null;
+            return $row;
+        }, $rows);
     }
 
     public function security(array $query): array
@@ -194,7 +233,8 @@ final class DashboardService
             'data' => match ($metric) {
                 'overview' => $this->screenOverview($screenSession),
                 'trends' => $this->trends($this->screenQuery($screenSession)),
-                'rankings' => $this->screenRows($this->rankings($this->screenQuery($screenSession)), $screenSession),
+                // The screen already shows models (overview); rank departments here.
+                'rankings' => $this->screenRows($this->rankings(['dimension' => 'department', ...$this->screenQuery($screenSession)]), $screenSession),
                 'security' => $this->security([]),
                 'performance' => $this->performance($this->screenQuery($screenSession)),
                 'multimodal' => $this->multimodal($this->screenQuery($screenSession)),

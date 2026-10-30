@@ -20,8 +20,8 @@ assert_true(
 assert_true(
     str_contains($tableSource, 'resourceKey === "api-keys"') &&
     str_contains($tableSource, 'renderApiKeyPage') &&
-    str_contains($tableSource, 'API 密钥只会在新建后显示一次'),
-    'API key navigation should render a dedicated page with the screenshot safety notice.'
+    str_contains($tableSource, '密钥明文只在新建或轮换后显示一次'),
+    'API key navigation should render a dedicated page that says the secret is shown only once.'
 );
 
 assert_true(
@@ -31,21 +31,23 @@ assert_true(
 );
 
 assert_true(
-    str_contains($tableSource, '["id", "编号"]') &&
-    str_contains($tableSource, '["status", "状态"]') &&
+    str_contains($tableSource, 'text: "名称"') &&
+    str_contains($tableSource, 'text: "今日 Token"') &&
     !str_contains($tableSource, '状态码') &&
-    str_contains($tableSource, '新建 API 密钥') &&
+    str_contains($tableSource, '新建密钥') &&
     str_contains($tableSource, 'apiKeyDisplay'),
     'API key table should use Chinese headers, the create action, and masked key display.'
 );
 
+// Page-only sums (“本页请求数”) were misleading; the design shows today's
+// tokens per key and a detail drawer with quota and a 14-day trend instead.
 assert_true(
-    str_contains($tableSource, 'renderApiKeyAnalytics') &&
-    str_contains($tableSource, 'api-key-analysis-grid') &&
-    str_contains($tableSource, 'request_count') &&
-    str_contains($tableSource, 'cache_tokens') &&
-    str_contains($tableSource, 'total_cost'),
-    'API key page should render aggregate analysis metrics above the table.'
+    !str_contains($tableSource, 'renderApiKeyAnalytics') &&
+    str_contains($tableSource, 'todayUsageByKey') &&
+    str_contains($tableSource, 'renderApiKeyDrawer') &&
+    str_contains($tableSource, '/admin-api/quota-status') &&
+    str_contains($tableSource, '近 14 天 Token'),
+    'API key page should show today usage per key and a detail drawer.'
 );
 
 assert_true(
@@ -66,7 +68,7 @@ assert_true(
 assert_true(
     str_contains($tableSource, 'pageSize: PAGE_SIZES.includes(Number(initialLimit)) ? Number(initialLimit) : 20') &&
     str_contains($tableSource, 'offset: state.offset') &&
-    str_contains($tableSource, '"pager.summary": "共 {total} 条，第 {page} / {pages} 页"') &&
+    str_contains($tableSource, '"pager.summary": "第 {from}–{to} 条，共 {total} 条"') &&
     str_contains($tableSource, '"pager.previous": "上一页"') &&
     str_contains($tableSource, '"pager.next": "下一页"') &&
     str_contains($tableSource, 'label: "API 密钥分页"'),

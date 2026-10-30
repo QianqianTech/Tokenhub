@@ -1,3 +1,4 @@
+import { pageHead } from "../lib/resource-table.js";
 import { adminErrorMessage, api, isAbortError } from "../api.js";
 import { button, clear, el, field, readFields, setText, showModal, statusMessage } from "../dom.js";
 import { SETTINGS_SECTION_PAGES } from "./settings-config.js";
@@ -91,16 +92,12 @@ export async function renderSystemSettingsPage(content) {
       list.replaceChildren(errorState(error, { fallback: "高级设置加载失败", onRetry: () => refresh(expandedSettingId) }));
     }
   };
-  page.append(el("section", { className: "panel system-settings-panel" }, [
-    el("header", { className: "table-toolbar" }, [
-      el("div", {}, [
-        el("h2", { text: "高级设置" }),
-        el("p", { className: "notice", text: "集中查看和编辑系统功能配置。每项配置均可按字段直接修改；开关、数字和列表无需填写 JSON。" })
-      ]),
-      button("新增自定义配置", () => showCreateSystemSettingModal(refresh))
-    ]),
-    list
-  ]));
+  page.append(
+    pageHead("高级设置", "集中查看和编辑系统功能配置。每项配置均可按字段直接修改；开关、数字和列表无需填写 JSON。", el("div", {}, [
+      button("新增自定义配置", () => showCreateSystemSettingModal(refresh), "secondary")
+    ])),
+    el("section", { className: "panel system-settings-panel" }, [list])
+  );
   content.append(page);
   await refresh();
 }

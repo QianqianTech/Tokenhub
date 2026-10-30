@@ -23,7 +23,7 @@ foreach (['name', 'user_name', 'key'] as $column) {
 }
 
 assert_true(
-    str_contains($tableSource, 'title: cellText') &&
-    str_contains($tableSource, 'const cellText = apiKeyCellText(column, row, context);'),
+    str_contains($tableSource, 'title: models') &&
+    str_contains($tableSource, 'title: `${todayTokens.toLocaleString("zh-CN")} Token'),
     'API key cells should expose truncated content through a native hover title.'
 );

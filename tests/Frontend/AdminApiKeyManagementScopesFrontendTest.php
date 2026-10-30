@@ -54,7 +54,7 @@ assert_true(str_contains($tableJs, 'function normalizeManagementScopes'), 'Chang
 
 $badge = $functionSource($tableJs, 'apiKeyManagementBadge');
 assert_true(str_contains($badge, 'text: "管理"') && str_contains($badge, 'title:'), 'API key rows with management scopes should show a "管理" badge with the scope list as a tooltip.');
-assert_true(str_contains($tableJs, 'column === "name" ? apiKeyManagementBadge(row) : null'), 'The management badge should be rendered in the API key name cell.');
+assert_true(str_contains($tableJs, 'const badge = apiKeyManagementBadge(row);') && str_contains($tableJs, 'className: "api-key-name-line"'), 'The management badge should be rendered in the API key name cell.');
 
 foreach (['.api-key-management-badge', '.api-key-management-scopes', '.api-key-management-scope-list'] as $selector) {
     assert_true(str_contains($adminCss, $selector), 'Admin CSS should style ' . $selector);

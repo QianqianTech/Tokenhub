@@ -18,7 +18,7 @@ test("a failing dashboard endpoint only breaks its own panel and can be retried"
   await security.locator(".state--error").waitFor();
   assert.match(await page.locator(".dashboard-notice").innerText(), /部分面板加载失败/);
   await security.getByRole("button", { name: "重试" }).click();
-  await security.locator(".security-chart-card").waitFor();
+  await security.locator(".security-tile").first().waitFor();
   assert.deepEqual(errors, []);
   await context.close();
 });
@@ -26,14 +26,14 @@ test("a failing dashboard endpoint only breaks its own panel and can be retried"
 test("overlapping dashboard loads never duplicate panels", async () => {
   const { page, errors, context } = await openPage(env);
   await login(page, env.mock.baseUrl, { hash: "#/operations/dashboard" });
-  await panel(page, "趋势").waitFor();
+  await panel(page, "请求趋势").waitFor();
   env.mock.fault("/admin-api/dashboard/trends", { method: "GET", delayMs: 700, times: 1 });
-  await page.getByRole("button", { name: "刷新" }).click();
-  await page.locator('select[name="sort"]').selectOption("total_tokens");
+  await page.getByRole("button", { name: "近 7 天" }).click();
+  await page.getByRole("button", { name: "近 30 天" }).click();
   await page.waitForTimeout(900);
   await settle(page);
-  assert.equal(await panel(page, "趋势").count(), 1);
-  assert.equal(await page.locator(".dashboard-screen-grid .metric-grid").count(), 1);
+  assert.equal(await panel(page, "请求趋势").count(), 1);
+  assert.equal(await page.locator(".dash-grid .dash-kpis").count(), 1);
   assert.deepEqual(errors, []);
   await context.close();
 });
@@ -41,7 +41,7 @@ test("overlapping dashboard loads never duplicate panels", async () => {
 test("trend chart reads oldest to newest and supports keyboard inspection", async () => {
   const { page, errors, context } = await openPage(env);
   await login(page, env.mock.baseUrl, { hash: "#/operations/dashboard" });
-  const trend = panel(page, "趋势");
+  const trend = panel(page, "请求趋势");
   await trend.locator("svg.trend-line-chart-svg").waitFor();
   const buckets = await trend.locator(".chart-data-table tbody tr td:first-child").allTextContents();
   assert.ok(buckets.length > 1);
@@ -56,7 +56,7 @@ test("trend chart reads oldest to newest and supports keyboard inspection", asyn
   assert.equal(await toggle.getAttribute("aria-pressed"), "false");
   assert.equal(await trend.locator(".trend-line-series-failed").count(), 0);
   const download = page.waitForEvent("download");
-  await trend.getByRole("button", { name: "导出 CSV" }).click();
+  await page.getByRole("button", { name: "导出报表" }).click();
   assert.match((await download).suggestedFilename(), /dashboard-trends-day\.csv/);
   assert.deepEqual(errors, []);
   await context.close();

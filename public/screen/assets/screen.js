@@ -77,6 +77,11 @@ function screenApplyBrandIdentity(settings = {}) {
   const productName = String(settings.product_name || SCREEN_BRAND_DEFAULTS.product_name).trim() || SCREEN_BRAND_DEFAULTS.product_name;
   const screenTitle = String(settings.screen_title || SCREEN_BRAND_DEFAULTS.screen_title).trim() || SCREEN_BRAND_DEFAULTS.screen_title;
   const faviconUrl = screenSafeLocalAssetUrl(settings.favicon_url || SCREEN_BRAND_DEFAULTS.favicon_url);
+  const logoUrl = screenSafeLocalAssetUrl(settings.logo_url || "");
+  const logo = $("screen-logo");
+  if (logo && logoUrl !== "") {
+    logo.src = logoUrl;
+  }
 
   document.title = screenTitle;
   const loginBrand = document.querySelector(".brand-kicker");
@@ -263,29 +268,36 @@ function renderEmpty(host, message) {
   host.replaceChildren(empty);
 }
 
+// Today's tokens as one large number, the breakdown beneath (design).
 function renderMetricCards(today, periodLabel = "今日") {
   const totalTokens = tokenTotal(today);
+  setText($("token-title"), periodLabel === "今日" ? "今日实时 Token 消耗" : `${periodLabel} Token 消耗`);
+  const big = createText("strong", "metric-value token-hero", "");
+  const hero = document.createElement("div");
+  hero.className = "token-hero-row";
+  const mark = document.createElement("span");
+  mark.className = "token-hero-mark";
+  mark.setAttribute("aria-hidden", "true");
+  mark.append(document.createElement("span"), document.createElement("span"));
+  hero.append(big, mark, createText("small", "metric-period", periodLabel));
+  animateMetricValue(big, "total_tokens", totalTokens, formatNumber);
   const metrics = [
-    { key: "total_tokens", label: "总 Token", rawValue: totalTokens, formatter: formatTokenMillions, hint: "单位 M" },
-    { key: "input_tokens", label: "总输入", rawValue: today.input_tokens, formatter: formatTokenMillions, hint: "Input Token" },
-    { key: "output_tokens", label: "总输出", rawValue: today.output_tokens, formatter: formatTokenMillions, hint: "Output Token" },
-    { key: "cache_tokens", label: "总缓存", rawValue: today.cache_tokens, formatter: formatTokenMillions, hint: "Cache Token" },
-    { key: "request_count", label: "总调用次数", rawValue: today.request_count, formatter: formatNumber, hint: "次" }
+    { key: "input_tokens", label: "输入", rawValue: today.input_tokens, formatter: formatTokenMillions },
+    { key: "output_tokens", label: "输出", rawValue: today.output_tokens, formatter: formatTokenMillions },
+    { key: "cache_tokens", label: "缓存", rawValue: today.cache_tokens, formatter: formatTokenMillions },
+    { key: "request_count", label: "调用次数", rawValue: today.request_count, formatter: formatNumber }
   ];
-  $("token-summary").replaceChildren(...metrics.map((metric, index) => {
+  const row = document.createElement("div");
+  row.className = "token-breakdown";
+  row.append(...metrics.map((metric) => {
     const card = document.createElement("article");
-    const value = createText("strong", "metric-value", "");
-    card.className = `metric-card accent-${index % 3}`;
-    card.append(
-      createText("span", "metric-label", metric.label),
-      createText("small", "metric-period", periodLabel),
-      value,
-      metricTrendNode(metric.key, metric.rawValue, metric.formatter),
-      createText("small", "metric-hint", metric.hint)
-    );
+    const value = createText("strong", "", "");
+    card.className = "metric-card";
+    card.append(createText("span", "metric-label", metric.label), value, metricTrendNode(metric.key, metric.rawValue, metric.formatter));
     animateMetricValue(value, metric.key, metric.rawValue, metric.formatter);
     return card;
   }));
+  $("token-summary").replaceChildren(hero, row);
 }
 
 function renderTokenDetails(rows) {
@@ -308,6 +320,9 @@ function renderTokenDetails(rows) {
   }));
 }
 
+const SHARE_COLORS = ["#34d399", "#2a7d63", "#6aa8ff", "#fbbf24", "#8e9a95", "#fb923c"];
+
+// Donut drawn with SVG strokes; the centre shows how many models are in use.
 function renderModelShare(rows) {
   const host = $("model-share-chart");
   const data = Array.isArray(rows) ? rows.filter((row) => Number(row.total_tokens || 0) > 0).slice(0, 6) : [];
@@ -315,118 +330,131 @@ function renderModelShare(rows) {
     renderEmpty(host, "暂无模型占比数据");
     return;
   }
-  const colors = ["#34d399", "#2a7d63", "#6aa8ff", "#fbbf24", "#8e9a95", "#fb923c"];
-  let cursor = 0;
-  const segments = data.map((row, index) => {
-    const start = cursor;
-    cursor += Math.max(0, Number(row.percent || 0));
-    return `${colors[index % colors.length]} ${start}% ${cursor}%`;
+  const ns = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(ns, "svg");
+  svg.setAttribute("viewBox", "0 0 180 180");
+  svg.setAttribute("class", "model-chart-ring");
+  svg.setAttribute("role", "img");
+  svg.setAttribute("aria-label", `模型 Token 占比：${data.map((row) => `${row.model_name || "未知模型"} ${formatPercent(row.percent)}`).join("，")}`);
+  const radius = 70;
+  const circumference = 2 * Math.PI * radius;
+  const track = document.createElementNS(ns, "circle");
+  track.setAttribute("cx", "90");
+  track.setAttribute("cy", "90");
+  track.setAttribute("r", String(radius));
+  track.setAttribute("class", "ring-track");
+  svg.append(track);
+  let offset = 0;
+  data.forEach((row, index) => {
+    const share = Math.max(0, Number(row.percent || 0)) / 100;
+    const arc = document.createElementNS(ns, "circle");
+    arc.setAttribute("cx", "90");
+    arc.setAttribute("cy", "90");
+    arc.setAttribute("r", String(radius));
+    arc.setAttribute("fill", "none");
+    arc.setAttribute("stroke", SHARE_COLORS[index % SHARE_COLORS.length]);
+    arc.setAttribute("stroke-width", "22");
+    arc.setAttribute("stroke-dasharray", `${Math.max(0, share * circumference - 2)} ${circumference}`);
+    arc.setAttribute("stroke-dashoffset", String(-offset * circumference));
+    arc.setAttribute("transform", "rotate(-90 90 90)");
+    svg.append(arc);
+    offset += share;
   });
-  if (cursor < 100) {
-    segments.push(`rgba(142, 154, 149, 0.16) ${cursor}% 100%`);
-  }
-  const ring = document.createElement("div");
-  ring.className = "model-chart-ring";
-  ring.style.background = `conic-gradient(${segments.join(", ")})`;
-  ring.append(createText("strong", "", "模型 Token 占比"));
+  const count = document.createElementNS(ns, "text");
+  count.setAttribute("x", "90");
+  count.setAttribute("y", "88");
+  count.setAttribute("class", "ring-value");
+  count.textContent = String(data.length);
+  const caption = document.createElementNS(ns, "text");
+  caption.setAttribute("x", "90");
+  caption.setAttribute("y", "110");
+  caption.setAttribute("class", "ring-caption");
+  caption.textContent = "在用模型";
+  svg.append(count, caption);
 
-  const legend = data.map((row, index) => {
+  const legend = document.createElement("div");
+  legend.className = "model-legend";
+  legend.append(...data.map((row, index) => {
     const item = document.createElement("div");
     item.className = "model-legend-row";
     const swatch = document.createElement("span");
     swatch.className = "model-swatch";
-    swatch.style.background = colors[index % colors.length];
-    item.append(
-      swatch,
-      createText("strong", "", row.model_name || `模型 ${index + 1}`),
-      createText("span", "", formatPercent(row.percent))
-    );
+    swatch.style.background = SHARE_COLORS[index % SHARE_COLORS.length];
+    item.append(swatch, createText("span", "model-legend-name", row.model_name || `模型 ${index + 1}`), createText("strong", "", formatPercent(row.percent)));
     return item;
-  });
-  host.replaceChildren(ring, ...legend);
+  }));
+  host.replaceChildren(svg, legend);
 }
 
 function renderModelUsage(rows) {
   const host = $("model-usage");
-  const data = Array.isArray(rows) ? rows.slice(0, 8) : [];
+  const data = Array.isArray(rows) ? rows.slice(0, 7) : [];
   if (data.length === 0) {
     renderEmpty(host, "暂无模型使用数据");
     return;
   }
   const max = Math.max(1, ...data.map((row) => Number(row.total_tokens || 0)));
-  host.replaceChildren(...data.map((row) => {
+  host.replaceChildren(...data.map((row, index) => {
     const item = document.createElement("div");
-    item.className = "model-row";
+    item.className = `model-row ${index === 0 ? "is-top" : ""}`.trim();
+    item.title = `${formatNumber(row.request_count)} 次 · 输入 ${formatNumber(row.input_tokens)} / 输出 ${formatNumber(row.output_tokens)}`;
     const header = document.createElement("header");
-    header.append(
-      createText("strong", "", row.model_name || "未知模型"),
-      createText("span", "", `${formatNumber(row.request_count)} 次`)
-    );
-    const meta = createText("span", "", `${formatNumber(row.total_tokens)} Token · 输入 ${formatNumber(row.input_tokens)} / 输出 ${formatNumber(row.output_tokens)}`);
+    header.append(createText("span", "model-name", row.model_name || "未知模型"), createText("strong", "", formatTokenMillions(row.total_tokens)));
     const progress = document.createElement("div");
     progress.className = "model-progress";
     const fill = document.createElement("span");
-    fill.style.width = `${Math.max(4, Math.round(Number(row.total_tokens || 0) / max * 100))}%`;
+    fill.style.width = `${Math.max(2, Math.round(Number(row.total_tokens || 0) / max * 100))}%`;
     progress.append(fill);
-    item.append(header, meta, progress);
+    item.append(header, progress);
     return item;
   }));
 }
 
 function renderPeriodTotals(periods) {
   const labels = [
-    ["today", "当日"],
     ["week", "本周"],
     ["month", "本月"],
-    ["quarter", "本季度"],
     ["year", "本年度"]
   ];
   $("period-totals").replaceChildren(...labels.map(([key, label]) => {
     const row = periods?.[key] || {};
-    const card = document.createElement("div");
+    const card = document.createElement("span");
     card.className = "period-card";
-    card.append(
-      createText("span", "", label),
-      createText("strong", "", formatNumber(row.total_tokens))
-    );
+    card.append(createText("span", "", label), createText("strong", "", formatTokenMillions(row.total_tokens)));
     return card;
   }));
 }
 
 function renderLiveGenerations(rows) {
   const host = $("live-generations");
-  const data = Array.isArray(rows) ? rows.slice(0, 10) : [];
+  const data = Array.isArray(rows) ? rows.slice(0, 5) : [];
+  setText($("live-count"), Array.isArray(rows) && rows.length ? `${rows.length} 路` : "");
   if (data.length === 0) {
     renderEmpty(host, "暂无正在生成内容");
     return;
   }
+  const statusLabels = {
+    queued: "排队中",
+    processing: "生成中",
+    succeeded: "已生成",
+    failed: "失败",
+    blocked: "已阻断",
+    timeout: "超时"
+  };
   host.replaceChildren(...data.map((row) => {
     const item = document.createElement("div");
-    item.className = "live-row";
-    const statusLabels = {
-      queued: "排队中",
-      processing: "生成中",
-      succeeded: "已生成",
-      failed: "失败",
-      blocked: "已阻断",
-      timeout: "超时"
-    };
-    const statusLabel = statusLabels[row.status] || "生成中";
-    const header = document.createElement("header");
-    header.append(
-      createText("strong", "", row.model_name || row.task_id || "生成任务"),
-      createText("span", "live-status", statusLabel)
+    item.className = `live-row is-${row.status || "processing"}`;
+    const who = row.department_name || row.user_name || (row.department_id ? `部门 ${row.department_id}` : "生成任务");
+    const main = document.createElement("div");
+    main.className = "live-main";
+    main.append(createText("strong", "", who), createText("span", "live-meta", row.model_name || row.task_type || "--"));
+    const side = document.createElement("div");
+    side.className = "live-side";
+    side.append(
+      createText("span", "live-tokens", row.total_tokens ? formatNumber(row.total_tokens) : row.progress ? `${Math.round(Number(row.progress))}%` : formatTime(row.created_at)),
+      createText("span", "live-status", statusLabels[row.status] || "生成中")
     );
-    const userName = row.user_name || `用户 ${row.user_id || "--"}`;
-    const departmentName = row.department_name || `部门 ${row.department_id || "--"}`;
-    const meta = createText("span", "", `使用者 ${userName} · 部门 ${departmentName}`);
-    const time = createText("small", "live-meta", `${row.task_type || "任务"} · ${formatTime(row.created_at)}`);
-    const progress = document.createElement("div");
-    progress.className = "live-progress";
-    const fill = document.createElement("span");
-    fill.style.width = `${Math.max(4, Math.min(100, Number(row.progress || 0)))}%`;
-    progress.append(fill);
-    item.append(header, meta, time, progress);
+    item.append(main, side);
     return item;
   }));
 }
@@ -442,9 +470,146 @@ function renderOverview(overview) {
   renderLiveGenerations(source.live_generations || []);
 }
 
+function bucketDate(value) {
+  const text = String(value || "");
+  const iso = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}(:\d{2})?$/.test(text) ? `${text.replace(" ", "T")}Z` : text;
+  const date = new Date(iso);
+  return Number.isFinite(date.getTime()) ? date : null;
+}
+
+// Hourly calls today against yesterday (local time), as two lines.
+function renderOverviewTrend(rows) {
+  const host = $("overview-trend");
+  if (!host) return;
+  const today = new Array(24).fill(null);
+  const yesterday = new Array(24).fill(0);
+  const now = new Date();
+  const startToday = new Date(now);
+  startToday.setHours(0, 0, 0, 0);
+  const startYesterday = new Date(startToday.getTime() - 86400000);
+  let any = false;
+  for (const row of Array.isArray(rows) ? rows : []) {
+    const date = bucketDate(row.bucket_at);
+    if (!date) continue;
+    const hour = date.getHours();
+    const value = numericValue(row.request_count);
+    if (date >= startToday) {
+      today[hour] = (today[hour] || 0) + value;
+      any = true;
+    } else if (date >= startYesterday) {
+      yesterday[hour] += value;
+      any = true;
+    }
+  }
+  if (!any) {
+    renderEmpty(host, "暂无趋势数据");
+    return;
+  }
+  for (let hour = 0; hour <= now.getHours(); hour += 1) {
+    if (today[hour] === null) today[hour] = 0;
+  }
+  const max = Math.max(1, ...yesterday, ...today.filter((value) => value !== null));
+  const ns = "http://www.w3.org/2000/svg";
+  const width = 1000;
+  const height = 300;
+  const x = (hour) => hour / 23 * width;
+  const y = (value) => height - value / max * (height - 12);
+  const svg = document.createElementNS(ns, "svg");
+  svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+  svg.setAttribute("preserveAspectRatio", "none");
+  svg.setAttribute("class", "trend-svg");
+  svg.setAttribute("role", "img");
+  const todayTotal = today.reduce((sum, value) => sum + (value || 0), 0);
+  const yesterdaySame = yesterday.slice(0, now.getHours() + 1).reduce((sum, value) => sum + value, 0);
+  svg.setAttribute("aria-label", `今日累计调用 ${formatNumber(todayTotal)} 次，昨日同时段 ${formatNumber(yesterdaySame)} 次`);
+  for (let step = 0; step <= 4; step += 1) {
+    const line = document.createElementNS(ns, "path");
+    line.setAttribute("d", `M0 ${(step / 4) * height}H${width}`);
+    line.setAttribute("class", "trend-grid");
+    svg.append(line);
+  }
+  const path = (values) => values.map((value, hour) => (value === null ? null : `${x(hour)},${y(value)}`)).filter(Boolean);
+  const past = document.createElementNS(ns, "polyline");
+  past.setAttribute("points", path(yesterday).join(" "));
+  past.setAttribute("class", "trend-line is-yesterday");
+  svg.append(past);
+  const points = path(today);
+  if (points.length > 1) {
+    const area = document.createElementNS(ns, "path");
+    const lastHour = today.reduce((last, value, hour) => (value === null ? last : hour), 0);
+    area.setAttribute("d", `M0,${height} L${points.join(" L")} L${x(lastHour)},${height} Z`);
+    area.setAttribute("class", "trend-area");
+    svg.append(area);
+  }
+  const line = document.createElementNS(ns, "polyline");
+  line.setAttribute("points", points.join(" "));
+  line.setAttribute("class", "trend-line is-today");
+  svg.append(line);
+  const axis = document.createElement("div");
+  axis.className = "trend-axis";
+  axis.append(...["00:00", "06:00", "12:00", "18:00", "24:00"].map((label) => createText("span", "", label)));
+  host.replaceChildren(svg, axis);
+}
+
+function rankingName(row, index) {
+  return row.name || row.department_name || row.model_name || row.model || row.provider || row.api_key_name || (row.id ? `#${row.id}` : `第 ${index + 1} 名`);
+}
+
+function renderOverviewRankings(rows) {
+  const host = $("overview-rankings");
+  if (!host) return;
+  const data = Array.isArray(rows) ? rows.slice(0, 6) : [];
+  if (data.length === 0) {
+    renderEmpty(host, "暂无排行数据");
+    return;
+  }
+  host.replaceChildren(...data.map((row, index) => {
+    const item = document.createElement("div");
+    item.className = "rank-row";
+    item.append(
+      createText("span", "rank-index", String(index + 1).padStart(2, "0")),
+      createText("span", "rank-name", rankingName(row, index)),
+      createText("span", "rank-value", formatNumber(row.request_count))
+    );
+    return item;
+  }));
+}
+
+function renderOverviewPerformance(data, totals) {
+  const host = $("overview-performance");
+  if (!host) return;
+  const source = data?.data || data || {};
+  const buckets = Array.isArray(source.buckets) ? [...source.buckets].sort((a, b) => String(a.bucket_at).localeCompare(String(b.bucket_at))) : [];
+  const latest = buckets[buckets.length - 1];
+  const requests = numericValue(totals?.request_count);
+  const success = totals?.success_count != null ? numericValue(totals.success_count) : null;
+  host.replaceChildren(
+    createText("strong", "", latest ? formatSeconds(latest.p95_latency_ms) : "--"),
+    createText("small", "mini-good", success !== null && requests > 0 ? `成功率 ${(success / requests * 100).toFixed(2)}%` : "最近时段")
+  );
+}
+
+function formatSeconds(ms) {
+  const value = numericValue(ms);
+  return value >= 1000 ? `${(value / 1000).toFixed(2)} s` : `${Math.round(value)} ms`;
+}
+
+function renderOverviewSecurity(data) {
+  const host = $("overview-security");
+  if (!host) return;
+  const events = securityEvents(data);
+  const total = events.reduce((sum, event) => sum + numericValue(event.event_count || event.count), 0);
+  const blocked = events.filter((event) => String(event.action || "") === "block").reduce((sum, event) => sum + numericValue(event.event_count || event.count), 0);
+  host.replaceChildren(
+    createText("strong", "", formatNumber(total)),
+    createText("small", blocked > 0 ? "mini-warn" : "", blocked > 0 ? `其中拦截 ${formatNumber(blocked)}` : "按策略处理")
+  );
+}
+
 function renderTrendBars(rows) {
   const host = $("trends");
-  const data = Array.isArray(rows) ? rows.slice(-10) : [];
+  // The API returns newest first; read oldest to newest, last 12 buckets.
+  const data = Array.isArray(rows) ? [...rows].sort((a, b) => String(a.bucket_at).localeCompare(String(b.bucket_at))).slice(-12) : [];
   if (data.length === 0) {
     renderEmpty(host, "暂无趋势数据");
     return;
@@ -469,6 +634,7 @@ function renderTrendBars(rows) {
 
 function renderRankingList(rows) {
   const host = $("rankings");
+  if (!host) return;
   const data = Array.isArray(rows) ? rows.slice(0, 8) : [];
   if (data.length === 0) {
     renderEmpty(host, "暂无排行数据");
@@ -478,13 +644,15 @@ function renderRankingList(rows) {
     const item = document.createElement("div");
     item.className = "rank-row";
     const rank = createText("span", "rank-index", String(index + 1).padStart(2, "0"));
-    const name = createText("strong", "rank-name", row.name || row.model || row.provider || row.api_key_name || row.id || `项目 ${index + 1}`);
+    const name = createText("strong", "rank-name", rankingName(row, index));
     const meta = createText("small", "rank-meta", `${formatNumber(row.total_tokens)} Token · ${formatNumber(row.error_count)} 错误`);
     const value = createText("span", "rank-value", formatNumber(row.request_count));
     item.append(rank, name, meta, value);
     return item;
   }));
 }
+
+const SECURITY_ACTION_LABELS = { block: "拦截", redact: "脱敏", replace: "替换", summary: "摘要", log: "记录", allow: "放行", remove_header: "移除请求头" };
 
 function securityEvents(data) {
   const source = data?.data || data || {};
@@ -503,8 +671,8 @@ function renderSecurityPanel(data) {
     const item = document.createElement("div");
     item.className = "security-row";
     const type = createText("span", "security-type", event.type);
-    const title = createText("strong", "security-title", event.action || event.rule_name || event.client_ip || event.policy_name || "安全事件");
-    const meta = createText("small", "security-meta", event.client_ip || event.pattern || event.target || "系统策略");
+    const title = createText("strong", "security-title", SECURITY_ACTION_LABELS[event.action] || event.rule_name || event.policy_name || event.action || "安全事件");
+    const meta = createText("small", "security-meta", event.match_count ? `命中 ${formatNumber(event.match_count)} 处` : "按脱敏策略处理");
     const count = createText("span", "security-count", formatNumber(event.event_count || event.match_count || event.count));
     item.append(type, title, meta, count);
     return item;
@@ -542,10 +710,16 @@ async function render() {
     api("/screen-api/dashboard/performance")
   ]);
   renderOverview(overview);
-  renderTrendBars(trends.data || trends || []);
-  renderRankingList(rankings.data || rankings || []);
+  const trendRows = trends.data || trends || [];
+  const rankingRows = rankings.data || rankings || [];
+  renderTrendBars(trendRows);
+  renderOverviewTrend(trendRows);
+  renderRankingList(rankingRows);
+  renderOverviewRankings(rankingRows);
   renderSecurityPanel(security);
+  renderOverviewSecurity(security);
   renderPerformancePanel(performance);
+  renderOverviewPerformance(performance, (overview?.data || overview || {}).totals);
   setStatus("已更新", "ready");
 }
 

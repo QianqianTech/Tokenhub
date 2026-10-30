@@ -20,6 +20,16 @@
           <button id="sidebar-mode-toggle" type="button" class="sidebar-mode-toggle" aria-label="收起菜单" aria-pressed="false">‹</button>
         </div>
         <nav id="nav" aria-label="主导航"></nav>
+        <div class="sidebar-user" id="sidebar-user">
+          <span id="current-user-avatar" class="sidebar-user-avatar" aria-hidden="true"></span>
+          <span class="sidebar-user-text">
+            <span id="current-user" class="sidebar-user-name"></span>
+            <span id="current-role" class="sidebar-user-role"></span>
+          </span>
+          <button id="logout" type="button" class="sidebar-logout" aria-label="退出登录" title="退出登录">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3M10 16l4-4-4-4M14 12H4"/></svg>
+          </button>
+        </div>
       </aside>
       <button id="sidebar-backdrop" class="sidebar-backdrop" type="button" aria-label="关闭菜单" hidden></button>
       <section class="workspace">
@@ -33,21 +43,24 @@
           <div class="topbar-actions">
             <button id="palette-trigger" type="button" class="palette-trigger" aria-keyshortcuts="Control+K Meta+K" title="快速跳转（Ctrl+K）">
               <svg viewBox="0 0 24 24" aria-hidden="true" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-              <span>快速跳转</span><kbd>Ctrl K</kbd>
+              <span class="palette-trigger-text">搜索页面、密钥、模型</span><kbd>Ctrl K</kbd>
             </button>
-            <div id="theme-switcher" class="theme-switcher" aria-label="界面主题">
-              <button type="button" class="theme-choice" data-theme-choice="dark" aria-pressed="false" aria-label="深色主题" title="切换为深色主题"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.5 14.2A8.5 8.5 0 0 1 9.8 3.5 8.5 8.5 0 1 0 20.5 14.2Z"/></svg></button>
+            <div id="theme-switcher" class="theme-switcher" role="group" aria-label="界面主题">
               <button type="button" class="theme-choice" data-theme-choice="light" aria-pressed="false" aria-label="浅色主题" title="切换为浅色主题"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg></button>
-              <button type="button" class="theme-choice active" data-theme-choice="auto" aria-pressed="true" aria-label="自适应主题" title="跟随系统主题"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 12h18M12 4v16"/></svg></button>
+              <button type="button" class="theme-choice" data-theme-choice="dark" aria-pressed="false" aria-label="深色主题" title="切换为深色主题"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.5 14.2A8.5 8.5 0 0 1 9.8 3.5 8.5 8.5 0 1 0 20.5 14.2Z"/></svg></button>
+              <button type="button" class="theme-choice active" data-theme-choice="auto" aria-pressed="true" aria-label="跟随系统主题" title="跟随系统主题"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></svg></button>
             </div>
-            <span id="current-user"></span>
-            <button id="logout" type="button">退出</button>
+            <a id="alert-bell" class="alert-bell" href="#/security/alert-events" aria-label="告警事件" title="告警事件" hidden>
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.9 1.9 0 0 0 3.4 0"/></svg>
+              <span class="alert-bell-dot" hidden></span>
+            </a>
           </div>
         </header>
         <section id="global-error" class="global-error"></section>
         <section class="login-hero" aria-hidden="true">
           <div class="login-hero-brand"><img src="/admin/assets/brand/tokenhub-app-icon.svg" alt=""><span>TokenHub</span></div>
-          <div>
+          <div class="login-hero-body">
+            <img class="login-hero-mark" src="/admin/assets/brand/tokenhub-app-icon.svg" alt="">
             <h2>一个入口，管住所有模型调用</h2>
             <ul>
               <li>兼容 OpenAI 与 Anthropic 接口协议</li>
@@ -55,15 +68,33 @@
               <li>调用全程留痕，敏感内容自动脱敏</li>
             </ul>
           </div>
-          <span></span>
+          <p class="login-hero-foot">黔前智算 TokenHub 版权所有</p>
         </section>
-        <form id="login" class="login-panel" novalidate aria-labelledby="login-title">
+        <form id="login" class="login-panel" novalidate aria-labelledby="login-title" aria-describedby="login-subtitle">
           <div id="login-brand" class="login-brand"><img class="brand-logo" src="/admin/assets/brand/tokenhub-app-icon.svg" alt=""><span>TokenHub</span></div>
-          <h2 id="login-title">管理员登录</h2>
-          <label>用户名<input id="username" name="username" autocomplete="username" required></label>
-          <label>密码<input id="password" name="password" type="password" autocomplete="current-password" required></label>
+          <div class="login-heading">
+            <h2 id="login-title">登录管理后台</h2>
+            <p id="login-subtitle" class="login-subtitle">TokenHub 管理后台 · 使用管理员账号登录</p>
+          </div>
+          <label class="login-field">用户名<input id="username" name="username" autocomplete="username" spellcheck="false" autocapitalize="off" required></label>
+          <label class="login-field">密码
+            <span class="login-password">
+              <input id="password" name="password" type="password" autocomplete="current-password" required>
+              <button id="password-toggle" class="login-password-toggle" type="button" aria-label="显示密码" aria-pressed="false" title="显示密码">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg>
+              </button>
+            </span>
+          </label>
+          <div class="login-options">
+            <label class="login-remember"><input id="remember-username" type="checkbox">记住用户名</label>
+            <span class="login-help">忘记密码请联系超级管理员</span>
+          </div>
           <button id="login-button" type="submit">登录</button>
-          <p id="login-error" class="error" role="alert" aria-live="assertive"></p>
+          <p id="login-error" class="error login-error" role="alert" aria-live="assertive"></p>
+          <p class="login-note">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M12 3l8 3v6c0 4.5-3.4 8.3-8 9-4.6-.7-8-4.5-8-9V6l8-3Z"/></svg>
+            同一 IP 或账号短时间内多次登录失败，会被暂时限制登录
+          </p>
         </form>
         <section id="content" class="content" tabindex="-1" hidden></section>
         <div id="modal-root"></div>

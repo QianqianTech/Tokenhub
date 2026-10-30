@@ -137,7 +137,7 @@ test("a page whose initial load fails shows a retryable page error", async () =>
   const failure = page.locator("[data-page-error]");
   await failure.waitFor();
   await failure.getByRole("button", { name: "重试" }).click();
-  await page.locator("#content", { hasText: "系统运行状态" }).waitFor();
+  await page.locator("#content .ops-service").first().waitFor();
   assert.equal(await page.locator("[data-page-error]").count(), 0);
   assert.deepEqual(errors, []);
   await context.close();

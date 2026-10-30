@@ -26,7 +26,7 @@ assert_true(str_contains($adminCss, '.resource-table--api-keys'), 'API key table
 assert_true(str_contains($adminCss, '.resource-table--api-keys .table-cell--name'), 'API key name cells should have a stable readable width.');
 assert_true(str_contains($adminCss, '.resource-table--api-keys .table-cell--created_at'), 'API key created-at cells should keep a stable readable width.');
 assert_true(str_contains($adminCss, '.resource-table--api-keys .table-cell--key'), 'API key masked key cells should keep a stable readable width.');
-assert_true(str_contains($tableSource, 'className: "api-key-table-wrap api-key-table-panel"'), 'API key table wrapper should use the dedicated horizontal overflow boundary.');
+assert_true(str_contains($tableSource, 'className: "api-key-table-wrap resource-table-host"') && str_contains($tableSource, 'el("div", { className: "table-scroll" }, [table])'), 'API key table wrapper should use the dedicated horizontal overflow boundary.');
 $apiKeyCssStart = strpos($adminCss, '.resource-table--api-keys');
 $apiKeyCssEnd = strpos($adminCss, '.api-key-detail-modal', $apiKeyCssStart);
 assert_true($apiKeyCssStart !== false && $apiKeyCssEnd !== false, 'API key CSS block should be inspectable.');

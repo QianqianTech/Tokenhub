@@ -2,23 +2,14 @@ import { adminErrorMessage, api } from "../api.js";
 import { button, clear, el, setText, showModal, statusMessage } from "../dom.js";
 import { showCreateModal, showEditModal } from "../lib/forms.js";
 import { setErrorOutput, showOperationResult } from "../lib/output.js";
-import { apiKeyDepartmentLabel, apiKeyUserLabel, departmentSelectOptions, renderContext } from "../lib/references.js";
+import { apiKeyDepartmentLabel, apiKeyModelLabels, apiKeyUserLabel, departmentSelectOptions, renderContext } from "../lib/references.js";
 import { emptyState, errorState, loadingState } from "../components/feedback.js";
 import { pager, PAGE_SIZES } from "../components/pager.js";
-import { renderTableCell } from "../lib/resource-table.js";
+import { arrangeRowActions, editButton, friendlyTime, pageHead, renderTableCell } from "../lib/resource-table.js";
 import { columnLabel, formatResourceValue, resources } from "../resources.js";
 import { confirmDialog } from "../components/modal.js";
 import { API_KEY_DISABLED_BY_LABELS, apiKeyManagementBadge, showApiKeyMcpGrants, showApiKeyQuota, showApiKeyRotate } from "../lib/ops-tools.js";
 
-const apiKeyPageColumns = [
-  ["id", "编号"],
-  ["name", "名称"],
-  ["department_name", "部门"],
-  ["user_name", "员工"],
-  ["created_at", "创建时间"],
-  ["key", "密钥"],
-  ["status", "状态"]
-];
 
 function apiKeyActionIcon(paths) {
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
@@ -39,60 +30,137 @@ function apiKeyActionIcon(paths) {
   return svg;
 }
 
+const STATUS_SEGMENTS = [["", "全部"], ["active", "启用"], ["disabled", "停用"]];
+
+function pad2(value) {
+  return String(value).padStart(2, "0");
+}
+
+function serverStamp(date) {
+  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())} ${pad2(date.getHours())}:${pad2(date.getMinutes())}:${pad2(date.getSeconds())}`;
+}
+
+function compactTokens(value) {
+  const number = apiKeyNumber(value);
+  if (number >= 1e6) return `${(number / 1e6).toFixed(number >= 1e7 ? 0 : 1)}M`;
+  if (number >= 1e3) return `${(number / 1e3).toFixed(number >= 1e4 ? 0 : 1)}K`;
+  return number.toLocaleString("zh-CN");
+}
+
+// Today's tokens per key (one request for the page; the ranking covers the
+// 20 busiest keys, the rest show “—”).
+async function todayUsageByKey() {
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+  try {
+    const result = await api("/admin-api/dashboard/rankings", { query: { dimension: "api_key", sort: "total_tokens", from: serverStamp(start) }, silent: true });
+    return new Map((Array.isArray(result.data) ? result.data : []).filter((row) => row.id).map((row) => [Number(row.id), row]));
+  } catch {
+    return new Map();
+  }
+}
+
 export async function renderApiKeyPage(content, initialFilters = {}, context = {}) {
   clear(content);
   const config = resources["api-keys"];
-  const { offset: initialOffset = 0, limit: initialLimit = 20, ...initialRest } = initialFilters;
+  const { offset: initialOffset = 0, limit: initialLimit = 20, key: initialKey = "", ...initialRest } = initialFilters;
   const state = {
     filters: { sort: "created_at_desc", ...initialRest },
     pageSize: PAGE_SIZES.includes(Number(initialLimit)) ? Number(initialLimit) : 20,
-    offset: Math.max(0, Number(initialOffset) || 0)
+    offset: Math.max(0, Number(initialOffset) || 0),
+    openKey: initialKey ? Number(initialKey) : 0
   };
   const departmentOptions = await departmentSelectOptions();
-  const page = el("section", { className: "api-key-page" });
-  const tableHost = el("section", { className: "api-key-table-panel", "aria-live": "polite" }, [loadingState("正在加载 API 密钥…")]);
+  const page = el("section", { className: "api-key-page api-key-workspace" });
+  const tableHost = el("section", { className: "panel table-panel api-key-table-panel", "aria-live": "polite" }, [loadingState("正在加载 API 密钥…")]);
+  const drawer = el("aside", { className: "api-key-drawer", "aria-label": "密钥详情", hidden: true });
+
   const keywordInput = el("input", {
     type: "search",
-    placeholder: "搜索名称、密钥或员工",
+    name: "keyword",
+    placeholder: "按名称、员工或密钥尾号搜索",
     value: state.filters.keyword || "",
-    "aria-label": "搜索 API 密钥"
+    "aria-label": "搜索 API 密钥",
+    autocomplete: "off"
   });
-  const departmentSelect = el("select", { "aria-label": "部门" }, [
+  let keywordTimer = 0;
+  keywordInput.addEventListener("input", () => {
+    window.clearTimeout(keywordTimer);
+    keywordTimer = window.setTimeout(() => void applyFilters(), 350);
+  });
+  const statusButtons = STATUS_SEGMENTS.map(([value, label]) => el("button", {
+    type: "button",
+    className: "segmented-option",
+    dataset: { value },
+    "aria-pressed": String(state.filters.status || "") === value ? "true" : "false",
+    onClick: () => {
+      if (value) state.filters.status = value; else delete state.filters.status;
+      statusButtons.forEach((node) => node.setAttribute("aria-pressed", node.dataset.value === value ? "true" : "false"));
+      void applyFilters();
+    }
+  }, [el("span", { text: label }), el("span", { className: "segmented-count", "aria-hidden": "true" })]));
+  const departmentSelect = el("select", { name: "department_id", "aria-label": "部门" }, [
     el("option", { value: "", text: "全部部门" }),
     ...departmentOptions.map(([value, label]) => el("option", { value, text: label }))
   ]);
   departmentSelect.value = state.filters.department_id || "";
-  const filterToolbar = el("form", { className: "filters api-key-filter-toolbar", role: "search" }, [
-    el("label", { className: "field" }, [el("span", { text: "搜索" }), keywordInput]),
-    el("label", { className: "field" }, [el("span", { text: "部门" }), departmentSelect])
+  departmentSelect.addEventListener("change", () => void applyFilters());
+  const filterToolbar = el("form", { className: "filters list-toolbar api-key-filter-toolbar", role: "search", "aria-label": "筛选 API 密钥", onSubmit: (event) => {
+    event.preventDefault();
+    void applyFilters();
+  } }, [
+    el("div", { className: "list-toolbar-main" }, [
+      el("label", { className: "list-search" }, [searchIcon(), keywordInput]),
+      el("div", { className: "segmented list-segmented", role: "group", "aria-label": "状态" }, statusButtons),
+      el("label", { className: "inline-select" }, [el("span", { text: "部门" }), departmentSelect])
+    ])
   ]);
-  const createButton = button("+ 新建 API 密钥", () => showCreateModal("api-keys", config, refresh), "api-key-create-button");
+  const createButton = button("", () => showCreateModal("api-keys", config, refresh), "api-key-create-button primary-action");
+  createButton.append(apiKeyActionIcon(["M12 5v14", "M5 12h14"]), el("span", { text: "新建密钥" }));
   createButton.title = "新建 API 密钥";
-  const analyticsHost = el("div");
   page.append(
-    el("header", { className: "api-key-page-header" }, [
-      el("h2", { text: "API 密钥" }),
-      createButton
-    ]),
-    el("div", { className: "api-key-safety-notice", text: "API 密钥只会在新建后显示一次，请立即复制保存；不要写进前端代码或发给他人。" }),
+    pageHead("API 密钥", "为应用和员工签发访问网关的密钥，用量按密钥计量。密钥明文只在新建或轮换后显示一次。", el("div", {}, [createButton])),
     filterToolbar,
-    analyticsHost,
-    tableHost
+    el("div", { className: "api-key-layout" }, [tableHost, drawer])
   );
 
-  async function refresh() {
+  async function loadCounts() {
+    const base = { ...state.filters };
+    delete base.status;
+    delete base.sort;
+    const totals = await Promise.all(STATUS_SEGMENTS.map(async ([value]) => {
+      try {
+        const result = await api("/admin-api/api-keys", { query: { ...base, ...(value ? { status: value } : {}), limit: 1, offset: 0 }, silent: true });
+        const total = Number(result.total ?? result.data?.total);
+        return Number.isFinite(total) ? total : null;
+      } catch {
+        return null;
+      }
+    }));
+    statusButtons.forEach((node, index) => {
+      node.querySelector(".segmented-count").textContent = totals[index] === null ? "" : totals[index].toLocaleString("zh-CN");
+    });
+  }
+
+  function persist() {
     context.setFilters?.({
       ...state.filters,
       ...(state.offset ? { offset: state.offset } : {}),
-      ...(state.pageSize !== 20 ? { limit: state.pageSize } : {})
+      ...(state.pageSize !== 20 ? { limit: state.pageSize } : {}),
+      ...(state.openKey ? { key: state.openKey } : {})
     });
+  }
+
+  async function refresh() {
+    persist();
     tableHost.setAttribute("aria-busy", "true");
     let result;
+    let usage;
     try {
-      result = await api("/admin-api/api-keys", {
-        query: { ...state.filters, limit: state.pageSize, offset: state.offset },
-        silent: true
-      });
+      [result, usage] = await Promise.all([
+        api("/admin-api/api-keys", { query: { ...state.filters, limit: state.pageSize, offset: state.offset }, silent: true }),
+        todayUsageByKey()
+      ]);
     } catch (error) {
       tableHost.removeAttribute("aria-busy");
       tableHost.replaceChildren(errorState(error, { fallback: "API 密钥列表加载失败", onRetry: refresh }));
@@ -113,15 +181,15 @@ export async function renderApiKeyPage(content, initialFilters = {}, context = {
       return;
     }
     const lookups = await renderContext("api-keys", rows, ["user_id", "department_id"]);
-    analyticsHost.replaceChildren(renderApiKeyAnalytics(rows, total));
-    const hasFilters = Boolean(state.filters.keyword || state.filters.department_id);
+    lookups.todayUsage = usage;
+    const hasFilters = Boolean(state.filters.keyword || state.filters.department_id || state.filters.status);
     tableHost.replaceChildren(
       rows.length === 0
         ? emptyState({
           title: hasFilters ? "没有符合条件的 API 密钥" : "暂无 API 密钥",
-          description: hasFilters ? "可以调整搜索词或部门后重试。" : "点击“新建 API 密钥”为员工创建第一把密钥。"
+          description: hasFilters ? "可以调整搜索词、状态或部门后重试。" : "点击右上角“新建密钥”为员工创建第一把密钥。"
         })
-        : renderApiKeyTable(rows, config, refresh, lookups),
+        : renderApiKeyTable(rows, config, refresh, lookups, { onOpen: openDrawer, activeId: state.openKey }),
       pager({
         total,
         limit: pageSize,
@@ -135,52 +203,56 @@ export async function renderApiKeyPage(content, initialFilters = {}, context = {
         }
       })
     );
+    if (state.openKey) {
+      const row = rows.find((item) => Number(item.id) === state.openKey);
+      if (row) {
+        void renderApiKeyDrawer(drawer, row, config, lookups, { onClose: closeDrawer, onRefresh: refresh });
+      } else {
+        closeDrawer();
+      }
+    }
   }
 
-  const applyFilters = async () => {
+  function openDrawer(row) {
+    state.openKey = Number(row.id);
+    persist();
+    tableHost.querySelectorAll("tbody tr").forEach((tr) => tr.classList.toggle("is-active", Number(tr.dataset.keyId) === state.openKey));
+    void renderApiKeyDrawer(drawer, row, config, null, { onClose: closeDrawer, onRefresh: refresh });
+  }
+
+  function closeDrawer() {
+    state.openKey = 0;
+    drawer.hidden = true;
+    page.classList.remove("has-drawer");
+    tableHost.querySelectorAll("tbody tr.is-active").forEach((tr) => tr.classList.remove("is-active"));
+    persist();
+  }
+  page.addEventListener("api-key-drawer-open", () => page.classList.add("has-drawer"));
+
+  async function applyFilters() {
     const keyword = keywordInput.value.trim();
     const departmentId = departmentSelect.value;
-    if (keyword) {
-      state.filters.keyword = keyword;
-    } else {
-      delete state.filters.keyword;
-    }
-    if (departmentId) {
-      state.filters.department_id = departmentId;
-    } else {
-      delete state.filters.department_id;
-    }
+    if (keyword) state.filters.keyword = keyword; else delete state.filters.keyword;
+    if (departmentId) state.filters.department_id = departmentId; else delete state.filters.department_id;
     state.offset = 0;
+    void loadCounts();
     await refresh();
-  };
-  filterToolbar.append(button("搜索", applyFilters, "", { type: "submit" }));
-  filterToolbar.addEventListener("submit", (event) => event.preventDefault());
-  departmentSelect.addEventListener("change", () => void applyFilters());
+  }
 
   content.append(page);
   await refresh();
+  void loadCounts();
 }
 
-function renderApiKeyAnalytics(rows, total = rows.length) {
-  const activeCount = rows.filter((row) => row.status === "active").length;
-  const disabledCount = rows.filter((row) => row.status === "disabled" || row.status === "deleted").length;
-  const requestCount = sumApiKeyMetric(rows, "request_count");
-  const totalTokens = sumApiKeyMetric(rows, "total_tokens");
-  const cacheTokens = sumApiKeyMetric(rows, "cache_tokens");
-  const totalCost = rows.reduce((sum, row) => sum + apiKeyNumber(row.total_cost), 0);
-  const cards = [
-    ["API 密钥总数", formatApiKeyNumber(total)],
-    ["本页生效中", formatApiKeyNumber(activeCount)],
-    ["本页停用/删除", formatApiKeyNumber(disabledCount)],
-    ["本页请求数", formatApiKeyNumber(requestCount)],
-    ["本页 Token", formatApiKeyNumber(totalTokens)],
-    ["本页缓存 Token", formatApiKeyNumber(cacheTokens)],
-    ["本页成本", formatApiKeyCost(totalCost)]
-  ];
-  return el("section", { className: "api-key-analysis-grid" }, cards.map(([label, value]) => el("article", { className: "api-key-analysis-card" }, [
-    el("span", { text: label }),
-    el("strong", { text: value })
-  ])));
+function searchIcon() {
+  return apiKeyActionIcon(["M11 18a7 7 0 1 1 0-14 7 7 0 0 1 0 14Z", "M20 20l-3.5-3.5"]);
+}
+
+// Model names only (the upstream names stay in the edit form).
+function apiKeyModelNames(value, context = {}) {
+  const full = apiKeyModelLabels(value, context);
+  if (!full) return "";
+  return full.split(", ").map((label) => label.split(" / ")[0]).join("、");
 }
 
 function apiKeyNumber(value) {
@@ -188,30 +260,20 @@ function apiKeyNumber(value) {
   return Number.isFinite(number) ? number : 0;
 }
 
-function sumApiKeyMetric(rows, key) {
-  return rows.reduce((sum, row) => sum + apiKeyNumber(row[key]), 0);
-}
-
-function formatApiKeyNumber(value) {
-  return apiKeyNumber(value).toLocaleString("zh-CN");
-}
-
-function formatApiKeyCost(value) {
-  const number = apiKeyNumber(value);
-  return number > 0 ? number.toFixed(4) : "0";
-}
-
-function renderApiKeyTable(rows, config, onRefresh, context = {}) {
+function renderApiKeyTable(rows, config, onRefresh, context = {}, { onOpen = null, activeId = 0 } = {}) {
   const selectedApiKeyIds = new Set();
   let apiKeySelectAll = null;
   let apiKeySelectionStatus = null;
   const apiKeyBulkButtons = [];
   const selectableRows = rows.filter((row) => row.id);
+  const usageMax = Math.max(1, ...rows.map((row) => apiKeyNumber(context.todayUsage?.get(Number(row.id))?.total_tokens)));
+  const bulkActions = el("div", { className: "selection-bar api-key-bulk-actions", role: "region", "aria-label": "批量操作", hidden: true });
   const updateApiKeySelection = () => {
     const selectedCount = selectedApiKeyIds.size;
     if (apiKeySelectionStatus) {
       setText(apiKeySelectionStatus, selectedCount > 0 ? `已选择 ${selectedCount} 个密钥` : "未选择密钥");
     }
+    bulkActions.hidden = selectedCount === 0;
     for (const actionButton of apiKeyBulkButtons) {
       actionButton.disabled = selectedCount === 0;
     }
@@ -225,13 +287,12 @@ function renderApiKeyTable(rows, config, onRefresh, context = {}) {
     type: "checkbox",
     className: "api-key-select-all",
     title: "选择当前页 API 密钥",
+    "aria-label": "选择当前页 API 密钥",
     onChange: (event) => {
       const checked = event.currentTarget.checked;
       selectedApiKeyIds.clear();
       for (const row of selectableRows) {
-        if (checked) {
-          selectedApiKeyIds.add(Number(row.id));
-        }
+        if (checked) selectedApiKeyIds.add(Number(row.id));
       }
       for (const checkbox of table.querySelectorAll(".api-key-row-select")) {
         checkbox.checked = checked;
@@ -241,9 +302,14 @@ function renderApiKeyTable(rows, config, onRefresh, context = {}) {
   });
   table.append(el("thead", {}, [
     el("tr", {}, [
-      el("th", { className: "table-cell table-cell--select" }, [apiKeySelectAll]),
-      ...apiKeyPageColumns.map(([column, label]) => el("th", { className: `table-cell table-cell--${column}`, text: label })),
-      el("th", { className: "table-cell table-cell--actions", text: "操作" })
+      el("th", { className: "table-cell table-cell--select", scope: "col" }, [apiKeySelectAll]),
+      el("th", { className: "table-cell table-cell--name", scope: "col", text: "名称" }),
+      el("th", { className: "table-cell table-cell--key", scope: "col", text: "密钥" }),
+      el("th", { className: "table-cell table-cell--owner", scope: "col", text: "归属" }),
+      el("th", { className: "table-cell table-cell--today", scope: "col", text: "今日 Token" }),
+      el("th", { className: "table-cell table-cell--status", scope: "col", text: "状态" }),
+      el("th", { className: "table-cell table-cell--created_at", scope: "col", text: "创建" }),
+      el("th", { className: "table-cell table-cell--actions", scope: "col" }, [el("span", { className: "visually-hidden", text: "操作" })])
     ])
   ]));
   table.append(el("tbody", {}, rows.map((row) => {
@@ -252,108 +318,217 @@ function renderApiKeyTable(rows, config, onRefresh, context = {}) {
       className: "api-key-row-select",
       value: row.id,
       title: `选择 API 密钥 ${row.name || row.id}`,
+      "aria-label": `选择 API 密钥 ${row.name || row.id}`,
       onChange: (event) => {
         const id = Number(event.currentTarget.value);
-        if (event.currentTarget.checked) {
-          selectedApiKeyIds.add(id);
-        } else {
-          selectedApiKeyIds.delete(id);
-        }
+        if (event.currentTarget.checked) selectedApiKeyIds.add(id); else selectedApiKeyIds.delete(id);
         updateApiKeySelection();
       }
     });
-    const actions = el("div", { className: "row-actions api-key-row-actions" });
+    const ops = [];
     if (config.form && row.id) {
-      const editButton = button("", () => showEditModal("api-keys", config, row, onRefresh), "secondary api-key-icon-button");
-      editButton.title = "编辑";
-      editButton.ariaLabel = "编辑 API 密钥";
-      editButton.append(apiKeyActionIcon([
-        "M12 20h9",
-        "M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"
-      ]));
-      actions.append(editButton);
-      const ragButton = button("知识库", () => showApiKeyRagBindings(row, onRefresh), "secondary");
-      ragButton.title = "配置此密钥可调用的知识库和数据集";
-      actions.append(ragButton);
+      ops.push(editButton(row.name || `#${row.id}`, () => showEditModal("api-keys", config, row, onRefresh)));
+      ops.push(button("知识库", () => showApiKeyRagBindings(row, onRefresh), "secondary"));
     }
     if (row.id) {
-      const quotaButton = button("", () => showApiKeyQuota(row), "secondary api-key-icon-button api-key-quota-button");
-      quotaButton.title = "额度：查看当前用量（含进行中请求的预占）";
-      quotaButton.ariaLabel = "额度";
-      quotaButton.append(apiKeyActionIcon([
-        "M12 14l4-4",
-        "M3.34 19a10 10 0 1 1 17.32 0"
-      ]));
-      actions.append(quotaButton);
-    }
-    if (row.id) {
-      const mcpButton = button("", () => showApiKeyMcpGrants(row), "secondary api-key-icon-button api-key-mcp-button");
-      mcpButton.title = "MCP 授权：查看并撤销用这个密钥登录的 MCP 客户端";
-      mcpButton.ariaLabel = "MCP 授权";
-      mcpButton.append(apiKeyActionIcon([
-        "M9 7V3M15 7V3",
-        "M6 7h12v4a6 6 0 0 1-12 0Z",
-        "M12 17v4"
-      ]));
-      actions.append(mcpButton);
+      ops.push(button("额度", () => showApiKeyQuota(row), "secondary api-key-quota-button"));
+      ops.push(button("MCP 授权", () => showApiKeyMcpGrants(row), "secondary api-key-mcp-button"));
     }
     if (row.id && row.status === "active") {
-      const rotateButton = button("", () => showApiKeyRotate(row, onRefresh), "secondary api-key-icon-button api-key-rotate-button");
-      rotateButton.title = "轮换：生成新密钥并在宽限期后停用旧密钥";
-      rotateButton.ariaLabel = "轮换";
-      rotateButton.append(apiKeyActionIcon([
-        "M21 12a9 9 0 0 1-15.5 6.2L3 16",
-        "M3 21v-5h5",
-        "M3 12a9 9 0 0 1 15.5-6.2L21 8",
-        "M21 3v5h-5"
-      ]));
-      actions.append(rotateButton);
+      ops.push(button("轮换", () => showApiKeyRotate(row, onRefresh), "secondary api-key-rotate-button"));
     }
     if (row.id && row.status !== "disabled" && row.status !== "deleted") {
-      const deleteButton = button("", async () => {
-        if (!await confirmDialog({ title: "删除 API 密钥", message: "删除后该密钥立即无法继续调用，且无法恢复。", details: [["API 密钥", `${row.name || row.id}`], ["密钥", apiKeyDisplay(row) || "-"]], confirmLabel: "删除", requireText: String(row.name || row.id) })) {
-          return;
-        }
-        try {
-          await api(`/admin-api/api-keys/${row.id}`, { method: "DELETE" });
-          await onRefresh();
-        } catch (error) {
-          showModal("删除 API 密钥", statusMessage(adminErrorMessage(error, "删除 API 密钥失败"), "error"));
-        }
-      }, "secondary api-key-icon-button api-key-icon-button--danger");
-      deleteButton.title = "删除";
-      deleteButton.ariaLabel = "删除 API 密钥";
-      deleteButton.append(apiKeyActionIcon([
-        "M3 6h18",
-        "M8 6V4h8v2",
-        "M19 6l-1 14H6L5 6",
-        "M10 11v5M14 11v5"
-      ]));
-      actions.append(deleteButton);
+      ops.push(button("删除", () => deleteApiKey(row, onRefresh), "danger"));
     }
-    return el("tr", {}, [
-      el("td", { className: "table-cell table-cell--select" }, [checkbox]),
-      ...apiKeyPageColumns.map(([column]) => {
-        const cellText = apiKeyCellText(column, row, context);
-        const scopeBadge = column === "name" ? apiKeyManagementBadge(row) : null;
-        return el("td", {
-          className: `table-cell table-cell--${column}`,
-          text: scopeBadge ? undefined : cellText,
-          title: cellText
-        }, scopeBadge ? [scopeBadge, document.createTextNode(cellText)] : []);
-      }),
-      el("td", { className: "table-cell table-cell--actions" }, [actions])
+    const models = apiKeyModelNames(row.model_ids, context);
+    const badge = apiKeyManagementBadge(row);
+    const today = context.todayUsage?.get(Number(row.id));
+    const todayTokens = apiKeyNumber(today?.total_tokens);
+    const owner = [apiKeyCellText("department_name", row, context), apiKeyCellText("user_name", row, context)].filter(Boolean);
+    const disabled = row.status !== "active";
+    const nameCell = el("td", { className: "table-cell table-cell--name" }, [
+      el("span", { className: "cell-stack" }, [
+        el("span", { className: "api-key-name-line" }, [
+          badge,
+          el("button", { type: "button", className: "link-button api-key-open", text: row.name || `#${row.id}`, title: "查看密钥详情", onClick: () => onOpen?.(row) })
+        ].filter(Boolean)),
+        models ? el("span", { className: "cell-secondary", text: models, title: models }) : null
+      ].filter(Boolean))
     ]);
+    const tr = el("tr", { className: `${disabled ? "is-muted" : ""} ${Number(row.id) === activeId ? "is-active" : ""}`.trim(), dataset: { keyId: String(row.id) } }, [
+      el("td", { className: "table-cell table-cell--select" }, [checkbox]),
+      nameCell,
+      el("td", { className: "table-cell table-cell--key cell-mono", text: apiKeyDisplay(row) || "—" }),
+      el("td", { className: "table-cell table-cell--owner" }, [
+        el("span", { className: "cell-stack" }, [
+          el("span", { text: owner[0] || "—" }),
+          owner[1] ? el("span", { className: "cell-secondary", text: owner[1] }) : null
+        ].filter(Boolean))
+      ]),
+      el("td", { className: "table-cell table-cell--today" }, [
+        today
+          ? el("span", { className: "usage-cell", title: `${todayTokens.toLocaleString("zh-CN")} Token · ${apiKeyNumber(today.request_count).toLocaleString("zh-CN")} 次调用` }, [
+            el("span", { className: "cell-mono", text: compactTokens(todayTokens) }),
+            el("span", { className: "usage-cell-bar", "aria-hidden": "true" }, [el("span", { style: `width: ${Math.max(2, Math.round(todayTokens / usageMax * 100))}%` })])
+          ])
+          : el("span", { className: "cell-muted", text: "—" })
+      ]),
+      el("td", { className: "table-cell table-cell--status" }, [
+        el("span", { className: `status-pill ${row.status === "active" ? "is-positive" : "is-muted"}`, text: apiKeyStatusText(row.status, row.disabled_by) })
+      ]),
+      el("td", { className: "table-cell table-cell--created_at cell-mono", text: friendlyTime(row.created_at), title: row.created_at || "" }),
+      el("td", { className: "table-cell table-cell--actions" }, [el("div", { className: "row-actions api-key-row-actions" }, arrangeRowActions(ops))])
+    ]);
+    tr.addEventListener("click", (event) => {
+      if (event.target.closest("button, a, input, label, .row-more")) return;
+      onOpen?.(row);
+    });
+    return tr;
   })));
-  const bulkActions = el("div", { className: "api-key-bulk-actions" });
-  apiKeySelectionStatus = el("span", { className: "api-key-bulk-selection", text: "未选择密钥" });
-  const enableButton = button("批量启用", () => runApiKeyBatchAction("enable", selectedApiKeyIds, onRefresh), "secondary");
-  const disableButton = button("批量暂停", () => runApiKeyBatchAction("disable", selectedApiKeyIds, onRefresh), "secondary");
+  apiKeySelectionStatus = el("span", { className: "selection-status api-key-bulk-selection", text: "未选择密钥" });
+  const enableButton = button("批量启用", () => runApiKeyBatchAction("enable", selectedApiKeyIds, onRefresh), "on-inverse");
+  const disableButton = button("批量暂停", () => runApiKeyBatchAction("disable", selectedApiKeyIds, onRefresh), "on-inverse");
   const deleteButton = button("批量删除", () => runApiKeyBatchAction("delete", selectedApiKeyIds, onRefresh), "danger");
   apiKeyBulkButtons.push(enableButton, disableButton, deleteButton);
-  bulkActions.append(apiKeySelectionStatus, enableButton, disableButton, deleteButton);
+  bulkActions.append(apiKeySelectionStatus, el("div", { className: "selection-actions" }, [enableButton, disableButton, deleteButton]));
   updateApiKeySelection();
-  return el("div", { className: "api-key-table-wrap api-key-table-panel" }, [bulkActions, table]);
+  return el("div", { className: "api-key-table-wrap resource-table-host" }, [bulkActions, el("div", { className: "table-scroll" }, [table])]);
+}
+
+async function deleteApiKey(row, onRefresh) {
+  if (!await confirmDialog({ title: "删除 API 密钥", message: "删除后该密钥立即无法继续调用，且无法恢复。", details: [["API 密钥", `${row.name || row.id}`], ["密钥", apiKeyDisplay(row) || "-"]], confirmLabel: "删除", requireText: String(row.name || row.id) })) {
+    return;
+  }
+  try {
+    await api(`/admin-api/api-keys/${row.id}`, { method: "DELETE" });
+    await onRefresh();
+  } catch (error) {
+    showModal("删除 API 密钥", statusMessage(adminErrorMessage(error, "删除 API 密钥失败"), "error"));
+  }
+}
+
+// Right-hand drawer (design): who owns the key, quota use and 14-day tokens.
+async function renderApiKeyDrawer(drawer, row, config, context, { onClose, onRefresh }) {
+  const seq = (drawer.__seq = (drawer.__seq || 0) + 1);
+  const lookups = context || await renderContext("api-keys", [row], ["user_id", "department_id"]);
+  if (seq !== drawer.__seq) return;
+  const closeButton = button("", () => onClose(), "icon-action api-key-drawer-close", { "aria-label": "关闭详情", title: "关闭详情" });
+  closeButton.append(apiKeyActionIcon(["M6 6l12 12", "M18 6L6 18"]));
+  const quotaHost = el("section", { className: "api-key-drawer-section" }, [el("h3", { text: "额度" }), loadingState("正在读取额度…", { rows: 1 })]);
+  const trendHost = el("section", { className: "api-key-drawer-section" }, [el("h3", { text: "近 14 天 Token" }), loadingState("正在读取用量…", { rows: 1 })]);
+  const facts = [
+    ["归属部门", apiKeyCellText("department_name", row, lookups) || "—"],
+    ["负责人", apiKeyCellText("user_name", row, lookups) || "—"],
+    ["授权模型", apiKeyModelNames(row.model_ids, lookups) || "全部可用模型"],
+    ["创建时间", row.created_at || "—"],
+    ["过期时间", row.expires_at || "不过期"]
+  ];
+  const actions = [];
+  if (config.form) actions.push(button("编辑", () => showEditModal("api-keys", config, row, onRefresh), "secondary"));
+  if (row.status === "active") actions.push(button("轮换密钥", () => showApiKeyRotate(row, onRefresh), "secondary"));
+  if (row.status !== "disabled" && row.status !== "deleted") actions.push(button("删除", () => deleteApiKey(row, onRefresh), "danger"));
+  drawer.replaceChildren(
+    el("header", { className: "api-key-drawer-head" }, [
+      el("div", {}, [
+        el("span", { className: "api-key-drawer-kicker", text: "密钥详情" }),
+        el("h2", { text: row.name || `#${row.id}` }),
+        el("span", { className: `status-pill ${row.status === "active" ? "is-positive" : "is-muted"}`, text: apiKeyStatusText(row.status, row.disabled_by) })
+      ]),
+      closeButton
+    ]),
+    el("div", { className: "api-key-drawer-key cell-mono", text: apiKeyDisplay(row) || "—", title: "完整密钥只在新建或轮换后显示一次" }),
+    el("dl", { className: "api-key-drawer-facts" }, facts.flatMap(([label, value]) => [el("dt", { text: label }), el("dd", { text: value })])),
+    quotaHost,
+    trendHost,
+    el("footer", { className: "api-key-drawer-actions" }, actions)
+  );
+  drawer.hidden = false;
+  drawer.dispatchEvent(new CustomEvent("api-key-drawer-open", { bubbles: true }));
+
+  const [quota, trend] = await Promise.all([
+    api("/admin-api/quota-status", { query: { api_key_id: row.id }, silent: true }).then((result) => result.data || {}, () => null),
+    (async () => {
+      const start = new Date();
+      start.setHours(0, 0, 0, 0);
+      start.setDate(start.getDate() - 13);
+      try {
+        const result = await api("/admin-api/dashboard/trends", { query: { bucket: "day", api_key_id: row.id, from: serverStamp(start) }, silent: true });
+        return Array.isArray(result.data) ? result.data : [];
+      } catch {
+        return null;
+      }
+    })()
+  ]);
+  if (seq !== drawer.__seq) return;
+  quotaHost.replaceChildren(el("h3", { text: "额度" }), drawerQuota(quota, row));
+  trendHost.replaceChildren(...drawerTrend(trend));
+}
+
+function drawerQuota(data, row) {
+  if (!data) {
+    return statusMessage("额度读取失败，可在“额度”中重试。");
+  }
+  const items = [
+    ...(Array.isArray(data.per_model) ? data.per_model.map((item) => ({ label: item.model_name || `模型 #${item.model_id}`, item })) : []),
+    ...(Array.isArray(data.policies) ? data.policies.map((item) => ({ label: item.name || `策略 #${item.policy_id}`, item })) : [])
+  ];
+  const meters = [];
+  for (const { label, item } of items) {
+    const limits = item.limits || {};
+    const usage = item.usage || {};
+    const metric = ["total_tokens", "request_count", "cost_amount", "input_tokens", "output_tokens"].find((name) => limits[name] !== null && limits[name] !== undefined);
+    if (!metric) continue;
+    const used = apiKeyNumber(usage[metric]);
+    const limit = apiKeyNumber(limits[metric]);
+    const percent = limit > 0 ? Math.min(100, Math.round(used / limit * 100)) : 0;
+    const unit = metric === "request_count" ? "次" : metric === "cost_amount" ? "元" : "";
+    meters.push(el("div", { className: "api-key-quota" }, [
+      el("div", { className: "api-key-quota-top" }, [
+        el("span", { text: label }),
+        el("span", { className: "cell-mono", text: `${compactTokens(used)} / ${compactTokens(limit)}${unit}` })
+      ]),
+      el("span", { className: `usage-cell-bar ${percent >= 90 ? "is-high" : ""}`.trim(), title: `${percent}%` }, [el("span", { style: `width: ${Math.max(2, percent)}%` })])
+    ]));
+  }
+  if (!meters.length) {
+    return el("p", { className: "cell-muted api-key-drawer-empty", text: "这个密钥没有设置额度限制。" });
+  }
+  return el("div", { className: "api-key-quota-list" }, [
+    ...meters,
+    button("查看额度明细与调整", () => showApiKeyQuota(row), "link-button is-accent")
+  ]);
+}
+
+function drawerTrend(rows) {
+  const head = el("div", { className: "api-key-trend-head" }, [el("h3", { text: "近 14 天 Token" })]);
+  if (rows === null) {
+    return [head, statusMessage("用量读取失败")];
+  }
+  const byDay = new Map();
+  for (const row of rows) {
+    const day = String(row.bucket_at || "").slice(0, 10);
+    byDay.set(day, (byDay.get(day) || 0) + apiKeyNumber(row.input_tokens) + apiKeyNumber(row.output_tokens));
+  }
+  const days = [];
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+  start.setDate(start.getDate() - 13);
+  for (let index = 0; index < 14; index += 1) {
+    const day = new Date(start.getTime() + index * 86_400_000);
+    const key = `${day.getFullYear()}-${pad2(day.getMonth() + 1)}-${pad2(day.getDate())}`;
+    days.push([key, byDay.get(key) || 0]);
+  }
+  const total = days.reduce((sum, [, value]) => sum + value, 0);
+  const max = Math.max(1, ...days.map(([, value]) => value));
+  head.append(el("span", { className: "cell-mono", text: `合计 ${compactTokens(total)}` }));
+  return [
+    head,
+    el("div", { className: "api-key-trend", role: "img", "aria-label": `近 14 天合计 ${total.toLocaleString("zh-CN")} Token` }, days.map(([day, value], index) => el("span", {
+      className: index === days.length - 1 ? "is-latest" : "",
+      title: `${day.slice(5)} · ${value.toLocaleString("zh-CN")} Token`,
+      style: `height: ${value > 0 ? Math.max(6, Math.round(value / max * 100)) : 3}%`
+    })))
+  ];
 }
 
 async function runApiKeyBatchAction(action, selectedIds, onRefresh) {

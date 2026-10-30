@@ -6,8 +6,9 @@ let env;
 before(async () => { env = await setup(); });
 after(async () => { await env?.close(); });
 
+// List requests only: the status counts next to the filters ask for one row.
 function listRequests(env, resource) {
-  return env.mock.requestLog.filter((entry) => entry.method === "GET" && entry.path === `/admin-api/${resource}`);
+  return env.mock.requestLog.filter((entry) => entry.method === "GET" && entry.path === `/admin-api/${resource}` && !/[?&]limit=1(&|$)/.test(entry.query));
 }
 
 test("clicking a menu item renders the page once (one list request)", async () => {
@@ -29,7 +30,7 @@ test("dashboard drill-down keeps its filter in the URL and in the request", asyn
   const { page, errors, context } = await openPage(env);
   await login(page, env.mock.baseUrl, { hash: "#/operations/dashboard" });
   env.mock.requestLog.length = 0;
-  await page.locator(".chart-panel", { hasText: "员工用量排行" }).getByRole("button", { name: "详情" }).first().click();
+  await page.locator(".chart-panel", { hasText: "员工用量排行" }).getByRole("button", { name: /用量明细/ }).first().click();
   await page.waitForURL(/#\/usage\/usage-records\?user_id=1/);
   await settle(page);
   const requests = listRequests(env, "usage-records");

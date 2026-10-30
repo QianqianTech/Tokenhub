@@ -78,7 +78,7 @@ assert_true(str_contains($screenCss, '.live-list'), 'Screen CSS should style liv
 assert_true(str_contains($screenCss, '.screen-view'), 'Screen CSS should style routed screen views.');
 assert_true(str_contains($screenCss, '.screen-view.active'), 'Screen CSS should expose only the active routed screen view.');
 assert_true(!str_contains($screenCss, '.screen-view-nav'), 'Independent screen CSS should not keep switcher styles.');
-assert_true(!preg_match('/https?:\/\//i', $screenHtml . $screenCss . $screenJs), 'Screen frontend must not reference remote assets.');
+assert_true(!preg_match('/https?:\/\//i', str_replace('http://www.w3.org/2000/svg', '', $screenHtml . $screenCss . $screenJs)), 'Screen frontend must not reference remote assets.');
 assert_true(!preg_match('/@import/i', $screenCss), 'Screen CSS must not import external styles.');
 assert_true(str_contains($screenJs, 'SCREEN_LINK_DISABLED') || str_contains($screenJs, 'SCREEN_UNAUTHENTICATED'), 'Screen JS should handle forced offline auth failures.');
 assert_true(str_contains($screenJs, 'screenErrorMessage'), 'Screen frontend should expose localized error messages.');
@@ -120,11 +120,11 @@ assert_true(str_contains($screenJs, 'screenApplyBrandIdentity'), 'Screen JS shou
 assert_true(str_contains($screenJs, '/screen-api/system/brand-identity'), 'Screen JS should load public brand settings from the screen API.');
 assert_true(str_contains($screenJs, 'document.title = screenTitle'), 'Screen JS should apply the configured screen title to the document title.');
 assert_true(str_contains($screenJs, 'querySelector(".screen-title")'), 'Screen JS should apply the configured screen title to the visible screen heading.');
-assert_true(str_contains($screenJs, '总 Token'), 'Screen metrics should label total token usage.');
-assert_true(str_contains($screenJs, '总输入'), 'Screen metrics should label total input tokens.');
-assert_true(str_contains($screenJs, '总输出'), 'Screen metrics should label total output tokens.');
-assert_true(str_contains($screenJs, '总缓存'), 'Screen metrics should label total cache tokens.');
-assert_true(str_contains($screenJs, '总调用次数'), 'Screen metrics should label total request count.');
+assert_true(str_contains($screenJs, '实时 Token 消耗'), 'Screen metrics should title the total token usage.');
+assert_true(str_contains($screenJs, 'label: "输入"'), 'Screen metrics should label total input tokens.');
+assert_true(str_contains($screenJs, 'label: "输出"'), 'Screen metrics should label total output tokens.');
+assert_true(str_contains($screenJs, 'label: "缓存"'), 'Screen metrics should label total cache tokens.');
+assert_true(str_contains($screenJs, 'label: "调用次数"'), 'Screen metrics should label total request count.');
 assert_true(str_contains($screenJs, 'row.user_name'), 'Live generation rows should render the user name.');
 assert_true(str_contains($screenJs, 'row.department_name'), 'Live generation rows should render the department name.');
 assert_true(str_contains($screenJs, 'formatTokenMillions(tokens)'), 'Token detail rows should render model token totals in M units.');

@@ -13,19 +13,20 @@ test("generic lists paginate with totals, page size and sort kept in the URL", a
   const { page, errors, context } = await openPage(env);
   await login(page, env.mock.baseUrl, { hash: "#/security/logs" });
   const summary = page.locator(".pager-summary");
-  assert.match(await summary.innerText(), /共 137 条，第 1 \/ 7 页/);
+  assert.match(await summary.innerText(), /第 1–20 条，共 137 条/);
   env.mock.requestLog.length = 0;
   await page.locator(".pager").getByRole("button", { name: "下一页" }).click();
   await settle(page);
-  assert.match(await summary.innerText(), /第 2 \/ 7 页/);
+  assert.match(await summary.innerText(), /第 21–40 条，共 137 条/);
+  assert.equal(await page.locator(".pager .pager-page.is-current").innerText(), "2");
   assert.ok(requests("GET", "/admin-api/logs").at(-1).query.includes("offset=20"));
   assert.match(page.url(), /offset=20/);
   await page.locator(".pager select").selectOption("50");
   await settle(page);
-  assert.match(await summary.innerText(), /共 137 条，第 1 \/ 3 页/);
+  assert.match(await summary.innerText(), /第 1–50 条，共 137 条/);
   await page.reload();
   await settle(page);
-  assert.match(await page.locator(".pager-summary").innerText(), /第 1 \/ 3 页/);
+  assert.match(await page.locator(".pager-summary").innerText(), /第 1–50 条/);
   assert.deepEqual(errors, []);
   await context.close();
 });
@@ -34,13 +35,13 @@ test("sortable column headers request server-side sorting", async () => {
   const { page, context } = await openPage(env);
   await login(page, env.mock.baseUrl, { hash: "#/usage/usage-records" });
   env.mock.requestLog.length = 0;
-  await page.locator("th.table-cell--id .sort-button").click();
+  await page.locator("th.table-cell--created_at .sort-button").click();
   await settle(page);
-  assert.ok(requests("GET", "/admin-api/usage-records").at(-1).query.includes("sort=id_desc"));
-  await page.locator("th.table-cell--id .sort-button").click();
+  assert.ok(requests("GET", "/admin-api/usage-records").at(-1).query.includes("sort=created_at_desc"));
+  await page.locator("th.table-cell--created_at .sort-button").click();
   await settle(page);
-  assert.ok(requests("GET", "/admin-api/usage-records").at(-1).query.includes("sort=id_asc"));
-  assert.equal(await page.locator("th.table-cell--id").getAttribute("aria-sort"), "ascending");
+  assert.ok(requests("GET", "/admin-api/usage-records").at(-1).query.includes("sort=created_at_asc"));
+  assert.equal(await page.locator("th.table-cell--created_at").getAttribute("aria-sort"), "ascending");
   await context.close();
 });
 
@@ -64,7 +65,7 @@ test("a slow save cannot be submitted twice", async () => {
   const { page, context } = await openPage(env);
   await login(page, env.mock.baseUrl, { hash: "#/access/quota-policies" });
   env.mock.fault("/admin-api/quota-policies", { method: "POST", delayMs: 600, times: 1 });
-  await page.getByRole("button", { name: "新增", exact: true }).click();
+  await page.getByRole("button", { name: /^新建/ }).click();
   const dialog = page.locator("dialog.modal-dialog");
   await dialog.locator('[name="name"]').fill("防重复提交");
   const save = dialog.getByRole("button", { name: "保存" });
@@ -82,7 +83,7 @@ test("required fields are validated before submitting", async () => {
   const { page, context } = await openPage(env);
   await login(page, env.mock.baseUrl, { hash: "#/access/quota-policies" });
   const before = requests("POST", "/admin-api/quota-policies").length;
-  await page.getByRole("button", { name: "新增", exact: true }).click();
+  await page.getByRole("button", { name: /^新建/ }).click();
   const dialog = page.locator("dialog.modal-dialog");
   await dialog.locator('[name="name"]').press("Enter");
   await page.waitForTimeout(200);
@@ -95,14 +96,14 @@ test("required fields are validated before submitting", async () => {
 test("dialogs close with Escape, guard unsaved edits and restore focus", async () => {
   const { page, context } = await openPage(env);
   await login(page, env.mock.baseUrl, { hash: "#/access/quota-policies" });
-  const opener = page.getByRole("button", { name: "新增", exact: true });
+  const opener = page.getByRole("button", { name: /^新建/ });
   await opener.click();
   const dialog = page.locator("dialog.modal-dialog").first();
   await dialog.waitFor();
   await page.keyboard.press("Escape");
   await page.waitForTimeout(100);
   assert.equal(await page.locator("dialog.modal-dialog").count(), 0);
-  assert.equal(await page.evaluate(() => document.activeElement?.textContent), "新增");
+  assert.match(await page.evaluate(() => document.activeElement?.textContent || ""), /^新建/);
 
   await opener.click();
   await page.locator('dialog.modal-dialog [name="name"]').fill("未保存");
@@ -127,9 +128,9 @@ test("reference pickers search beyond the first 100 records", async () => {
   await picker.fill("user140");
   const option = page.locator('[data-remote-select="user_id"] [role="option"]', { hasText: "user140" });
   await option.waitFor();
-  await option.click();
   env.mock.requestLog.length = 0;
-  await page.locator(".filters").getByRole("button", { name: "筛选" }).click();
+  // Filters apply as soon as a value is picked.
+  await option.click();
   await settle(page);
   assert.ok(requests("GET", "/admin-api/usage-records").at(-1).query.includes("user_id=140"));
   assert.match(page.url(), /user_id=140/);
@@ -140,7 +141,7 @@ test("reference pickers search beyond the first 100 records", async () => {
 test("reference pickers support keyboard selection in forms", async () => {
   const { page, context } = await openPage(env);
   await login(page, env.mock.baseUrl, { hash: "#/access/api-key-model-quotas" });
-  await page.getByRole("button", { name: "新增", exact: true }).click();
+  await page.getByRole("button", { name: /^新建/ }).click();
   const dialog = page.locator("dialog.modal-dialog");
   const apiKey = dialog.locator('[data-remote-select="api_key_id"] input[role="combobox"]');
   await apiKey.click();

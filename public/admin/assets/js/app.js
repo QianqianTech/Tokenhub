@@ -138,15 +138,28 @@ function adminApplyBrandIdentity(settings = {}) {
   document.title = adminTitle;
   const brand = document.querySelector(".brand");
   if (brand) {
-    adminRenderBrandNode(brand, productName, logoUrl);
+    adminRenderBrandNode(brand, productName, logoUrl, "统一模型网关");
   }
   const loginBrand = $("login-brand");
   if (loginBrand) {
     adminRenderBrandNode(loginBrand, productName, logoUrl);
   }
+  const heroBrand = document.querySelector(".login-hero-brand");
+  if (heroBrand) {
+    adminRenderBrandNode(heroBrand, productName, logoUrl);
+  }
+  const heroMark = document.querySelector(".login-hero-mark");
+  if (heroMark) {
+    heroMark.hidden = logoUrl === "";
+    if (logoUrl !== "") {
+      heroMark.src = logoUrl;
+    }
+  }
+  // The heading names the action; the configured admin title sits under it.
   const loginTitle = $("login-title");
-  if (loginTitle) {
-    setText(loginTitle, adminTitle);
+  const loginSubtitle = $("login-subtitle");
+  if (loginTitle && loginSubtitle) {
+    setText(loginSubtitle, `${adminTitle} · 使用管理员账号登录`);
   }
 
   if (faviconUrl !== "") {
@@ -159,10 +172,17 @@ function adminApplyBrandIdentity(settings = {}) {
   }
 }
 
-function adminRenderBrandNode(node, productName, logoUrl) {
+function adminRenderBrandNode(node, productName, logoUrl, tagline = "") {
   clear(node);
   if (logoUrl !== "") {
     node.append(el("img", { className: "brand-logo", src: logoUrl, alt: "" }));
+  }
+  if (tagline) {
+    node.append(el("span", { className: "brand-text" }, [
+      el("span", { className: "brand-name", text: productName }),
+      el("span", { className: "brand-tagline", text: tagline })
+    ]));
+    return;
   }
   node.append(el("span", { text: productName }));
 }
@@ -428,6 +448,9 @@ function adminRenderNavList() {
       el("span", { className: "nav-section-symbol", "aria-hidden": "true" }, [adminCreateDomainIcon(domain.key)]),
       el("span", { className: "nav-section-label", text: domain.label }),
       el("span", { className: "nav-count", text: visibleItems.length, "aria-hidden": "true" }),
+      domain.items.some(([key]) => key === "alert-events")
+        ? el("span", { className: "nav-badge", text: String(adminAlertState.count), hidden: adminAlertState.count <= 0, "aria-hidden": "true" })
+        : null,
       el("span", { className: "nav-caret", text: isOpen ? "−" : "+", "aria-hidden": "true" })
     ]);
     const list = el("div", { id: listId, className: "nav-list" });
@@ -692,6 +715,7 @@ async function adminRender() {
   document.title = `${adminDomainTabLabel(adminState.page)} · ${adminBrandTitle}`;
   clear($("global-error"));
   await renderDomainPage($("content"));
+  void adminRefreshAlertCount({ force: adminState.page === "alert-events" });
 }
 
 function adminShowLogin() {
@@ -702,6 +726,7 @@ function adminShowLogin() {
   clear($("nav"));
   adminSidebarState.shellReady = false;
   adminCloseMobileNav({ restoreFocus: false });
+  adminFocusLogin();
 }
 
 function adminShowApp() {
@@ -709,7 +734,70 @@ function adminShowApp() {
   $("login").hidden = true;
   $("content").hidden = false;
   $("logout").hidden = false;
-  setText($("current-user"), adminState.user ? `${adminState.user.username} / ${valueLabel("role", adminState.user.role)}` : "");
+  const user = adminState.user;
+  const name = user ? String(user.display_name || user.username || "") : "";
+  setText($("current-user"), name);
+  setText($("current-role"), user ? valueLabel("role", user.role) : "");
+  setText($("current-user-avatar"), name.slice(0, 1).toUpperCase());
+  const card = $("sidebar-user");
+  if (card) {
+    card.title = user ? `${user.username} · ${valueLabel("role", user.role)}` : "";
+  }
+  void adminRefreshAlertCount({ force: true });
+}
+
+// Pending alerts: a dot on the topbar bell and a count on the 安全审计 menu.
+const adminAlertState = { count: 0, checkedAt: 0, timer: 0 };
+
+function adminCanSeeAlerts() {
+  return Boolean(adminState.user) && domainsForUser(adminState.user).some((domain) => domain.tabs.includes("alert-events"));
+}
+
+async function adminRefreshAlertCount({ force = false } = {}) {
+  const bell = $("alert-bell");
+  if (!adminCanSeeAlerts()) {
+    if (bell) {
+      bell.hidden = true;
+    }
+    return;
+  }
+  if (!force && Date.now() - adminAlertState.checkedAt < 30000) {
+    return;
+  }
+  adminAlertState.checkedAt = Date.now();
+  window.clearTimeout(adminAlertState.timer);
+  adminAlertState.timer = window.setTimeout(() => void adminRefreshAlertCount({ force: true }), 60000);
+  try {
+    const result = await api("/admin-api/alert-events", { query: { status: "open", limit: 1, offset: 0, with_total: 1 }, silent: true });
+    const total = Number(result.total ?? (Array.isArray(result.data) ? result.data.length : 0));
+    adminAlertState.count = Number.isFinite(total) ? total : 0;
+  } catch {
+    adminAlertState.count = 0;
+  }
+  adminShowAlertCount();
+}
+
+function adminShowAlertCount() {
+  const count = adminAlertState.count;
+  const bell = $("alert-bell");
+  if (bell) {
+    bell.hidden = !adminCanSeeAlerts();
+    const domain = domainsForUser(adminState.user).find((item) => item.tabs.includes("alert-events"));
+    if (domain) {
+      bell.href = buildHash(domain.key, "alert-events");
+    }
+    const label = count > 0 ? `告警事件，${count} 条待处理` : "告警事件，没有待处理告警";
+    bell.setAttribute("aria-label", label);
+    bell.title = label;
+    const dot = bell.querySelector(".alert-bell-dot");
+    if (dot) {
+      dot.hidden = count <= 0;
+    }
+  }
+  document.querySelectorAll(".nav-section[data-nav-section] .nav-badge").forEach((badge) => {
+    badge.hidden = count <= 0;
+    badge.textContent = count > 99 ? "99+" : String(count);
+  });
 }
 
 function adminSetLoginShell(isLogin) {
@@ -775,6 +863,52 @@ async function adminSignedIn(user, sessionData) {
   await adminRenderRoute();
 }
 
+const ADMIN_LAST_USERNAME_KEY = "tokenhub_admin_last_username";
+
+function adminReadRememberedUsername() {
+  return adminReadCookie(ADMIN_LAST_USERNAME_KEY) || "";
+}
+
+// Only the username is kept (in a cookie, like the other preferences).
+function adminRememberUsername(username) {
+  if (username) {
+    adminWriteCookie(ADMIN_LAST_USERNAME_KEY, username);
+    return;
+  }
+  try {
+    document.cookie = `${ADMIN_LAST_USERNAME_KEY}=; Max-Age=0; Path=/admin; SameSite=Lax`;
+  } catch {
+    // Cookies can be blocked; remembering is a convenience only.
+  }
+}
+
+function adminInitLoginForm() {
+  const username = $("username");
+  const password = $("password");
+  const remember = $("remember-username");
+  const remembered = adminReadRememberedUsername();
+  if (remember) {
+    remember.checked = remembered !== "";
+  }
+  if (username && remembered && !username.value) {
+    username.value = remembered;
+  }
+  const toggle = $("password-toggle");
+  toggle?.addEventListener("click", () => {
+    const show = password.type === "password";
+    password.type = show ? "text" : "password";
+    toggle.setAttribute("aria-pressed", show ? "true" : "false");
+    toggle.setAttribute("aria-label", show ? "隐藏密码" : "显示密码");
+    toggle.title = show ? "隐藏密码" : "显示密码";
+    password.focus();
+  });
+}
+
+function adminFocusLogin() {
+  const username = $("username");
+  (username?.value ? $("password") : username)?.focus();
+}
+
 async function adminSubmitLogin(event) {
   event.preventDefault();
   const username = $("username");
@@ -792,6 +926,8 @@ async function adminSubmitLogin(event) {
   try {
     const result = await login(username.value.trim(), password.value);
     password.value = "";
+    password.type = "password";
+    adminRememberUsername($("remember-username")?.checked ? username.value.trim() : "");
     await adminSignedIn(result.data.user, result.data);
   } catch (error) {
     setText(errorNode, adminErrorMessage(error, "登录失败，请检查账号或密码"));
@@ -825,9 +961,11 @@ async function adminBoot() {
   bindPaletteShortcut();
   $("palette-trigger")?.addEventListener("click", () => openPalette());
   $("login").addEventListener("submit", adminSubmitLogin);
+  adminInitLoginForm();
   $("logout").addEventListener("click", async () => {
     await api("/admin-api/logout", { method: "POST" }).catch(() => null);
     stopSessionMonitor();
+    window.clearTimeout(adminAlertState.timer);
     adminState.user = null;
     setCurrentUser(null);
     setCsrf("");

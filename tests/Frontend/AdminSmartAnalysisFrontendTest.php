@@ -16,7 +16,7 @@ assert_true(str_contains($source, 'dimension: "department"'), 'Smart analysis sh
 assert_true(str_contains($source, 'dimension: "user"'), 'Smart analysis should request employee usage rankings.');
 assert_true(str_contains($source, '"部门用量排行"'), 'Smart analysis should render a department usage ranking panel.');
 assert_true(str_contains($source, '"员工用量排行"'), 'Smart analysis should render an employee usage ranking panel.');
-assert_true(str_contains($source, 'button("详情"'), 'Ranking action buttons should use the detail label.');
+assert_true(str_contains($source, '用量明细'), 'Ranking rows should open the usage records of that department or employee.');
 assert_true(!str_contains($source, 'button("下钻"'), 'Ranking action buttons should not use the drill-down label.');
 assert_true(str_contains($source, 'api("/admin-api/dashboard/security", { query: params })'), 'Security analysis should keep the shared filter scope.');
 assert_true(str_contains($source, 'api("/admin-api/dashboard/performance", { query: params })'), 'Performance analysis should keep the shared filter scope.');

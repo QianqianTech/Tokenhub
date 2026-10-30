@@ -9,7 +9,7 @@ $adminCss = file_get_contents(__DIR__ . '/../../public/admin/assets/css/app.css'
 $resources = file_get_contents(__DIR__ . '/../../public/admin/assets/js/resources.js') ?: '';
 
 assert_true(str_contains($dashboardSource, 'trendChart('), 'Admin dashboard should render trend data as a chart.');
-assert_true(str_contains($dashboardSource, 'rankingChart('), 'Admin dashboard should render ranking data as a chart.');
+assert_true(str_contains($dashboardSource, 'departmentRanking(') && str_contains($dashboardSource, 'userRanking('), 'Admin dashboard should render department bars and an employee ranking table.');
 assert_true(str_contains($dashboardSource, 'multimodalChart('), 'Admin dashboard should render multimodal data as a chart.');
 assert_true(str_contains($dashboardSource, 'securityCharts('), 'Admin dashboard should render security data as chart cards.');
 assert_true(str_contains($dashboardSource, 'performanceCharts('), 'Admin dashboard should render performance data as chart cards.');
@@ -17,10 +17,10 @@ assert_true(str_contains($dashboardSource, 'className: "chart-area trend-chart"'
 assert_true(str_contains($dashboardSource, 'className: "trend-line-chart"'), 'Dashboard trend should render as a horizontal line chart.');
 assert_true(str_contains($dashboardSource, 'http://www.w3.org/2000/svg'), 'Dashboard trend should use an SVG line chart.');
 assert_true(!str_contains($dashboardSource, 'trend-column-track'), 'Dashboard trend should not render vertical column tracks.');
-assert_true(str_contains($dashboardSource, 'className: "chart-bars ranking-chart"'), 'Ranking chart should expose a stable horizontal bar container.');
-assert_true(str_contains($dashboardSource, 'className: "dashboard-screen-page"'), 'Admin dashboard should expose a screen-style page container.');
-assert_true(str_contains($dashboardSource, 'className: "dashboard-screen-filters filters"'), 'Admin dashboard filters should have a screen-specific styling hook.');
-assert_true(str_contains($dashboardSource, 'className: "dashboard-grid dashboard-screen-grid"'), 'Admin dashboard chart grid should have a screen-specific styling hook.');
+assert_true(str_contains($dashboardSource, 'className: "chart-bars ranking-chart department-ranking"'), 'Ranking chart should expose a stable horizontal bar container.');
+assert_true(str_contains($dashboardSource, 'className: "dash-page"'), 'Admin dashboard should expose a page container.');
+assert_true(str_contains($dashboardSource, 'className: "dash-controls"') && str_contains($dashboardSource, 'className: "segmented dashboard-period"'), 'Admin dashboard should put the period as a segmented control in the page header.');
+assert_true(str_contains($dashboardSource, 'className: "dash-grid"'), 'Admin dashboard chart grid should have a styling hook.');
 assert_true(str_contains($dashboardSource, 'select("period"'), 'Dashboard should expose a reporting-period selector.');
 assert_true(str_contains($dashboardSource, 'period.value = "30d";'), 'Dashboard should default to the last 30 days.');
 assert_true(str_contains($dashboardSource, 'bucket.value = "day";'), 'Dashboard should default 30-day trends to daily granularity.');
@@ -28,7 +28,7 @@ assert_true(str_contains($dashboardSource, 'trendChart(trends.data || [], bucket
 assert_true(str_contains($dashboardSource, 'const maxPoints = bucket === "day" ? 30 : 24;'), 'Dashboard should automatically show 30 daily points or 24 hourly points.');
 assert_true(str_contains($dashboardSource, 'datetime-local'), 'Dashboard should support custom start and end times.');
 assert_true(str_contains($dashboardSource, 'periodRange('), 'Dashboard should derive shared from/to parameters from the selected period.');
-assert_true(str_contains($dashboardSource, 'operations-status-strip'), 'Dashboard should render a status-first operations strip.');
+assert_true(str_contains($dashboardSource, 'dash-status'), 'Dashboard should render a status-first operations strip.');
 assert_true(str_contains($dashboardSource, 'formatIntegerCost(today.total_cost)'), 'Dashboard cost metric should render through the integer cost formatter.');
 assert_true(str_contains($dashboardSource, 'return Math.round(number).toLocaleString("zh-CN");'), 'Dashboard integer cost formatter should round to the nearest whole number.');
 assert_true(str_contains($dashboardSource, 'formatResourceValue(column, row[column])'), 'Dashboard should keep localized value formatting for table fallback and drilldown surfaces.');

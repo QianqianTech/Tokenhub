@@ -81,7 +81,23 @@ function rowsFor(resourceKey) {
       if (!("id" in row)) row.id = index;
       if (resourceKey === "departments") Object.assign(row, { name: ["总部", "研发部", "运营部", "市场部", "财务部", "法务部"][index - 1] || `部门${index}`, path: `/1/${index}`, level: index === 1 ? 0 : 1 });
       if (resourceKey === "users") Object.assign(row, { username: `user${String(index).padStart(3, "0")}`, display_name: `员工${index}` });
-      if (resourceKey === "models") Object.assign(row, { name: `model-${index}`, provider_id: ((index - 1) % 2) + 1, capability: "text_generation", capabilities: { upstream: { features: { tools: true, streaming: true } } }, capability_tags: [], updated_at: timestamp(index), gateway_supported: index !== 6, unsupported_reason: index === 6 ? "native_protocol" : null, unsupported_message: index === 6 ? "native 协议没有执行后端" : null });
+      if (resourceKey === "models") Object.assign(row, { name: `model-${index}`, provider_id: ((index - 1) % 2) + 1, capability: "text_generation", capabilities: { upstream: { features: { tools: true, streaming: true } } }, capability_tags: [], external_name: `upstream-model-${index}`, context_length: [32768, 65536, 131072, 8192, 8192, 32768][index - 1] || 32768, route_priority: index, updated_at: timestamp(index), gateway_supported: index !== 6, unsupported_reason: index === 6 ? "native_protocol" : null, unsupported_message: index === 6 ? "native 协议没有执行后端" : null });
+      if (resourceKey === "alert-events") Object.assign(row, [
+        { event_type: "provider.timeout", severity: "critical", title: "上游厂商连续超时", message: "厂商2 在 5 分钟内超时 26 次，已自动切换至备用渠道。", status: "open", target_type: "provider", target_id: 2 },
+        { event_type: "quota.threshold", severity: "warning", title: "密钥接近日限额", message: "密钥1 今日已用 88% 的 Token 限额。", status: "open", target_type: "api_key", target_id: 1 },
+        { event_type: "desensitization.hit", severity: "warning", title: "敏感信息命中", message: "请求内容中识别到 3 处身份证号，已按默认策略掩码后转发。", status: "open", target_type: "user", target_id: 3 },
+        { event_type: "auth.new_ip", severity: "info", title: "新 IP 登录管理后台", message: "管理员 user003 从 10.20.6.41 首次登录。", status: "acknowledged", target_type: "user", target_id: 3 },
+        { event_type: "latency.recovered", severity: "info", title: "P95 延迟回落", message: "model-1 的 P95 延迟已回到阈值以下。", status: "resolved", target_type: "model", target_id: 1 },
+        { event_type: "export.done", severity: "info", title: "导出任务完成", message: "“10 月部门用量”CSV 已生成，保留 7 天。", status: "resolved", target_type: "system", target_id: null }
+      ][index - 1] || {});
+      if (resourceKey === "usage-records") Object.assign(row, {
+        status: index === 4 ? "failed" : index === 6 ? "blocked" : "success",
+        model_name: ["qwen-max", "deepseek-chat", "glm-4-plus", "glm-4-plus", "text-embedding-v3", "qwen-max"][index - 1] || "qwen-max",
+        input_tokens: 1200 * index, output_tokens: index === 4 ? 0 : 380 * index, total_tokens: index === 4 ? 1200 * index : 1580 * index,
+        latency_ms: index === 4 ? 30000 : 900 + index * 310, cost_amount: (0.012 * index).toFixed(4),
+        error_code: index === 4 ? "upstream_timeout" : null, http_status: index === 4 ? 504 : 200,
+        attempts: index === 4 ? [{ model: "glm-4-plus", outcome: "timeout" }, { model: "deepseek-chat", outcome: "success" }] : null
+      });
       if (resourceKey === "providers") Object.assign(row, { name: `厂商${index}`, protocol: "openai", base_url: "https://api.example.com/v1" });
       if (resourceKey === "api-keys") Object.assign(row, { name: `密钥${index}`, key_prefix: "sk-th", key_suffix: `k${index}`, model_ids: [1, 6], management_scopes: index === 2 ? ["users:read"] : [], ...(index === 5 ? { status: "disabled", disabled_by: "management" } : { disabled_by: null }) });
       rows.push(row);
@@ -165,13 +181,13 @@ function pageOf(rows, query, cap = 100) {
 const specialGet = {
   "/admin-api/system/brand-identity": () => ({ product_name: "TokenHub", admin_title: "TokenHub 管理后台", logo_url: "", favicon_url: "" }),
   "/admin-api/system/settings-center": () => ({ sections: { brand_identity: { product_name: "TokenHub", admin_title: "TokenHub 管理后台", screen_title: "大屏" }, firewall_settings: { enabled: true, allowed_methods: ["GET", "POST"] }, tls_certificates: { certificate_mode: "domain", threshold_days: 14 } } }),
-  "/admin-api/dashboard/realtime": () => ({ today: { request_count: 1200, total_tokens: 345000, failed_count: 3, cost_amount: 12.5 } }),
+  "/admin-api/dashboard/realtime": () => ({ today: { request_count: 1200, success_count: 1197, total_tokens: 345000, input_tokens: 240000, output_tokens: 105000, cache_read_tokens: 36000, failed_count: 3, total_cost: 12.5, avg_latency_ms: 1840 } }),
   "/admin-api/dashboard/trends": () => [0, 1, 2, 3].map((index) => ({ bucket_at: timestamp(index * 1440), request_count: 100 + index * 10, total_tokens: 5000 + index * 300, error_count: index })),
   "/admin-api/dashboard/rankings": (query) => [1, 2, 3].map((index) => ({ id: index, name: query.get("dimension") === "user" ? `user00${index}` : `部门${index}`, request_count: 100 - index, total_tokens: 1000 - index })),
   "/admin-api/dashboard/security": () => ({ desensitization: [] }),
   "/admin-api/dashboard/performance": () => ({ buckets: [{ bucket_at: timestamp(), p50_latency_ms: 120, p99_latency_ms: 900 }] }),
   "/admin-api/dashboard/multimodal": () => ({ capabilities: [{ capability: "text_generation", request_count: 10 }] }),
-  "/admin-api/operations/status": () => ({ health: { healthy: true, services: { php: { healthy: true }, mysql: { healthy: true }, redis: { healthy: true } } }, queues: { pending: 1, processing: 0, failed: 0 }, recent_worker_logs: [] }),
+  "/admin-api/operations/status": () => ({ health: { healthy: true, services: { php: { healthy: true }, mysql: { healthy: true }, redis: { healthy: true }, qdrant: { healthy: true }, "queue-worker": { healthy: true }, "rag-worker": { healthy: false } } }, queues: { pending: 4, processing: 1, failed: 0, readable: true }, reservations: { active: 3, expired: 0 }, alert_notifications: { pending: 0, dead: 0 }, usage_pipeline: { unaggregated: 12, events_pending: 0 }, recent_worker_logs: [{ timestamp: "2026-10-27T09:30:00Z", level: "info", message: "usage:aggregate 用量小时汇总", latency_ms: 3200, status: "ok" }, { timestamp: "2026-10-27T09:12:00Z", level: "error", message: "export:csv #318 导出失败", latency_ms: 41000 }] }),
   "/admin-api/system/content-retention": () => ({ mode: "summary", default_days: 30, max_days: 180, raw_allowed_roles: ["super_admin"] }),
   "/admin-api/system/certificate-status": () => ({ summary: {}, certificates: [] }),
   "/admin-api/system/network-interface-ips": () => ({ ips: [] }),
@@ -189,7 +205,7 @@ const specialGet = {
   "/admin-api/content-archive": (query) => [1, 2, 3]
     .map((index) => ({ content_id: index, request_id: `req-${index}`, session_id: `sess-${index}`, user_id: index, department_id: 1, api_key_id: 1, model_name: "model-1", status: "succeeded", retention_mode: "summary", created_at: timestamp(index * 10) }))
     .filter((row) => !query.get("user_id") || String(row.user_id) === query.get("user_id")),
-  "/admin-api/alert-events": () => rowsFor("alert-events").slice(0, 3)
+
 };
 
 export const requestLog = [];
