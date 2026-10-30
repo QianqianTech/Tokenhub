@@ -105,6 +105,21 @@ final class RagTextAnalyzerService
         return $this->stableUnique($this->termOccurrences($normalized));
     }
 
+    /**
+     * Term => occurrence count (words and CJK bigrams), for sparse indexing.
+     *
+     * @return array<string, int>
+     */
+    public function termFrequencies(string $text): array
+    {
+        $counts = [];
+        foreach ($this->termOccurrences($this->normalize($text)) as $term) {
+            $counts[$term] = ($counts[$term] ?? 0) + 1;
+        }
+
+        return $counts;
+    }
+
     /** @return list<string> */
     private function termOccurrences(string $normalized): array
     {

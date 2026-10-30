@@ -13,6 +13,8 @@ use TokenHub\Http\Controllers\GatewayController;
 use TokenHub\Http\Controllers\HealthController;
 use TokenHub\Http\Controllers\McpController;
 use TokenHub\Http\Controllers\OAuthController;
+use TokenHub\Http\Controllers\RagAclController;
+use TokenHub\Http\Controllers\RagIndexController;
 use TokenHub\Http\Controllers\RagController;
 use TokenHub\Http\Controllers\ScreenController;
 use TokenHub\Http\Controllers\SyncController;
@@ -145,6 +147,17 @@ final class Kernel
         $router->patch('/admin-api/rag/eval-cases/{case_id}/status', [$rag, 'updateEvaluationCaseStatus'], [new AdminAuthMiddleware(), new CsrfMiddleware()]);
         $router->post('/admin-api/rag/eval-cases/import', [$rag, 'importEvaluationCases'], [new AdminAuthMiddleware(), new CsrfMiddleware()]);
         $router->post('/admin-api/rag/eval-runs/{run_id}/failures/{case_id}/correction', [$rag, 'createEvaluationFailureCorrection'], [new AdminAuthMiddleware(), new CsrfMiddleware()]);
+        // Knowledge-set access control (RAG-012).
+        $ragAcl = new RagAclController();
+        $router->get('/admin-api/rag/knowledge-bases/{id}/acl', [$ragAcl, 'knowledgeBaseAcl'], [new AdminAuthMiddleware()]);
+        $router->put('/admin-api/rag/knowledge-bases/{id}/acl', [$ragAcl, 'replaceKnowledgeBaseAcl'], [new AdminAuthMiddleware(), new CsrfMiddleware()]);
+        $router->put('/admin-api/rag/datasets/{id}/acl', [$ragAcl, 'replaceDatasetAcl'], [new AdminAuthMiddleware(), new CsrfMiddleware()]);
+        $router->get('/admin-api/rag/access-check', [$ragAcl, 'accessCheck'], [new AdminAuthMiddleware()]);
+        // Index health and repair (RAG-030, RAG-043).
+        $ragIndex = new RagIndexController();
+        $router->get('/admin-api/rag/index-health', [$ragIndex, 'health'], [new AdminAuthMiddleware()]);
+        $router->post('/admin-api/rag/index-reconcile', [$ragIndex, 'reconcile'], [new AdminAuthMiddleware(), new CsrfMiddleware()]);
+        $router->post('/admin-api/rag/datasets/{id}/backfill-lexical', [$ragIndex, 'backfillLexical'], [new AdminAuthMiddleware(), new CsrfMiddleware()]);
         $router->get('/admin-api/content-archive', [$admin, 'contentArchive'], [new AdminAuthMiddleware()]);
         $router->get('/admin-api/content-archive/{id}', [$admin, 'contentArchiveDetail'], [new AdminAuthMiddleware()]);
         $router->get('/admin-api/dashboard/realtime', [$admin, 'dashboardRealtime'], [new AdminAuthMiddleware()]);

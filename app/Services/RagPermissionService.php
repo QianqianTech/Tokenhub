@@ -88,7 +88,10 @@ final class RagPermissionService
      */
     public function knowledgeBase(array $apiKey, string $kbId, string $permission = 'read'): array
     {
-        $kb = $this->knowledgeBaseRow($kbId);
+        $kb = App::db()->first('SELECT * FROM rag_knowledge_bases WHERE kb_id = ? AND deleted_at IS NULL AND status != "disabled"', [$kbId]);
+        if ($kb === null) {
+            abort_json('RAG_KB_NOT_FOUND', 'Knowledge base not found', 404);
+        }
         if (!$this->hasKnowledgeBasePermission($apiKey, (int) $kb['id'], $permission)) {
             abort_json('RAG_KB_FORBIDDEN', 'Knowledge base permission denied', 403);
         }
@@ -102,7 +105,7 @@ final class RagPermissionService
      */
     public function datasetByExternalId(array $apiKey, string $datasetId, string $permission = 'read'): array
     {
-        $dataset = App::db()->first(self::DATASET_SELECT . ' WHERE d.dataset_id = ? AND ' . self::ACTIVE, [$datasetId]);
+        $dataset = App::db()->first(self::DATASET_SELECT . ' WHERE d.dataset_id = ? AND d.deleted_at IS NULL AND d.status != "disabled" AND k.deleted_at IS NULL AND k.status != "disabled"', [$datasetId]);
         if ($dataset === null) {
             abort_json('RAG_DATASET_NOT_FOUND', 'Vector dataset not found', 404);
         }

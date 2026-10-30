@@ -10,10 +10,12 @@ final class RagRetrievalEvaluationService
 {
     private ?\Closure $sourceRanker;
     private bool $throwOnNoCases = false;
+    private RagAnswerJudgeService $judge;
 
-    public function __construct(?callable $sourceRanker = null)
+    public function __construct(?callable $sourceRanker = null, ?RagAnswerJudgeService $judge = null)
     {
         $this->sourceRanker = $sourceRanker === null ? null : \Closure::fromCallable($sourceRanker);
+        $this->judge = $judge ?? new RagAnswerJudgeService();
     }
 
     /**
@@ -57,6 +59,7 @@ final class RagRetrievalEvaluationService
                 json_encode([
                     'retrieval_id' => $retrieval['retrieval_id'] ?? null,
                     'expected_answer' => $payload['expected_answer'] ?? null,
+                    'expected_anchors' => (new RagEvaluationAnchorService())->anchorsFor(array_values(array_unique($expected))),
                 ], JSON_UNESCAPED_UNICODE),
             ]
         );
@@ -140,6 +143,9 @@ final class RagRetrievalEvaluationService
             }
             abort_json('RAG_EVAL_NO_CASES', 'No active RAG evaluation cases matched the request.', 422);
         }
+        // RAG-041: optional answer-level evaluation; refused up front when the judge model is missing.
+        $judgeSettings = $this->judge->settings($options);
+        $lowConfidenceThreshold = max(0.0, min(1.0, (float) ($options['low_confidence'] ?? 0.35)));
         $runId = 'rer_' . bin2hex(random_bytes(12));
         $runPk = $this->createRun($runId, $datasetIds, $caseIds, $requestedTopKValues, count($cases));
 
@@ -149,16 +155,47 @@ final class RagRetrievalEvaluationService
             $requestedFailed = 0;
             $gateMrrTotal = 0.0;
             $gateFailed = 0;
+            $noResult = 0;
+            $lowConfidence = 0;
+            $ndcgTotal = 0.0;
+            $judgements = [];
+            $anchorService = new RagEvaluationAnchorService();
 
             foreach ($cases as $case) {
             $expected = $this->jsonList($case['expected_chunk_ids'] ?? '[]');
+            $caseMetadata = json_decode((string) ($case['metadata'] ?? '{}'), true);
+            $anchors = is_array($caseMetadata['expected_anchors'] ?? null) ? $caseMetadata['expected_anchors'] : [];
+            if ($anchors !== [] && $expected !== [] && App::db()->first(
+                'SELECT 1 AS present FROM rag_chunks WHERE chunk_id IN (' . implode(',', array_fill(0, count($expected), '?')) . ') AND enabled = 1 AND lifecycle_status = "active" LIMIT 1',
+                $expected
+            ) !== null) {
+                $anchors = []; // expected chunks still exist: exact chunk ids decide
+            }
             $sources = $this->rankSources($case, $maxTopK);
             $hitRank = null;
             foreach ($sources as $index => $source) {
-                if (in_array((string) ($source['chunk_id'] ?? ''), $expected, true)) {
+                // Anchors keep a case valid after re-upload/re-chunking changed the chunk ids (RAG-040).
+                if (in_array((string) ($source['chunk_id'] ?? ''), $expected, true) || $anchors !== [] && $anchorService->matches($source, $anchors)) {
                     $hitRank = $index + 1;
                     break;
                 }
+            }
+            if ($sources === []) {
+                $noResult++;
+            } else {
+                $confidence = array_values(array_filter(array_map(static fn (array $source) => $source['confidence_score'] ?? null, $sources), 'is_numeric'));
+                if ($confidence !== [] && max($confidence) < $lowConfidenceThreshold) {
+                    $lowConfidence++;
+                }
+            }
+            $judgement = null;
+            if ($judgeSettings !== null && count($judgements) < $judgeSettings['sample']) {
+                $expectedAnswer = is_array($caseMetadata) && is_string($caseMetadata['expected_answer'] ?? null) ? $caseMetadata['expected_answer'] : null;
+                $judgement = $this->judge->judge((string) $case['query'], $sources, $expected, $expectedAnswer, $judgeSettings);
+                $judgements[] = $judgement;
+            }
+            if ($hitRank !== null && $hitRank <= 10) {
+                $ndcgTotal += 1 / log($hitRank + 1, 2);
             }
             foreach ($evaluationTopKValues as $topK) {
                 if ($hitRank !== null && $hitRank <= $topK) {
@@ -176,18 +213,23 @@ final class RagRetrievalEvaluationService
             } else {
                 $gateMrrTotal += 1 / $hitRank;
             }
-            App::db()->execute(
-                'INSERT INTO rag_eval_results (run_id, case_id, query, expected_chunk_ids, hit_rank, passed, sources) VALUES (?, ?, ?, ?, ?, ?, ?)',
-                [
-                    $runPk,
-                    $case['id'],
-                    $case['query'],
-                    json_encode($expected, JSON_UNESCAPED_UNICODE),
-                    $hitRank,
-                    $requestedHitRank === null ? 0 : 1,
-                    json_encode($sources, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
-                ]
-            );
+            $values = [
+                $runPk,
+                $case['id'],
+                $case['query'],
+                json_encode($expected, JSON_UNESCAPED_UNICODE),
+                $hitRank,
+                $requestedHitRank === null ? 0 : 1,
+                json_encode($sources, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+            ];
+            if ($judgement === null) {
+                App::db()->execute('INSERT INTO rag_eval_results (run_id, case_id, query, expected_chunk_ids, hit_rank, passed, sources) VALUES (?, ?, ?, ?, ?, ?, ?)', $values);
+            } else {
+                App::db()->execute(
+                    'INSERT INTO rag_eval_results (run_id, case_id, query, expected_chunk_ids, hit_rank, passed, sources, judge) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+                    [...$values, json_encode($judgement, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)]
+                );
+            }
             }
 
             $caseCount = max(1, count($cases));
@@ -203,6 +245,14 @@ final class RagRetrievalEvaluationService
                 'mrr' => round($gateMrrTotal / $caseCount, 4),
                 'failed_cases' => $gateFailed,
             ];
+            // RAG-041: ranking quality and empty answers, stored in run metadata.
+            $metrics['ndcg_at_10'] = round($ndcgTotal / $caseCount, 4);
+            $metrics['no_result_rate'] = $this->percent($noResult, $caseCount);
+            $metrics['low_confidence_rate'] = $this->percent($lowConfidence, $caseCount);
+            $metrics['low_confidence_threshold'] = $lowConfidenceThreshold;
+            if ($judgeSettings !== null) {
+                $metrics['answer_evaluation'] = $this->judge->aggregate($judgements, $judgeSettings);
+            }
             $qualityGate = $this->qualityGate($gateMetrics, $options);
             $latencyMs = (int) ((microtime(true) - $started) * 1000);
             App::db()->execute(

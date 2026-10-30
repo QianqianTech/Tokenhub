@@ -3660,3 +3660,13 @@ pre {
 .api-key-management-scope-list input {
   width: auto;
 }
+
+/* RAG knowledge-set access and index health (rag-access.js, rag-index-health.js) */
+.rag-access details.rag-access-dataset { margin-top: 12px; border: 1px solid var(--border); border-radius: var(--panel-radius); padding: 8px 12px; }
+.rag-access details.rag-access-dataset > summary { cursor: pointer; font-weight: 600; }
+.rag-access-grants select, .rag-access-grants input[type="datetime-local"] { max-width: 220px; }
+.rag-health-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin: 12px 0; }
+.rag-health-stat { display: flex; flex-direction: column; gap: 4px; padding: 12px; border-radius: var(--panel-radius); border: 1px solid var(--border); }
+.rag-health-stat strong { font-size: 1.4em; }
+.rag-health-stat.warn strong { color: var(--warning-text); }
+.rag-health-stat.error strong, .rag-index-health td.error { color: var(--danger-text); }

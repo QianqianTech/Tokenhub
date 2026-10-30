@@ -23,24 +23,47 @@ final class RagChunkingService
         try {
             $items = App::db()->select('SELECT * FROM rag_upload_preview_items WHERE upload_id = ? AND validation_status IN ("valid","warning") ORDER BY id', [$upload['id']]);
             $chunker = new RagContentChunkerService();
+            $structured = new RagStructuredChunkerService();
             $profile = $this->profile($dataset['kb_chunking_profile'] ?? null);
             $effectiveProfile = $chunker->profile($profile);
+            $uploadMetadata = json_decode((string) ($upload['metadata'] ?? '{}'), true);
+            $uploadMetadata = is_array($uploadMetadata) ? $uploadMetadata : [];
             $eligiblePreviewItemIds = [];
             foreach ($items as $item) {
                 $eligiblePreviewItemIds[(string) $item['preview_item_id']] = true;
+                $itemMetadata = json_decode((string) ($item['metadata'] ?? '{}'), true);
+                if (!is_array($itemMetadata)) {
+                    $itemMetadata = [];
+                }
+                // p2 (structure-aware) for parsed documents, or when the knowledge base opts in.
+                $useStructured = (string) ($itemMetadata['chunker'] ?? '') === RagStructuredChunkerService::VERSION
+                    || (string) ($profile['version'] ?? '') === 'p2'
+                    || str_starts_with((string) ($profile['version'] ?? ''), 'p2-');
+                $structuredProfile = $structured->profile(array_merge($profile, is_array($itemMetadata['chunking_profile'] ?? null) ? $itemMetadata['chunking_profile'] : []));
+                $documentKey = (string) ($itemMetadata['document_key'] ?? $uploadMetadata['document_key'] ?? '');
+                if ($documentKey === '') {
+                    $documentKey = 'upload:' . (string) $upload['upload_id'] . ':' . (string) $item['preview_item_id'];
+                }
                 $documentId = $this->id('doc');
                 App::db()->execute(
-                    'INSERT INTO rag_documents (document_id, kb_id, upload_id, source_preview_item_id, title, doc_type, parse_status, index_status, metadata)
-                     VALUES (?, ?, ?, ?, ?, ?, "parsed", "indexing", ?)
-                     ON DUPLICATE KEY UPDATE document_id = document_id',
+                    'INSERT INTO rag_documents (document_id, kb_id, dataset_id, upload_id, source_preview_item_id, title, document_key, doc_type, parse_status, index_status, metadata)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, "parsed", "indexing", ?)
+                     ON DUPLICATE KEY UPDATE dataset_id = VALUES(dataset_id), document_key = VALUES(document_key)',
                     [
                         $documentId,
                         $upload['kb_id'],
+                        $dataset['id'] ?? null,
                         $upload['id'],
                         $item['preview_item_id'],
                         $item['title'] ?: 'RAG document',
-                        $item['item_type'] === 'image' ? 'image' : ($item['item_type'] === 'qa' ? 'qa' : 'plain_text'),
-                        json_encode(['source_preview_item_id' => $item['preview_item_id']], JSON_UNESCAPED_UNICODE),
+                        mb_substr($documentKey, 0, 255),
+                        $this->docType((string) $item['item_type'], (string) ($itemMetadata['document_format'] ?? '')),
+                        json_encode(array_filter([
+                            'source_preview_item_id' => $item['preview_item_id'],
+                            'document_format' => $itemMetadata['document_format'] ?? null,
+                            'pages' => $itemMetadata['pages'] ?? null,
+                            'parser' => $itemMetadata['parser'] ?? null,
+                        ], static fn ($value): bool => $value !== null), JSON_UNESCAPED_UNICODE),
                     ]
                 );
                 $document = App::db()->first(
@@ -51,17 +74,30 @@ final class RagChunkingService
                 if (trim($content) === '' && $item['question'] !== null) {
                     $content = '问题：' . $item['question'] . "\n答案：" . $item['answer'];
                 }
-                $segments = in_array((string) $item['item_type'], ['text', 'table_row'], true)
-                    ? $chunker->chunk($content, $profile)
-                    : [[
+                $chunkable = in_array((string) $item['item_type'], ['text', 'table_row'], true);
+                if ($chunkable && $useStructured) {
+                    $segments = array_map(static fn (array $chunk): array => [
+                        'content' => $chunk['content'],
+                        'start' => 0,
+                        'end' => 0,
+                        'boundary' => $chunk['boundary'],
+                        'extra' => [
+                            'heading_path' => $chunk['heading_path'],
+                            'page' => $chunk['page'],
+                            'section_key' => $chunk['section_key'],
+                            'section_ordinal' => $chunk['section_ordinal'],
+                            'block_kind' => $chunk['kind'],
+                        ],
+                    ], $structured->chunk($content, $structuredProfile));
+                } elseif ($chunkable) {
+                    $segments = $chunker->chunk($content, $profile);
+                } else {
+                    $segments = [[
                         'content' => $content,
                         'start' => 0,
                         'end' => mb_strlen($content),
                         'boundary' => 'atomic',
                     ]];
-                $itemMetadata = json_decode((string) ($item['metadata'] ?? '{}'), true);
-                if (!is_array($itemMetadata)) {
-                    $itemMetadata = [];
                 }
                 $expectedChunkIds = [];
                 foreach ($segments as $index => $segment) {
@@ -73,20 +109,23 @@ final class RagChunkingService
                         'start' => (int) $segment['start'],
                         'end' => (int) $segment['end'],
                         'boundary' => (string) $segment['boundary'],
-                        'chunking_profile' => $effectiveProfile,
-                    ]);
+                        'chunking_profile' => $chunkable && $useStructured ? $structuredProfile : $effectiveProfile,
+                        'document_key' => $documentKey,
+                    ], $segment['extra'] ?? []);
+                    unset($metadata['parse_warnings']);
                     $chunkId = 'chk_' . substr(hash('sha256', $item['preview_item_id'] . ':' . $segmentOrdinal), 0, 24);
                     $expectedChunkIds[] = $chunkId;
                     $contentHash = hash('sha256', $segmentContent);
                     $metadataJson = json_encode($metadata, JSON_UNESCAPED_UNICODE);
                     $existingChunk = App::db()->first('SELECT id, content_hash, metadata, enabled, lifecycle_status FROM rag_chunks WHERE chunk_id = ?', [$chunkId]);
                     App::db()->execute(
-                        'INSERT INTO rag_chunks (chunk_id, kb_id, document_id, chunk_type, ordinal, title, content, question, answer, image_asset_id, token_count, metadata, content_hash, enabled, lifecycle_status)
-                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, "active")
-                         ON DUPLICATE KEY UPDATE content = VALUES(content), content_hash = VALUES(content_hash), metadata = VALUES(metadata), token_count = VALUES(token_count), title = VALUES(title), question = VALUES(question), answer = VALUES(answer), enabled = 1, lifecycle_status = "active"',
+                        'INSERT INTO rag_chunks (chunk_id, kb_id, dataset_id, document_id, chunk_type, ordinal, title, content, question, answer, image_asset_id, token_count, metadata, content_hash, enabled, lifecycle_status)
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, "active")
+                         ON DUPLICATE KEY UPDATE dataset_id = VALUES(dataset_id), content = VALUES(content), content_hash = VALUES(content_hash), metadata = VALUES(metadata), token_count = VALUES(token_count), title = VALUES(title), question = VALUES(question), answer = VALUES(answer), enabled = 1, lifecycle_status = "active"',
                         [
                             $chunkId,
                             $upload['kb_id'],
+                            $dataset['id'] ?? null,
                             $document['id'],
                             $item['item_type'] === 'image' ? 'image' : ($item['item_type'] === 'qa' ? 'qa' : ($item['item_type'] === 'table_row' ? 'table_row' : 'text')),
                             $segmentOrdinal,
@@ -95,7 +134,7 @@ final class RagChunkingService
                             $item['question'],
                             $item['answer'],
                             $item['image_asset_id'],
-                            max(1, (int) ceil(strlen($segmentContent) / 4)),
+                            RagStructuredChunkerService::estimateTokens($segmentContent),
                             $metadataJson,
                             $contentHash,
                         ]
@@ -177,6 +216,25 @@ final class RagChunkingService
         }
         // Removes the vectors from the store as well, not only the DB records (RAG-004).
         (new RagChunkLifecycleService())->disable($retired, 'superseded');
+    }
+
+    private function docType(string $itemType, string $format): string
+    {
+        if ($itemType === 'image') {
+            return 'image';
+        }
+        if ($itemType === 'qa') {
+            return 'qa';
+        }
+
+        return match ($format) {
+            'pdf' => 'pdf',
+            'docx' => 'word',
+            'md' => 'markdown',
+            'html' => 'html',
+            'xlsx', 'xls', 'csv' => 'excel',
+            default => 'plain_text',
+        };
     }
 
     private function id(string $prefix): string

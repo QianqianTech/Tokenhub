@@ -514,6 +514,8 @@ const ragResourceDefinitions = {
   "rag-feedback-correction": { label: "反馈与纠偏", group: "RAG知识库", readOnly: true },
   "rag-advanced-data": { label: "高级数据", group: "RAG知识库", readOnly: true },
   "rag-build": { label: "构建知识", group: "RAG知识库", readOnly: true },
+  "rag-access": { label: "知识集权限", group: "RAG知识库", readOnly: true },
+  "rag-index-health": { label: "索引健康", group: "RAG知识库", readOnly: true },
   "rag-retrieval-lab": { label: "检索试验台", group: "RAG知识库", readOnly: true },
   "rag-quality": { label: "质量评估", group: "RAG知识库", readOnly: true },
   "rag-operations": { label: "运行维护", group: "RAG知识库", readOnly: true },
@@ -533,7 +535,7 @@ const ragResourceDefinitions = {
       { name: "default_multimodal_vector_config_id", label: "默认多模态向量配置", type: "select", coerce: "number", reference: "vectorConfigs", optional: true }
     ]
   },
-  "rag-knowledge-base-bindings": { label: "知识库授权", group: "RAG知识库", columns: ["id", "kb_id", "subject_type", "subject_id", "permission", "is_default", "created_at"] },
+  "rag-knowledge-base-bindings": { label: "知识库授权（原始表，只读；请在“知识集权限”中修改）", group: "RAG知识库", readOnly: true, columns: ["id", "kb_id", "subject_type", "subject_id", "permission", "is_default", "include_descendants", "expires_at", "created_at"] },
   "rag-vector-datasets": {
     label: "向量数据集", group: "RAG知识库",
     columns: ["name", "is_default", "status", "chunk_count", "vector_count", "last_indexed_at"],
@@ -549,7 +551,7 @@ const ragResourceDefinitions = {
       { name: "retrieval_profile", label: "检索配置 JSON", type: "json", optional: true }
     ]
   },
-  "rag-dataset-bindings": { label: "数据集授权", group: "RAG知识库", columns: ["id", "dataset_id", "subject_type", "subject_id", "permission", "is_default", "priority", "created_at"] },
+  "rag-dataset-bindings": { label: "数据集授权", group: "RAG知识库", readOnly: true, columns: ["id", "dataset_id", "subject_type", "subject_id", "permission", "is_default", "priority", "include_descendants", "expires_at", "created_at"] },
   "rag-vector-configs": {
     label: "向量配置", group: "RAG知识库",
     columns: ["id", "config_id", "name", "modality", "model_name", "dimension", "vector_store", "collection_name", "enabled"],

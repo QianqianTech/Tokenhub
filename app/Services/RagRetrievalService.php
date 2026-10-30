@@ -15,6 +15,8 @@ final class RagRetrievalService
         private readonly ?RagTextAnalyzerService $textAnalyzer = null,
         private readonly ?RagRetrievalProfileService $retrievalProfile = null,
         private readonly ?\Closure $beforeRecord = null,
+        private readonly ?RagRerankService $reranker = null,
+        private readonly ?RagVectorConfigService $vectorConfigs = null,
     )
     {
     }
@@ -62,7 +64,7 @@ final class RagRetrievalService
 
         try {
             $query = $this->query($payload);
-            $sources = $this->searchSourcesForDatasets($datasets, $query, $topK, $queryModality);
+            $sources = trim($query) === '' ? [] : $this->searchSourcesForDatasets($datasets, $query, $topK, $queryModality);
             $latencyMs = (int) ((microtime(true) - $started) * 1000);
             if ($sources === []) {
                 if ($required) {
@@ -99,21 +101,24 @@ final class RagRetrievalService
      */
     public function searchSourcesForDatasets(array $datasets, string $query, int $topK, string $queryModality = 'text'): array
     {
-        $configService = new RagVectorConfigService();
+        $configService = $this->vectorConfigs ?? new RagVectorConfigService();
         $topK = $this->normalizeTopK($topK);
         $candidateK = max($topK * 4, 20);
-        $queryProfile = $this->queryProfile($query);
+        $queryProfile = $this->queryProfile($query, $this->synonyms($datasets));
         $rankedLists = [
             'vector' => [],
             'lexical' => $this->lexicalSourcesForDatasets($datasets, $queryProfile, $candidateK, $queryModality),
         ];
+        $queryVectors = [];
         foreach ($datasets as $dataset) {
             foreach ($this->retrievalConfigs($configService, $dataset, $queryModality) as $retrieval) {
                 $config = $retrieval['config'];
                 $modality = $retrieval['modality'];
                 $collection = $retrieval['collection'];
                 try {
-                    $vector = ($this->embeddingProvider ?? new RagEmbeddingProviderService())->embed($modality, ['text' => $query, 'modality' => $modality], $config);
+                    // One query embedding per model/config, not per dataset (RAG-031).
+                    $vectorKey = $modality . ':' . (string) ($config['id'] ?? $config['config_id'] ?? '') . ':' . (string) ($config['model_name'] ?? '') . ':' . (string) ($config['dimension'] ?? '');
+                    $vector = $queryVectors[$vectorKey] ??= ($this->embeddingProvider ?? new RagEmbeddingProviderService())->embed($modality, ['text' => $query, 'modality' => $modality, 'purpose' => 'query'], $config);
                     $hits = $configService->store($config)->search($collection, $vector, $candidateK, ['dataset_id' => $dataset['dataset_id'], 'modality' => $modality]);
                 } catch (Throwable $throwable) {
                     App::logger()->warning('rag', 'rag vector retrieval skipped', ['error' => $throwable->getMessage(), 'dataset_id' => $dataset['dataset_id'] ?? null, 'modality' => $modality]);
@@ -149,7 +154,16 @@ final class RagRetrievalService
         $sources = $this->rrfFuse($rankedLists);
         $sources = $this->rerankSources($sources, $queryProfile);
         $sources = $this->applyConfidenceThresholds($sources, $datasets, $queryProfile);
+        $rerank = $this->reranker ?? new RagRerankService();
+        $rerankSettings = $rerank->settings($datasets);
+        if ($rerankSettings !== null && count($sources) > 1) {
+            $reranked = $rerank->rerank($query, $sources, $rerankSettings);
+            if ($reranked !== null) {
+                $sources = $reranked;
+            }
+        }
         $sources = $this->diverseTopK($sources, $topK);
+        $sources = $this->expandContext($sources, $datasets);
 
         return array_values(array_map(static function (array $source, int $index): array {
             $source['source_id'] = 'src_' . ($index + 1);
@@ -279,6 +293,109 @@ final class RagRetrievalService
         ];
     }
 
+    /**
+     * Synonym dictionaries from the knowledge bases' retrieval_profile:
+     * {"synonyms": {"故障": ["报警", "告警"], "VPN": ["远程接入"]}}. Matching is
+     * on the normalised query; both directions must be listed explicitly.
+     *
+     * @param list<array<string, mixed>> $datasets
+     * @return array<string, list<string>>
+     */
+    private function synonyms(array $datasets): array
+    {
+        $merged = [];
+        foreach ($datasets as $dataset) {
+            $profile = $dataset['kb_retrieval_profile'] ?? null;
+            $profile = is_array($profile) ? $profile : (is_string($profile) && $profile !== '' ? (json_decode($profile, true) ?: []) : []);
+            $synonyms = is_array($profile['synonyms'] ?? null) ? $profile['synonyms'] : [];
+            foreach ($synonyms as $term => $alternatives) {
+                $key = $this->normalizeText((string) $term);
+                foreach ((array) $alternatives as $alternative) {
+                    $alternative = $this->normalizeText((string) $alternative);
+                    if ($key !== '' && $alternative !== '' && count($merged[$key] ?? []) < 20) {
+                        $merged[$key][] = $alternative;
+                    }
+                }
+            }
+        }
+
+        return array_map(static fn (array $values): array => array_values(array_unique($values)), $merged);
+    }
+
+    /**
+     * Small-to-big (RAG-035): a hit from a structured (p2) document is widened
+     * with its neighbouring chunks of the same section, within a character
+     * budget, so the answer is not cut at a chunk border. Controlled per
+     * knowledge base: retrieval_profile.neighbor_chunks (0-2, default 1) and
+     * retrieval_profile.expanded_max_chars (default 2400).
+     *
+     * @param list<array<string, mixed>> $sources
+     * @param list<array<string, mixed>> $datasets
+     * @return list<array<string, mixed>>
+     */
+    private function expandContext(array $sources, array $datasets): array
+    {
+        $settings = [];
+        foreach ($datasets as $dataset) {
+            $profile = $dataset['kb_retrieval_profile'] ?? null;
+            $profile = is_array($profile) ? $profile : (is_string($profile) && $profile !== '' ? (json_decode($profile, true) ?: []) : []);
+            $settings[(string) ($dataset['dataset_id'] ?? '')] = [
+                'neighbors' => max(0, min(2, (int) ($profile['neighbor_chunks'] ?? 1))),
+                'max_chars' => max(400, min(8000, (int) ($profile['expanded_max_chars'] ?? 2400))),
+            ];
+        }
+        $seen = [];
+        foreach ($sources as $source) {
+            $seen[(string) ($source['chunk_id'] ?? '')] = true;
+        }
+        foreach ($sources as &$source) {
+            $setting = $settings[(string) ($source['dataset_id'] ?? '')] ?? ['neighbors' => 0, 'max_chars' => 2400];
+            $sectionKey = (string) ($source['section_key'] ?? '');
+            $ordinal = (int) ($source['segment_ordinal'] ?? 0);
+            if ($setting['neighbors'] === 0 || $sectionKey === '' || $ordinal <= 0 || ($source['modality'] ?? 'text') !== 'text') {
+                continue;
+            }
+            $chunk = App::db()->first('SELECT document_id FROM rag_chunks WHERE chunk_id = ?', [(string) $source['chunk_id']]);
+            if ($chunk === null) {
+                continue;
+            }
+            $low = $ordinal - $setting['neighbors'];
+            $high = $ordinal + $setting['neighbors'];
+            $neighbors = App::db()->select(
+                'SELECT chunk_id, ordinal, content, metadata FROM rag_chunks WHERE document_id = ? AND ordinal BETWEEN ? AND ? AND ordinal <> ? AND enabled = 1 AND lifecycle_status = "active" ORDER BY ordinal',
+                [(int) $chunk['document_id'], $low, $high, $ordinal]
+            );
+            $before = [];
+            $after = [];
+            $budget = $setting['max_chars'] - mb_strlen((string) ($source['content'] ?? ''));
+            $added = [];
+            foreach ($neighbors as $neighbor) {
+                $metadata = json_decode((string) ($neighbor['metadata'] ?? '{}'), true);
+                if (!is_array($metadata) || (string) ($metadata['section_key'] ?? '') !== $sectionKey || isset($seen[(string) $neighbor['chunk_id']])) {
+                    continue;
+                }
+                $text = (string) $neighbor['content'];
+                if (mb_strlen($text) > $budget) {
+                    continue;
+                }
+                $budget -= mb_strlen($text);
+                $added[] = (string) $neighbor['chunk_id'];
+                if ((int) $neighbor['ordinal'] < $ordinal) {
+                    $before[] = $text;
+                } else {
+                    $after[] = $text;
+                }
+            }
+            if ($added !== []) {
+                $source['content'] = trim(implode("\n", [...$before, (string) $source['content'], ...$after]));
+                $source['expanded_from_chunk_ids'] = $added;
+            }
+        }
+        unset($source);
+
+        return $sources;
+    }
+
     private function fallbackQuery(array $payload): string
     {
         try {
@@ -288,25 +405,59 @@ final class RagRetrievalService
         }
     }
 
+    /**
+     * Retrieval query (RAG-034): the text of the last *user* message only —
+     * never an assistant/tool message, never image data or JSON. Optional
+     * rag.query overrides it (e.g. a client-side rewritten question).
+     */
     private function query(array $payload): string
     {
+        $rag = is_array($payload['rag'] ?? null) ? $payload['rag'] : [];
+        if (isset($rag['query']) && is_string($rag['query']) && trim($rag['query']) !== '') {
+            return trim($rag['query']);
+        }
         if (isset($payload['input']) && is_scalar($payload['input'])) {
             return (string) $payload['input'];
         }
-        $messages = $payload['messages'] ?? [];
+        $messages = $payload['messages'] ?? (is_array($payload['input'] ?? null) ? $payload['input'] : []);
         if (is_array($messages)) {
             for ($i = count($messages) - 1; $i >= 0; $i--) {
-                $content = $messages[$i]['content'] ?? null;
-                if (is_scalar($content)) {
-                    return (string) $content;
+                $message = $messages[$i];
+                if (!is_array($message) || (string) ($message['role'] ?? 'user') !== 'user') {
+                    continue;
                 }
-                if (is_array($content)) {
-                    return json_encode($content, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '';
+                $text = $this->textOf($message['content'] ?? null);
+                if ($text !== '') {
+                    return $text;
                 }
             }
         }
+        if (isset($payload['prompt']) && is_string($payload['prompt'])) {
+            return $payload['prompt'];
+        }
 
-        return json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '';
+        return '';
+    }
+
+    /** Text parts of a message content (string, OpenAI parts, Anthropic blocks). */
+    private function textOf(mixed $content): string
+    {
+        if (is_string($content)) {
+            return trim($content);
+        }
+        if (!is_array($content)) {
+            return '';
+        }
+        $parts = [];
+        foreach ($content as $part) {
+            if (is_string($part)) {
+                $parts[] = $part;
+            } elseif (is_array($part) && in_array((string) ($part['type'] ?? 'text'), ['text', 'input_text'], true) && is_string($part['text'] ?? null)) {
+                $parts[] = $part['text'];
+            }
+        }
+
+        return trim(implode("\n", $parts));
     }
 
     /**
@@ -320,15 +471,20 @@ final class RagRetrievalService
             $config = match ($modality) {
                 'image' => $configService->imageConfig($dataset),
                 'multimodal' => $configService->multimodalConfig($dataset),
-                default => $configService->textConfig($dataset),
+                default => is_array($dataset['_text_config_override'] ?? null) ? $dataset['_text_config_override'] : $configService->textConfig($dataset),
             };
             if ($config === null) {
                 continue;
             }
+            $collection = (string) ($config['collection_name'] ?? $configService->collection((string) $dataset['dataset_id'], $modality));
+            if ($modality === 'text' && !empty($dataset['_collection_override'])) {
+                // Evaluation of a candidate index during blue/green reindexing.
+                $collection = (string) $dataset['_collection_override'];
+            }
             $configs[] = [
                 'modality' => $modality,
                 'config' => $config,
-                'collection' => (string) ($config['collection_name'] ?? $configService->collection((string) $dataset['dataset_id'], $modality)),
+                'collection' => $collection,
             ];
         }
 
@@ -394,23 +550,35 @@ final class RagRetrievalService
         }
 
         $sources = [];
+        $lexicalIndex = new RagLexicalIndexService($this->vectorConfigs);
         foreach ($datasets as $dataset) {
             $datasetId = (string) ($dataset['dataset_id'] ?? '');
             if ($datasetId === '') {
                 continue;
             }
+            $candidates = $lexicalIndex->candidates($dataset, (string) $queryProfile['expanded_query'], max(50, $limit * 3));
+            $candidateFilter = '';
+            $params = [$datasetId];
+            if ($candidates['chunk_ids'] !== null) {
+                if ($candidates['chunk_ids'] === []) {
+                    continue;
+                }
+                $candidateFilter = ' AND c.chunk_id IN (' . implode(',', array_fill(0, count($candidates['chunk_ids']), '?')) . ')';
+                array_push($params, ...$candidates['chunk_ids']);
+            }
             $rows = App::db()->select(
                 'SELECT c.chunk_id, c.title, c.content, c.question, c.answer, c.chunk_type, c.metadata AS chunk_metadata,
-                        d.dataset_id AS external_dataset_id, d.name AS dataset_name, k.kb_id AS external_kb_id,
+                        d.dataset_id AS external_dataset_id, d.name AS dataset_name, k.kb_id AS external_kb_id, doc.title AS document_title,
                         i.image_id, i.purpose, i.short_description, i.detailed_description, i.ocr_text, i.labels, i.warnings, i.metadata AS image_metadata
                  FROM rag_chunks c
                  JOIN rag_documents doc ON doc.id = c.document_id
                  JOIN rag_uploads u ON u.id = doc.upload_id
-                 JOIN rag_vector_datasets d ON d.id = u.dataset_id
+                 JOIN rag_vector_datasets d ON d.id = COALESCE(c.dataset_id, doc.dataset_id, u.dataset_id)
                  JOIN rag_knowledge_bases k ON k.id = c.kb_id
                  LEFT JOIN rag_image_assets i ON i.id = c.image_asset_id
-                 WHERE d.dataset_id = ? AND c.enabled = 1 AND c.lifecycle_status = "active" AND (c.expires_at IS NULL OR c.expires_at > NOW())',
-                [$datasetId]
+                 WHERE d.dataset_id = ? AND c.enabled = 1 AND c.lifecycle_status = "active" AND (c.expires_at IS NULL OR c.expires_at > NOW()) AND doc.deleted_at IS NULL' . $candidateFilter
+                 . ($candidates['chunk_ids'] === null ? ' ORDER BY c.id DESC LIMIT ' . RagLexicalIndexService::scanLimit() : ''),
+                $params
             );
             foreach ($rows as $row) {
                 $chunkMetadata = json_decode((string) ($row['chunk_metadata'] ?? '{}'), true) ?: [];
@@ -447,6 +615,12 @@ final class RagRetrievalService
                     'labels' => json_decode((string) ($row['labels'] ?? '[]'), true) ?: [],
                     'warnings' => json_decode((string) ($row['warnings'] ?? '[]'), true) ?: [],
                     'retrieval_strategy' => 'lexical',
+                    'document_title' => (string) ($row['document_title'] ?? ''),
+                    'heading_path' => $chunkMetadata['heading_path'] ?? null,
+                    'page' => $chunkMetadata['page'] ?? null,
+                    'document_key' => $chunkMetadata['document_key'] ?? null,
+                    'section_key' => $chunkMetadata['section_key'] ?? null,
+                    'segment_ordinal' => $chunkMetadata['segment_ordinal'] ?? null,
                 ];
             }
         }
@@ -507,7 +681,7 @@ final class RagRetrievalService
             }
             $metadata = json_decode((string) ($row['metadata'] ?? '{}'), true);
             if (is_array($metadata)) {
-                foreach (['heading_path', 'page', 'document_key', 'parent_chunk_id', 'segment_ordinal'] as $field) {
+                foreach (['heading_path', 'page', 'document_key', 'section_key', 'segment_ordinal'] as $field) {
                     if (isset($metadata[$field]) && $metadata[$field] !== '' && $metadata[$field] !== []) {
                         $hit[$field] = $metadata[$field];
                     }
@@ -695,11 +869,21 @@ final class RagRetrievalService
     /**
      * @return array{original_query: string, expanded_query: string, terms: list<string>, rewrite_terms: list<string>}
      */
-    private function queryProfile(string $query): array
+    /**
+     * @param array<string, list<string>> $synonyms knowledge-base synonym dictionary (RAG-034)
+     */
+    private function queryProfile(string $query, array $synonyms = []): array
     {
         $analysis = $this->analyzer()->analyze($query);
         $normalized = $analysis['normalized'];
         $rewriteTerms = $analysis['rewrite_terms'];
+        foreach ($synonyms as $term => $alternatives) {
+            if ($term !== '' && str_contains($normalized, $term)) {
+                foreach ($alternatives as $alternative) {
+                    $rewriteTerms[] = $alternative;
+                }
+            }
+        }
         $expanded = $normalized;
         $rewriteMap = [
             'overheat' => ['thermal', 'overload'],
@@ -722,7 +906,12 @@ final class RagRetrievalService
         if ($rewriteTerms !== []) {
             $expanded .= ' ' . implode(' ', $rewriteTerms);
         }
-        $terms = array_values(array_unique([...$analysis['terms'], ...$rewriteTerms]));
+        $rewriteParts = [];
+        foreach ($rewriteTerms as $rewriteTerm) {
+            // A multi-character CJK rewrite ("远程接入") must also match through its bigrams.
+            array_push($rewriteParts, ...$this->terms((string) $rewriteTerm));
+        }
+        $terms = array_values(array_unique([...$analysis['terms'], ...$rewriteTerms, ...$rewriteParts]));
 
         return [
             'original_query' => $query,

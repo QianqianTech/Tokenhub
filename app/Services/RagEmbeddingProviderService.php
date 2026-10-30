@@ -55,11 +55,52 @@ final class RagEmbeddingProviderService
     }
 
     /**
-     * @param array<string, mixed> $input
+     * Embeds several texts with as few provider calls as possible (OpenAI
+     * compatible /v1/embeddings accepts an input array). Splits by the vector
+     * config's batch_size. Returns vectors in input order.
+     *
+     * @param list<string> $texts
      * @param array<string, mixed> $config
-     * @return list<float>
+     * @return list<list<float>>
      */
-    private function providerEmbedding(array $input, array $config): array
+    public function embedMany(string $modality, array $texts, array $config): array
+    {
+        if ($texts === []) {
+            return [];
+        }
+        if (is_callable($this->embedder) || $modality !== 'text' || empty($config['provider_id']) || empty($config['model_id'])) {
+            return array_map(fn (string $text): array => $this->embed($modality, ['text' => $text, 'modality' => $modality], $config), $texts);
+        }
+        $batchSize = max(1, min(256, (int) ($config['batch_size'] ?? 32)));
+        $vectors = [];
+        foreach (array_chunk($texts, $batchSize) as $batch) {
+            array_push($vectors, ...$this->providerEmbeddings($batch, $config));
+        }
+
+        return $vectors;
+    }
+
+    /**
+     * @param list<string> $texts
+     * @param array<string, mixed> $config
+     * @return list<list<float>>
+     */
+    private function providerEmbeddings(array $texts, array $config): array
+    {
+        $route = $this->route($config);
+        $payload = ['model' => (string) (($route['external_name'] ?? '') ?: ($route['name'] ?? $config['model_name'] ?? '')), 'input' => array_values(array_map(fn (string $text): string => $this->withInstruction($text, 'document', $config), $texts))];
+        $response = $this->send($route, $payload);
+        $data = $response['json']['data'] ?? null;
+        if (!is_array($data) || count($data) !== count($texts)) {
+            throw new RuntimeException('RAG_EMBEDDING_INVALID_RESPONSE');
+        }
+        usort($data, static fn (array $a, array $b): int => (int) ($a['index'] ?? 0) <=> (int) ($b['index'] ?? 0));
+
+        return array_map(fn (array $item): array => $this->vector($item['embedding'] ?? null, $config), $data);
+    }
+
+    /** @param array<string, mixed> $config @return array<string, mixed> */
+    private function route(array $config): array
     {
         $route = App::db()->first(
             'SELECT m.*, m.id AS model_id, p.id AS provider_id, p.protocol, p.base_url, p.encrypted_secret, p.default_headers, p.timeout_ms, p.retry_count
@@ -73,10 +114,16 @@ final class RagEmbeddingProviderService
             throw new RuntimeException('RAG_MODEL_NOT_CONFIGURED');
         }
 
-        $payload = [
-            'model' => (string) (($route['external_name'] ?? '') ?: ($route['name'] ?? $config['model_name'] ?? '')),
-            'input' => (string) ($input['text'] ?? ''),
-        ];
+        return $route;
+    }
+
+    /**
+     * @param array<string, mixed> $route
+     * @param array<string, mixed> $payload
+     * @return array<string, mixed>
+     */
+    private function send(array $route, array $payload): array
+    {
         $attemptLimit = max(1, (int) ($route['retry_count'] ?? 1));
         $response = ['ok' => false, 'error_code' => 'PROVIDER_ERROR'];
         $started = microtime(true);
@@ -98,7 +145,15 @@ final class RagEmbeddingProviderService
             throw new RuntimeException((string) ($response['error_code'] ?? 'RAG_EMBEDDING_FAILED'));
         }
 
-        $vector = $response['json']['data'][0]['embedding'] ?? null;
+        return $response;
+    }
+
+    /**
+     * @param array<string, mixed> $config
+     * @return list<float>
+     */
+    private function vector(mixed $vector, array $config): array
+    {
         if (!is_array($vector) || $vector === []) {
             throw new RuntimeException('RAG_EMBEDDING_INVALID_RESPONSE');
         }
@@ -109,13 +164,46 @@ final class RagEmbeddingProviderService
             }
             $normalized[] = (float) $value;
         }
-
         $dimension = max(1, (int) ($config['dimension'] ?? count($normalized)));
         if (count($normalized) !== $dimension) {
             throw new RuntimeException('RAG_EMBEDDING_DIMENSION_MISMATCH');
         }
 
         return $normalized;
+    }
+
+    /**
+     * @param array<string, mixed> $input
+     * @param array<string, mixed> $config
+     * @return list<float>
+     */
+    private function providerEmbedding(array $input, array $config): array
+    {
+        $route = $this->route($config);
+        $payload = [
+            'model' => (string) (($route['external_name'] ?? '') ?: ($route['name'] ?? $config['model_name'] ?? '')),
+            'input' => $this->withInstruction((string) ($input['text'] ?? ''), (string) ($input['purpose'] ?? 'document'), $config),
+        ];
+        $response = $this->send($route, $payload);
+
+        return $this->vector($response['json']['data'][0]['embedding'] ?? null, $config);
+    }
+
+    /**
+     * Some embedding models expect an instruction/prefix on queries (e5:
+     * "query: ", bge: "为这个句子生成表示以用于检索相关文章：", Qwen3-Embedding:
+     * "Instruct: ...\nQuery: "). Configured per vector config in config_json:
+     * {"query_prefix": "...", "document_prefix": "..."}.
+     *
+     * @param array<string, mixed> $config
+     */
+    private function withInstruction(string $text, string $purpose, array $config): string
+    {
+        $json = $config['config_json'] ?? null;
+        $settings = is_array($json) ? $json : (is_string($json) && $json !== '' ? (json_decode($json, true) ?: []) : []);
+        $prefix = (string) ($settings[$purpose === 'query' ? 'query_prefix' : 'document_prefix'] ?? '');
+
+        return $prefix === '' ? $text : $prefix . $text;
     }
 
     /**

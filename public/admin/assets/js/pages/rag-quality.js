@@ -13,9 +13,11 @@ export async function renderRagEvaluationPage(content) {
     el("h2", { text: "RAG 检索评估" }),
     statusMessage("正在加载 RAG 检索评估...")
   ]);
+  // RAG-041: answer-level evaluation through the judge model (RAG_JUDGE_MODEL_ID), sampled.
+  const judgeToggle = el("input", { type: "checkbox", name: "judge" });
   const run = async () => {
     try {
-      const result = await api("/admin-api/rag/evaluation-runs", { method: "POST", body: JSON.stringify({ top_k_values: [1, 5, 10, 20] }) });
+      const result = await api("/admin-api/rag/evaluation-runs", { method: "POST", body: JSON.stringify({ top_k_values: [1, 5, 10, 20], ...(judgeToggle.checked ? { judge: true } : {}) }) });
       await refresh();
     } catch (error) {
       host.replaceChildren(statusMessage(adminErrorMessage(error, "RAG 检索评估运行失败"), "error"));
@@ -31,11 +33,16 @@ export async function renderRagEvaluationPage(content) {
       const caseCount = Number(latest.case_count || 0);
       const failedCases = Number(latest.failed_cases || 0);
       const qualityStatus = caseCount > 0 && failedCases === caseCount ? "运行完成，质量未达标" : "运行完成";
+      const runMetrics = runMetadataMetrics(latest);
+      const answer = runMetrics.answer_evaluation || null;
+      const percent = (value) => (value === null || value === undefined ? "—" : `${value}%`);
+      const score = (value) => (value === null || value === undefined ? "—" : Number(value).toFixed(2));
       host.replaceChildren(...[
         el("header", { className: "table-toolbar" }, [
           el("h2", { text: "RAG 检索评估" }),
           el("div", { className: "toolbar-actions" }, [
             button("创建评估样本", () => ragNavigate("rag-quality", { tab: "rag-eval-cases" }), "secondary"),
+            el("label", { className: "rag-eval-judge-toggle", title: "用评审模型抽样评估答案的忠实度与引用正确率（需配置 RAG_JUDGE_MODEL_ID）" }, [judgeToggle, el("span", { text: " 答案级评测" })]),
             button("运行评估", run, "primary", { disabled: activeCases === 0 })
           ])
         ]),
@@ -47,8 +54,19 @@ export async function renderRagEvaluationPage(content) {
           ragMetricCard("Recall@20", latest.recall_at_20 || 0),
           ragMetricCard("MRR", latest.mrr || 0),
           ragMetricCard("Cases", latest.case_count || 0),
-          ragMetricCard("Failures", latest.failed_cases || 0, Number(latest.failed_cases || 0) > 0 ? "warning" : "")
-        ]),
+          ragMetricCard("Failures", latest.failed_cases || 0, Number(latest.failed_cases || 0) > 0 ? "warning" : ""),
+          runMetrics.ndcg_at_10 !== undefined ? ragMetricCard("nDCG@10", score(runMetrics.ndcg_at_10)) : null,
+          runMetrics.no_result_rate !== undefined ? ragMetricCard("无结果率", percent(runMetrics.no_result_rate), Number(runMetrics.no_result_rate) > 0 ? "warning" : "") : null,
+          runMetrics.low_confidence_rate !== undefined ? ragMetricCard("低置信率", percent(runMetrics.low_confidence_rate), Number(runMetrics.low_confidence_rate) > 0 ? "warning" : "") : null
+        ].filter(Boolean)),
+        answer ? el("div", { className: "rag-dashboard-cards rag-answer-evaluation" }, [
+          ragMetricCard("答案忠实度", score(answer.answer_faithfulness)),
+          ragMetricCard("答案相关性", score(answer.answer_relevance)),
+          ragMetricCard("引用正确率", score(answer.citation_accuracy)),
+          ragMetricCard("引用命中率", percent(answer.citation_hit_rate)),
+          ragMetricCard("评审样本", answer.judged_cases ?? 0),
+          ragMetricCard("评审失败", answer.judge_failures ?? 0, Number(answer.judge_failures || 0) > 0 ? "warning" : "")
+        ]) : null,
         renderDataDetails(data),
         ragSummaryTable("最近评估", data.latest_runs || [], ["run_id", "case_count", "recall_at_1", "recall_at_5", "recall_at_10", "recall_at_20", "mrr", "failed_cases", "created_at"]),
         renderRagEvaluationFailureCards(data.recent_failures || [], refresh)
@@ -59,6 +77,14 @@ export async function renderRagEvaluationPage(content) {
   };
   content.append(host);
   await refresh();
+}
+
+function runMetadataMetrics(run) {
+  let metadata = run?.metadata;
+  if (typeof metadata === "string") {
+    try { metadata = JSON.parse(metadata); } catch { metadata = null; }
+  }
+  return metadata && typeof metadata.metrics === "object" && metadata.metrics ? metadata.metrics : {};
 }
 
 function renderRagEvaluationFailureCards(failures, refresh) {
@@ -97,11 +123,12 @@ export async function renderRagEvaluationCasesPage(content, initialFilters = {})
     field({ name: "dataset_id", label: "评估数据集", type: "select", options: datasetOptions }, String(initialFilters.dataset_id || "")),
     field({ name: "query", label: "检索问题", type: "textarea" }, String(initialFilters.query || "")),
     field({ name: "expected_chunk_ids", label: "期望命中的内容片段", type: "textarea" }, initialExpected),
+    field({ name: "expected_answer", label: "参考答案（可选，供答案级评测）", type: "textarea" }, ""),
     field({ name: "status", label: "创建后状态", type: "select", options: [["draft", "草稿"], ["active", "启用"]] }, "draft"),
     el("p", { className: "field-hint", text: "从检索试验台加入样本会自动填写期望片段；手工创建时多个片段以逗号分隔。" }),
     el("div", { className: "toolbar-actions" }, [
       button("创建评估样本", async () => {
-        const values = readFields(form, [{ name: "dataset_id" }, { name: "query" }, { name: "expected_chunk_ids" }, { name: "status" }]);
+        const values = readFields(form, [{ name: "dataset_id" }, { name: "query" }, { name: "expected_chunk_ids" }, { name: "expected_answer" }, { name: "status" }]);
         try {
           const result = await api("/admin-api/rag/eval-cases", {
             method: "POST",

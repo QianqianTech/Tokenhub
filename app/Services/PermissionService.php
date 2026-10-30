@@ -204,7 +204,10 @@ final class PermissionService
         return match ($table) {
             'departments' => [" WHERE id IN ({$placeholders}) ", $departmentIds],
             'users', 'api_keys', 'usage_records', 'usage_contents', 'multimodal_tasks', 'media_assets',
-            'rag_knowledge_bases', 'rag_uploads', 'rag_retrieval_logs', 'rag_answer_feedback' => [" WHERE department_id IN ({$placeholders}) ", $departmentIds],
+            'rag_knowledge_bases', 'rag_uploads', 'rag_answer_feedback' => [" WHERE department_id IN ({$placeholders}) ", $departmentIds],
+            // Retrieval logs are visible to the caller's department and to the department that owns a
+            // searched knowledge base, so knowledge-base owners can review how their content is used (RAG-016).
+            'rag_retrieval_logs' => [" WHERE (department_id IN ({$placeholders}) OR EXISTS (SELECT 1 FROM rag_knowledge_bases scope_kb WHERE scope_kb.department_id IN ({$placeholders}) AND JSON_CONTAINS(kb_ids, JSON_QUOTE(scope_kb.kb_id)))) ", [...$departmentIds, ...$departmentIds]],
             'api_key_model_quotas' => [" WHERE api_key_id IN (SELECT id FROM api_keys WHERE department_id IN ({$placeholders})) ", $departmentIds],
             'rag_knowledge_base_bindings', 'rag_vector_datasets', 'rag_documents', 'rag_chunks', 'rag_image_assets', 'rag_eval_cases',
             'rag_embedding_jobs', 'rag_vector_records', 'rag_retention_policies' => [" WHERE kb_id IN (SELECT id FROM rag_knowledge_bases WHERE department_id IN ({$placeholders})) ", $departmentIds],

@@ -214,7 +214,7 @@ services:
 
   qdrant:
     # Pin to the version your Qdrant storage was created with, e.g. QDRANT_IMAGE=qdrant/qdrant:v1.13.6.
-    image: ${QDRANT_IMAGE:-qdrant/qdrant:latest}
+    image: ${QDRANT_IMAGE:-qdrant/qdrant:v1.15.0}
     container_name: tokenhub-qdrant
     ports:
       - "127.0.0.1:${QDRANT_FORWARD_PORT:-63330}:6333"

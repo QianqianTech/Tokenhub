@@ -1,0 +1,4 @@
+# Optional OCR for scanned PDFs and images (RAG-021). Installed when the image is
+# built with --build-arg RAG_WORKER_OCR=1 (adds ~200 MB: onnxruntime + models).
+pypdfium2==5.13.0
+rapidocr_onnxruntime>=1.3,<2

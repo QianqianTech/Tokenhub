@@ -413,6 +413,13 @@ final class CrudService
                 throw $exception;
             }
         }
+        if ($table === 'rag_knowledge_bases' && isset($data['chunking_profile'])) {
+            // RAG-022: reject unknown redaction types up front instead of at upload time.
+            $profile = is_array($data['chunking_profile']) ? $data['chunking_profile'] : json_decode((string) $data['chunking_profile'], true);
+            if (is_array($profile) && array_key_exists('redaction', $profile)) {
+                RagRedactionService::normalizeTypes($profile['redaction']);
+            }
+        }
         if ($table === 'users' && isset($data['password'])) {
             $data['password_hash'] = password_hash((string) $data['password'], PASSWORD_DEFAULT);
             unset($data['password']);

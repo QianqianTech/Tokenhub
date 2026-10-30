@@ -199,7 +199,12 @@ const specialGet = {
   },
   "/admin-api/rag/summary": () => ({}),
   "/admin-api/rag/vectorization-metrics": () => ({}),
-  "/admin-api/rag/evaluation-summary": () => ({}),
+  "/admin-api/rag/evaluation-summary": () => ({
+    source: "rag_eval_runs", total_cases: 3, active_cases: 3, draft_cases: 0,
+    latest_run: { run_id: "rer_1", case_count: 3, recall_at_5: 66.67, recall_at_10: 66.67, recall_at_20: 66.67, mrr: 0.5, failed_cases: 1, status: "succeeded",
+      metadata: JSON.stringify({ metrics: { ndcg_at_10: 0.5436, no_result_rate: 33.33, low_confidence_rate: 33.33, answer_evaluation: { judged_cases: 1, judge_failures: 1, answer_faithfulness: 0.9, answer_relevance: 1, citation_accuracy: 1, citation_hit_rate: 100 } } }) },
+    latest_runs: [], recent_failures: []
+  }),
   "/admin-api/rag/import-templates": () => [],
   "/admin-api/rag/eval-cases": () => ({ items: [], total: 0 }),
   "/admin-api/content-archive": (query) => [1, 2, 3]
@@ -216,6 +221,25 @@ function takeFault(method, path) {
   const fault = faults.find((item) => (item.method === "*" || item.method === method) && path === item.path && item.times !== 0);
   if (fault && fault.times > 0) fault.times -= 1;
   return fault || null;
+}
+
+let ragReconcile = null;
+const ragAcl = new Map();
+function ragAclState(id) {
+  if (!ragAcl.has(id)) {
+    ragAcl.set(id, {
+      knowledge_base: { id, kb_id: "kb_rd", name: "研发库", department_id: 2, department_name: "研发部", visibility: "private", can_manage: true },
+      grants: [
+        { id: 1, subject_type: "department", subject_id: 2, subject_name: "研发部", permission: "write", include_descendants: true, is_default: false, expires_at: null, editable: true },
+        { id: 2, subject_type: "department", subject_id: 5, subject_name: "财务部", permission: "read", include_descendants: true, is_default: false, expires_at: null, editable: false }
+      ],
+      datasets: [
+        { id: 11, dataset_id: "ds_a", name: "公开资料", acl_mode: "inherit", grants: [] },
+        { id: 12, dataset_id: "ds_b", name: "核心设计", acl_mode: "custom", grants: [{ subject_type: "user", subject_id: 1, permission: "read", priority: 1, is_default: true, editable: true }] }
+      ]
+    });
+  }
+  return ragAcl.get(id);
 }
 
 async function handleApi(req, res, url) {
@@ -274,6 +298,52 @@ async function handleApi(req, res, url) {
     });
     return ok(res, { type, page, page_size: 20, total, items });
   }
+
+  const kbUpload = path.match(/^\/admin-api\/rag\/knowledge-bases\/([^/]+)\/uploads$/);
+  if (kbUpload && method === "POST") return ok(res, { upload_id: "upl_new", original_filename: req.__body?.filename, status: "waiting_confirm", stage: "waiting_confirm", review_status: "not_required", vectorize_status: "not_started", progress: 30 }, 201);
+  // RAG access control (RAG-012/013) and index health (RAG-043).
+  const kbAcl = path.match(/^\/admin-api\/rag\/knowledge-bases\/(\d+)\/acl$/);
+  if (kbAcl && method === "GET") return ok(res, ragAclState(Number(kbAcl[1])));
+  if (kbAcl && method === "PUT") {
+    const body = req.__body || {};
+    const state = ragAclState(Number(kbAcl[1]));
+    if (body.visibility) state.knowledge_base.visibility = body.visibility;
+    state.grants = [...state.grants.filter((g) => !g.editable), ...(body.grants || []).map((g) => ({ ...g, editable: true, subject_name: `#${g.subject_id}` }))];
+    return ok(res, state);
+  }
+  const dsAcl = path.match(/^\/admin-api\/rag\/datasets\/(\d+)\/acl$/);
+  if (dsAcl && method === "PUT") {
+    const body = req.__body || {};
+    const dataset = ragAclState(1).datasets.find((d) => String(d.id) === dsAcl[1]);
+    if (!dataset) return fail(res, 404, "ADMIN_NOT_FOUND", "dataset not found");
+    Object.assign(dataset, { acl_mode: body.acl_mode || dataset.acl_mode, grants: (body.grants || []).map((g) => ({ ...g, editable: true })) });
+    return ok(res, dataset);
+  }
+  if (path === "/admin-api/rag/access-check" && method === "GET") {
+    return ok(res, {
+      subject: Object.fromEntries(url.searchParams.entries()),
+      restricted: url.searchParams.has("api_key_id"),
+      department_chain: [{ id: 1, name: "总部" }, { id: 2, name: "研发部" }],
+      knowledge_bases: [{ id: 1, kb_id: "kb_rd", name: "研发库", visibility: "department", permission: "read", datasets: [{ id: 11, dataset_id: "ds_a", name: "公开资料", permission: "read" }] }]
+    });
+  }
+  if (path === "/admin-api/rag/index-health" && method === "GET") {
+    return ok(res, {
+      totals: { datasets: 2, active_chunks: 120, coverage_percent: 97.5, stale_vectors: 3, failed_jobs: 1, lexical_pending: 1 },
+      unbound_vector_configs: 0,
+      last_reconcile: ragReconcile,
+      datasets: [
+        { id: 11, kb_name: "研发库", name: "公开资料", vector_store: "qdrant", embedding_model: "bge-m3", model_bound: true, active_chunks: 80, indexed_chunks: 80, coverage_percent: 100, stale_vectors: 0, failed_jobs: 0, active_jobs: 0, lexical_index_status: "ready", last_indexed_at: timestamp(10) },
+        { id: 12, kb_name: "研发库", name: "核心设计", vector_store: "qdrant", embedding_model: "bge-m3", model_bound: true, active_chunks: 40, indexed_chunks: 37, coverage_percent: 92.5, stale_vectors: 3, failed_jobs: 1, active_jobs: 0, lexical_index_status: "none", last_indexed_at: timestamp(30) }
+      ]
+    });
+  }
+  if (path === "/admin-api/rag/index-reconcile" && method === "POST") {
+    ragReconcile = { finished_at: timestamp(), orphans: 2, missing: 3 };
+    return ok(res, { orphans: 2, missing: 3, fixed: Boolean(req.__body?.fix), collections: [{ collection: "col_text", orphans: 2, missing: 3 }] });
+  }
+  const backfillLexical = path.match(/^\/admin-api\/rag\/datasets\/(\d+)\/backfill-lexical$/);
+  if (backfillLexical && method === "POST") return ok(res, { dataset_id: Number(backfillLexical[1]), chunks: 40, points: 40 });
 
   const lookup = path.match(/^\/admin-api\/lookups\/([a-z-]+)$/);
   if (lookup && method === "GET") {

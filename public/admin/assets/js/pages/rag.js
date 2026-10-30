@@ -12,6 +12,7 @@ export const RAG_CATEGORY_TABS = {
     ["rag-dashboard", "构建总览"],
     ["rag-knowledge-bases", "知识库"],
     ["rag-vector-datasets", "数据集"],
+    ["rag-access", "知识集权限"],
     ["rag-import-task", "导入任务"],
     ["rag-uploads", "任务记录"]
   ],
@@ -22,6 +23,7 @@ export const RAG_CATEGORY_TABS = {
     ["rag-correction-tasks", "纠偏任务"]
   ],
   "rag-operations": [
+    ["rag-index-health", "索引健康"],
     ["rag-vectorization-metrics", "向量化健康"],
     ["rag-embedding-jobs", "向量任务"],
     ["rag-retrieval-logs", "检索记录"],
@@ -353,6 +355,16 @@ async function renderRagTabContent(panel, resourceKey, filters = {}) {
   }
   if (resourceKey === "rag-image-preview") {
     await renderRagImagePreviewPage(panel, filters);
+    return;
+  }
+  if (resourceKey === "rag-access") {
+    const { renderRagAccessPage } = await import("./rag-access.js");
+    await renderRagAccessPage(panel, filters);
+    return;
+  }
+  if (resourceKey === "rag-index-health") {
+    const { renderRagIndexHealthPage } = await import("./rag-index-health.js");
+    await renderRagIndexHealthPage(panel, filters);
     return;
   }
   await renderGenericResourcePage(panel, resourceKey, filters, { pageHead: false });

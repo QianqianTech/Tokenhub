@@ -26,10 +26,16 @@ try {
     $db->execute('INSERT INTO rag_dataset_bindings (dataset_id, subject_type, subject_id, permission) VALUES (?, "user", ?, "write")', [$datasetPk, $apiKey['user_id']]);
 
     $permission = new RagPermissionService();
+    // Restriction mode (D-RAG-1): a key with explicit grants sees only its own grants.
     $knowledgeBases = $permission->listKnowledgeBases($apiKey);
-    assert_same('admin', $knowledgeBases['knowledge_bases'][0]['permission'] ?? null, 'Knowledge-base list permission must use explicit read/write/admin ranking across bindings.');
+    assert_same('read', $knowledgeBases['knowledge_bases'][0]['permission'] ?? null, 'A key with explicit grants is limited to them, not raised by its user\'s admin grant.');
     $datasets = $permission->listDatasets($apiKey, $kbId);
-    assert_same('write', $datasets['datasets'][0]['permission'] ?? null, 'Dataset list permission must use explicit read/write/admin ranking across bindings.');
+    assert_same('read', $datasets['datasets'][0]['permission'] ?? null, 'Dataset permission of a restricted key comes from the key grant only.');
+    // Without key grants the highest of the applicable grants wins (explicit read < write < admin ranking);
+    // an inherit-mode dataset takes the knowledge-base level when it is higher than its own grant.
+    $userCaller = ['id' => 0, 'user_id' => $apiKey['user_id']];
+    assert_same('admin', $permission->listKnowledgeBases($userCaller)['knowledge_bases'][0]['permission'] ?? null, 'Knowledge-base list permission must use explicit read/write/admin ranking across bindings.');
+    assert_same('admin', $permission->listDatasets($userCaller, $kbId)['datasets'][0]['permission'] ?? null, 'Dataset list permission must use explicit read/write/admin ranking across bindings.');
 
     $source = file_get_contents(__DIR__ . '/../../app/Services/RagPermissionService.php');
     assert_true(is_string($source), 'Permission service source should be readable for lifecycle query contracts.');

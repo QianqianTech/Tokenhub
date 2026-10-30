@@ -7,4 +7,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY python-rag-worker/tokenhub_rag_worker ./tokenhub_rag_worker
 
+RUN chmod -R a+rX /worker/tokenhub_rag_worker
+
 CMD ["python", "-m", "tokenhub_rag_worker"]

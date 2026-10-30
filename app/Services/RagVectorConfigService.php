@@ -31,7 +31,7 @@ final class RagVectorConfigService
         $store = (string) ($config['vector_store'] ?? App::config()->get('rag.vector_store.primary', 'qdrant'));
         if ($store === 'qdrant') {
             $factory = is_callable($this->qdrantFactory) ? $this->qdrantFactory : self::$defaultQdrantFactory;
-            $qdrant = is_callable($factory) ? $factory() : new QdrantVectorStore();
+            $qdrant = (is_callable($factory) ? $factory() : new QdrantVectorStore())->forConfig($config);
             if ($qdrant->healthy()) {
                 return $qdrant;
             }

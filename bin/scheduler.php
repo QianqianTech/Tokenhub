@@ -25,6 +25,11 @@ const TOKENHUB_SCHEDULE = [
     'cleanup.media' => 600,
     'cleanup.external-events' => 3600,
     'cleanup.mcp-oauth' => 3600,
+    // RAG retention policies, document versions and vector-store reconciliation (RAG-007, RAG-025, RAG-030).
+    'rag.cleanup' => 3600,
+    // Supersedes older document versions once the Python worker finished indexing the new one (RAG-025).
+    'rag.publish-versions' => 60,
+    'rag.reconcile' => 86400,
 ];
 
 $config = new Config($basePath . '/config', $basePath . '/.env');

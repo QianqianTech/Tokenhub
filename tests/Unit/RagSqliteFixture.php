@@ -18,6 +18,12 @@ final class RagSqlitePdo extends PDO
     {
         $query = str_replace('INSERT IGNORE', 'INSERT OR IGNORE', $query);
         $query = preg_replace('/\bFOR UPDATE SKIP LOCKED\b/', '', $query) ?? $query;
+        if (preg_match('/ON DUPLICATE KEY UPDATE (.+)$/s', $query, $m) === 1) {
+            $set = preg_replace('/VALUES\((\w+)\)/', 'excluded.$1', $m[1]) ?? $m[1];
+            $query = substr($query, 0, -strlen($m[0])) . 'ON CONFLICT DO UPDATE SET ' . $set;
+        }
+        $query = preg_replace('/TIMESTAMPDIFF\(SECOND, (\w+(?:\.\w+)?), NOW\(\)\)/', "(strftime('%s','now') - strftime('%s', \$1))", $query) ?? $query;
+        $query = preg_replace('/TIMESTAMPADD\(SECOND, \?, NOW\(\)\)/', "datetime('now', '+' || ? || ' seconds')", $query) ?? $query;
         if (preg_match('/^SHOW COLUMNS FROM (\w+)$/', trim($query), $m) === 1) {
             $query = "SELECT name AS Field FROM pragma_table_info('{$m[1]}')";
         }
@@ -37,6 +43,10 @@ function rag_sqlite_fixture(): RagSqlitePdo
     $pdo->sqliteCreateFunction('NOW', static fn (): string => gmdate('Y-m-d H:i:s'));
     $pdo->sqliteCreateFunction('GREATEST', static fn (...$values) => max($values));
     $pdo->sqliteCreateFunction('IF', static fn ($condition, $then, $else) => $condition ? $then : $else);
+    $pdo->sqliteCreateFunction('GET_LOCK', static fn ($name, $timeout) => 1);
+    $pdo->sqliteCreateFunction('RELEASE_LOCK', static fn ($name) => 1);
+    $pdo->sqliteCreateFunction('JSON_CONTAINS', static fn ($haystack, $needle) => in_array(json_decode((string) $needle, true), json_decode((string) $haystack, true) ?: [], true) ? 1 : 0);
+    $pdo->sqliteCreateFunction('JSON_QUOTE', static fn ($value) => json_encode((string) $value, JSON_UNESCAPED_UNICODE));
     foreach ([
         'CREATE TABLE departments (id INTEGER PRIMARY KEY, parent_id INT, name TEXT, path TEXT, level INT DEFAULT 0, status TEXT DEFAULT "active", created_at TEXT, updated_at TEXT)',
         'CREATE TABLE users (id INTEGER PRIMARY KEY, department_id INT, username TEXT, password_hash TEXT, role TEXT DEFAULT "user", status TEXT DEFAULT "active", managed_department_ids TEXT, admin_scope TEXT, admin_type TEXT, admin_permission_mode TEXT, created_at TEXT, updated_at TEXT)',
@@ -45,7 +55,7 @@ function rag_sqlite_fixture(): RagSqlitePdo
         'CREATE TABLE rag_knowledge_bases (id INTEGER PRIMARY KEY, kb_id TEXT UNIQUE, name TEXT, description TEXT, owner_user_id INT, department_id INT, visibility TEXT DEFAULT "private", status TEXT DEFAULT "active", default_text_vector_config_id INT, default_image_vector_config_id INT, default_multimodal_vector_config_id INT, chunking_profile TEXT, retrieval_profile TEXT, created_at TEXT DEFAULT CURRENT_TIMESTAMP, updated_at TEXT DEFAULT CURRENT_TIMESTAMP, deleted_at TEXT)',
         'CREATE TABLE rag_knowledge_base_bindings (id INTEGER PRIMARY KEY, kb_id INT, subject_type TEXT, subject_id INT, permission TEXT DEFAULT "read", is_default INT DEFAULT 0, include_descendants INT DEFAULT 1, expires_at TEXT, granted_by_user_id INT, created_at TEXT DEFAULT CURRENT_TIMESTAMP, updated_at TEXT, UNIQUE (kb_id, subject_type, subject_id))',
         'CREATE TABLE rag_vector_configs (id INTEGER PRIMARY KEY, config_id TEXT, name TEXT, modality TEXT, provider_id INT, model_id INT, model_name TEXT, dimension INT DEFAULT 3, distance_metric TEXT DEFAULT "cosine", vector_store TEXT DEFAULT "mysql_fallback", collection_name TEXT, batch_size INT DEFAULT 32, max_input_tokens INT, image_max_pixels INT, normalize_vector INT DEFAULT 1, enabled INT DEFAULT 1, config_json TEXT, created_at TEXT, updated_at TEXT)',
-        'CREATE TABLE rag_vector_datasets (id INTEGER PRIMARY KEY, dataset_id TEXT UNIQUE, kb_id INT, name TEXT, description TEXT, dataset_type TEXT DEFAULT "mixed", text_vector_config_id INT, image_vector_config_id INT, multimodal_vector_config_id INT, collection_prefix TEXT DEFAULT "", status TEXT DEFAULT "active", acl_mode TEXT DEFAULT "inherit", chunk_count INT DEFAULT 0, vector_count INT DEFAULT 0, last_indexed_at TEXT, retrieval_profile TEXT, created_at TEXT DEFAULT CURRENT_TIMESTAMP, updated_at TEXT DEFAULT CURRENT_TIMESTAMP, deleted_at TEXT)',
+        'CREATE TABLE rag_vector_datasets (id INTEGER PRIMARY KEY, dataset_id TEXT UNIQUE, kb_id INT, name TEXT, description TEXT, dataset_type TEXT DEFAULT "mixed", text_vector_config_id INT, image_vector_config_id INT, multimodal_vector_config_id INT, collection_prefix TEXT DEFAULT "", status TEXT DEFAULT "active", acl_mode TEXT DEFAULT "inherit", lexical_index_status TEXT DEFAULT "ready", chunk_count INT DEFAULT 0, vector_count INT DEFAULT 0, last_indexed_at TEXT, retrieval_profile TEXT, created_at TEXT DEFAULT CURRENT_TIMESTAMP, updated_at TEXT DEFAULT CURRENT_TIMESTAMP, deleted_at TEXT)',
         'CREATE TABLE rag_dataset_bindings (id INTEGER PRIMARY KEY, dataset_id INT, subject_type TEXT, subject_id INT, permission TEXT DEFAULT "read", is_default INT DEFAULT 0, priority INT DEFAULT 100, include_descendants INT DEFAULT 1, expires_at TEXT, granted_by_user_id INT, created_at TEXT DEFAULT CURRENT_TIMESTAMP, updated_at TEXT, UNIQUE (dataset_id, subject_type, subject_id))',
         'CREATE TABLE rag_uploads (id INTEGER PRIMARY KEY, upload_id TEXT UNIQUE, kb_id INT, dataset_id INT, owner_user_id INT, department_id INT, api_key_id INT, device_id TEXT, source_type TEXT DEFAULT "api", content_type TEXT DEFAULT "text", original_filename TEXT, mime_type TEXT, size_bytes INT DEFAULT 0, sha256 TEXT DEFAULT "", file_hash TEXT DEFAULT "", storage_path TEXT, metadata TEXT, preview_status TEXT DEFAULT "pending", vectorize_status TEXT DEFAULT "not_started", status TEXT DEFAULT "uploaded", confirm_required INT DEFAULT 1, review_status TEXT DEFAULT "not_required", confirmed_by_user_id INT, confirmed_by_api_key_id INT, confirmed_at TEXT, total_items INT DEFAULT 0, text_items INT DEFAULT 0, image_items INT DEFAULT 0, processed_items INT DEFAULT 0, progress_percent REAL DEFAULT 0, progress REAL DEFAULT 0, current_stage TEXT, stage TEXT, error_code TEXT, error_message TEXT, created_at TEXT DEFAULT CURRENT_TIMESTAMP, updated_at TEXT DEFAULT CURRENT_TIMESTAMP)',
         'CREATE TABLE rag_upload_preview_items (id INTEGER PRIMARY KEY, preview_item_id TEXT UNIQUE, upload_id INT, kb_id INT, dataset_id INT, item_type TEXT, title TEXT, content TEXT, question TEXT, answer TEXT, image_asset_id INT, purpose TEXT, description TEXT, detailed_description TEXT, "row_number" INT, sheet_name TEXT, validation_status TEXT DEFAULT "valid", validation_errors TEXT, metadata TEXT, created_at TEXT DEFAULT CURRENT_TIMESTAMP)',
@@ -58,8 +68,11 @@ function rag_sqlite_fixture(): RagSqlitePdo
         'CREATE TABLE rag_correction_tasks (id INTEGER PRIMARY KEY, correction_id TEXT, task_id TEXT, feedback_id TEXT, retrieval_id TEXT, kb_ids TEXT, dataset_ids TEXT, kb_id INT, dataset_id INT, issue_type TEXT, source_type TEXT, action TEXT, target_document_id INT, target_chunk_id INT, replacement_upload_id INT, status TEXT DEFAULT "pending", priority INT DEFAULT 50, reason TEXT, details TEXT, created_by_user_id INT, created_at TEXT DEFAULT CURRENT_TIMESTAMP, completed_at TEXT)',
         'CREATE TABLE rag_retention_policies (id INTEGER PRIMARY KEY, policy_id TEXT, kb_id INT, dataset_id INT, name TEXT, expires_after_days INT, inactive_after_days INT, action_on_expiry TEXT DEFAULT "mark_expired", require_approval INT DEFAULT 1, enabled INT DEFAULT 1, created_at TEXT, updated_at TEXT)',
         'CREATE TABLE rag_eval_cases (id INTEGER PRIMARY KEY, case_id TEXT, kb_id INT, dataset_id INT, query TEXT, query_modality TEXT DEFAULT "text", expected_chunk_ids TEXT, status TEXT DEFAULT "draft", source_feedback_id TEXT, metadata TEXT, created_at TEXT, updated_at TEXT)',
+        'CREATE TABLE rag_eval_runs (id INTEGER PRIMARY KEY, run_id TEXT, dataset_ids TEXT, top_k_values TEXT, case_count INT DEFAULT 0, recall_at_1 REAL DEFAULT 0, recall_at_5 REAL DEFAULT 0, recall_at_10 REAL DEFAULT 0, recall_at_20 REAL DEFAULT 0, mrr REAL DEFAULT 0, failed_cases INT DEFAULT 0, status TEXT DEFAULT "running", latency_ms INT DEFAULT 0, metadata TEXT, created_at TEXT DEFAULT CURRENT_TIMESTAMP, completed_at TEXT)',
+        'CREATE TABLE rag_eval_results (id INTEGER PRIMARY KEY, run_id INT, case_id INT, query TEXT, expected_chunk_ids TEXT, hit_rank INT, passed INT DEFAULT 0, sources TEXT, judge TEXT, created_at TEXT DEFAULT CURRENT_TIMESTAMP)',
         'CREATE TABLE models (id INTEGER PRIMARY KEY, provider_id INT, name TEXT, external_name TEXT, capability TEXT, status TEXT DEFAULT "active")',
         'CREATE TABLE providers (id INTEGER PRIMARY KEY, name TEXT, protocol TEXT, base_url TEXT, encrypted_secret TEXT, default_headers TEXT, timeout_ms INT, retry_count INT DEFAULT 1, status TEXT DEFAULT "active")',
+        'CREATE TABLE system_settings (id INTEGER PRIMARY KEY, setting_key TEXT UNIQUE, setting_value TEXT, updated_at TEXT)',
     ] as $ddl) {
         $pdo->exec($ddl);
     }
@@ -102,6 +115,9 @@ final class RagFakeQdrant
         $path = (string) parse_url($path, PHP_URL_PATH);
         if ($path === '/healthz') {
             return $this->ok(['title' => 'fake']);
+        }
+        if ($method === 'GET' && $path === '/aliases') {
+            return $this->ok(['aliases' => array_map(static fn (string $alias, string $collection): array => ['alias_name' => $alias, 'collection_name' => $collection], array_keys($this->aliases), array_values($this->aliases))]);
         }
         if ($method === 'POST' && $path === '/collections/aliases') {
             foreach ($body['actions'] ?? [] as $action) {
@@ -151,10 +167,17 @@ final class RagFakeQdrant
             foreach ($body['points'] ?? [] as $id) {
                 unset($collection['points'][(string) $id]);
             }
+            if (isset($body['filter'])) {
+                foreach ($collection['points'] as $id => $point) {
+                    if ($this->matches($point['payload'] ?? [], $body['filter']['must'] ?? [])) {
+                        unset($collection['points'][$id]);
+                    }
+                }
+            }
             return $this->ok(['status' => 'completed']);
         }
         if ($rest === '/points/scroll') {
-            $points = array_values($collection['points']);
+            $points = array_values(array_filter($collection['points'], fn (array $point): bool => $this->matches($point['payload'] ?? [], $body['filter']['must'] ?? [])));
             $offset = (int) ($body['offset'] ?? 0);
             $limit = (int) ($body['limit'] ?? 100);
             $page = array_slice($points, $offset, $limit);

@@ -145,7 +145,7 @@ class Database:
                     SUM(status IN ('failed','cancelled')) AS failed_jobs,
                     SUM(status IN ('queued','running','retrying')) AS active_jobs
                 FROM rag_embedding_jobs
-                WHERE upload_id = %s
+                WHERE upload_id = %s AND job_type <> 'parse'
                 """,
                 (upload_id,),
             )

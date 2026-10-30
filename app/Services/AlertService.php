@@ -244,7 +244,8 @@ final class AlertService
         $this->providerErrors();
         $this->queueBacklog();
         $this->configuredCertificateExpiry();
-        $this->resolveCleared(['provider_error_rate_high', 'queue_backlog_high', 'queue_metrics_unavailable', 'certificate_expiring']);
+        $this->ragIndexHealth();
+        $this->resolveCleared(['provider_error_rate_high', 'queue_backlog_high', 'queue_metrics_unavailable', 'certificate_expiring', 'rag_embedding_model_missing', 'rag_embedding_jobs_failed', 'rag_index_drift']);
         (new AlertNotifier())->deliverDue();
     }
 
@@ -301,6 +302,31 @@ final class AlertService
         } catch (\Throwable $throwable) {
             // Unknown is not "zero backlog": surface the monitoring gap itself.
             $this->record('queue_metrics_unavailable', 'warning', 'Queue length could not be read', ['queue' => $queue ?? null, 'error' => mb_substr($throwable->getMessage(), 0, 200)]);
+        }
+    }
+
+    /** RAG index alerts (RAG-043): unbound embedding models, failing jobs, vector-store drift. */
+    private function ragIndexHealth(): void
+    {
+        try {
+            $unbound = (int) (App::db()->first('SELECT COUNT(*) AS c FROM rag_vector_configs WHERE enabled = 1 AND (provider_id IS NULL OR model_id IS NULL)')['c'] ?? 0);
+            if ($unbound > 0) {
+                $this->record('rag_embedding_model_missing', 'warning', 'RAG vector configs without an embedding model', ['count' => $unbound]);
+            }
+            $failed = (int) (App::db()->first('SELECT COUNT(*) AS c FROM rag_embedding_jobs WHERE status = "failed" AND updated_at >= DATE_SUB(NOW(), INTERVAL 60 MINUTE)')['c'] ?? 0);
+            if ($failed > 0) {
+                $this->record('rag_embedding_jobs_failed', 'warning', 'RAG vectorization jobs failed in the last hour', ['count' => $failed]);
+            }
+            $report = storage_path('rag' . DIRECTORY_SEPARATOR . 'maintenance' . DIRECTORY_SEPARATOR . 'last-reconcile.json');
+            if (is_file($report)) {
+                $last = json_decode((string) file_get_contents($report), true);
+                $drift = (int) ($last['orphans'] ?? 0) + (int) ($last['missing'] ?? 0);
+                if (is_array($last) && empty($last['fix']) && $drift > 0) {
+                    $this->record('rag_index_drift', 'warning', 'RAG vector store differs from the database', ['orphans' => (int) ($last['orphans'] ?? 0), 'missing' => (int) ($last['missing'] ?? 0)]);
+                }
+            }
+        } catch (\Throwable) {
+            // RAG tables absent (fresh install before migrations): nothing to report.
         }
     }
 

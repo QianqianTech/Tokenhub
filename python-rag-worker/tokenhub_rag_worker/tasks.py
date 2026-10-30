@@ -14,10 +14,15 @@ from PIL import Image
 
 from .config import Config
 from .db import Database
+from .documents import OcrUnavailable, image_ocr_engine, pdf_to_markdown
+from .redaction import normalize_types, redact
 
 RAG_MODEL_NOT_CONFIGURED = "RAG_MODEL_NOT_CONFIGURED"
 RAG_IMAGE_EMBEDDING_FAILED = "RAG_IMAGE_EMBEDDING_FAILED"
 RAG_MULTIMODAL_EMBEDDING_FAILED = "RAG_MULTIMODAL_EMBEDDING_FAILED"
+RAG_OCR_UNAVAILABLE = "RAG_OCR_UNAVAILABLE"
+RAG_DOCUMENT_EMPTY = "RAG_DOCUMENT_EMPTY"
+CHUNKER_VERSION = "p2-v1"
 
 
 class TaskProcessor:
@@ -37,6 +42,8 @@ class TaskProcessor:
             self.process_ocr(job)
         elif job_type == "caption":
             self.process_caption(job)
+        elif job_type == "parse":
+            self.process_parse(job)
         else:
             raise RuntimeError(f"unsupported RAG job type: {job_type}")
 
@@ -63,25 +70,95 @@ class TaskProcessor:
         self.write_vector(job, chunk, vector, "multimodal")
 
     def process_ocr(self, job: dict[str, Any]) -> None:
+        # Real OCR only. The former placeholder wrote "image WxH" into ocr_text, which then
+        # polluted lexical and vector indexes (RAG-009).
         chunk = self.load_chunk(job)
         asset = self.load_image_asset(chunk)
+        engine = image_ocr_engine()
+        if engine is None:
+            raise RuntimeError(RAG_OCR_UNAVAILABLE + ": install rapidocr_onnxruntime in the RAG worker image")
         path = storage_path(self.config.storage_root, str(asset.get("storage_path") or ""))
-        ocr_text = ""
-        if os.path.isfile(path):
-            with Image.open(path) as image:
-                ocr_text = f"image {image.width}x{image.height}"
+        if not os.path.isfile(path):
+            raise RuntimeError("image file not found: " + path)
+        text = engine(path).strip()
         self.database.execute(
-            "UPDATE rag_image_assets SET ocr_text = COALESCE(NULLIF(ocr_text, ''), %s), updated_at = NOW() WHERE id = %s",
-            (ocr_text, asset["id"]),
+            "UPDATE rag_image_assets SET ocr_text = %s, updated_at = NOW() WHERE id = %s",
+            (text, asset["id"]),
         )
 
     def process_caption(self, job: dict[str, Any]) -> None:
-        chunk = self.load_chunk(job)
-        asset = self.load_image_asset(chunk)
-        caption = image_text(asset, chunk) or "image asset"
+        # Image descriptions come from a vision model through TokenHub (RagAiImageAnnotationService);
+        # the worker has no model and no longer invents a caption from the existing text.
+        raise RuntimeError("caption jobs are handled by the PHP vision annotation service")
+
+    def process_parse(self, job: dict[str, Any]) -> None:
+        upload = self.database.row("SELECT * FROM rag_uploads WHERE id = %s", (job.get("upload_id"),))
+        if not upload:
+            raise RuntimeError("rag_uploads row not found")
+        path = storage_path(self.config.storage_root, str(upload.get("storage_path") or ""))
+        if not os.path.isfile(path):
+            raise RuntimeError("upload file not found: " + path)
+        metadata = json.loads(upload.get("metadata") or "{}") if isinstance(upload.get("metadata"), str) else (upload.get("metadata") or {})
+        try:
+            parsed = pdf_to_markdown(path)
+        except OcrUnavailable as exc:
+            self.fail_upload(upload, RAG_OCR_UNAVAILABLE, str(exc))
+            raise RuntimeError(RAG_OCR_UNAVAILABLE + ": " + str(exc)) from exc
+        body = re.sub(r"<!--\s*page:\d+\s*-->", "", parsed["markdown"]).strip()
+        if not body:
+            self.fail_upload(upload, RAG_DOCUMENT_EMPTY, "No text could be extracted from the document")
+            raise RuntimeError(RAG_DOCUMENT_EMPTY)
+        filename = str(metadata.get("original_filename") or upload.get("original_filename") or "document")
+        title = os.path.splitext(os.path.basename(filename))[0] or "document"
+        redaction_types = normalize_types(metadata.get("redaction_types"))
+        markdown, redaction_counts = redact(parsed["markdown"], redaction_types)
+        title, title_counts = redact(title, redaction_types)
+        for kind, count in title_counts.items():
+            redaction_counts[kind] = redaction_counts.get(kind, 0) + count
+        item_metadata = {
+            "document_format": "pdf",
+            "parser": "python:pdf" + ("+ocr" if parsed["ocr_pages"] else ""),
+            "pages": parsed["pages"],
+            "ocr_pages": parsed["ocr_pages"],
+            "parse_warnings": parsed["warnings"],
+            "chunker": CHUNKER_VERSION,
+            "document_key": metadata.get("document_key"),
+            "chunking_profile": metadata.get("chunking_profile"),
+        }
+        if redaction_types:
+            item_metadata["redaction"] = {"types": redaction_types, "counts": redaction_counts}
         self.database.execute(
-            "UPDATE rag_image_assets SET short_description = COALESCE(NULLIF(short_description, ''), %s), updated_at = NOW() WHERE id = %s",
-            (caption[:1000], asset["id"]),
+            """
+            INSERT INTO rag_upload_preview_items (preview_item_id, upload_id, kb_id, dataset_id, item_type, title, content, validation_status, validation_errors, metadata)
+            VALUES (%s, %s, %s, %s, 'text', %s, %s, %s, %s, %s)
+            """,
+            (
+                "pvi_" + uuid.uuid4().hex[:24],
+                upload["id"],
+                upload["kb_id"],
+                upload.get("dataset_id"),
+                title[:250],
+                markdown,
+                "warning" if parsed["warnings"] else "valid",
+                json.dumps(parsed["warnings"], ensure_ascii=False),
+                json.dumps(item_metadata, ensure_ascii=False),
+            ),
+        )
+        waiting = "waiting_review" if str(upload.get("review_status") or "") == "pending" else "waiting_confirm"
+        self.database.execute(
+            """
+            UPDATE rag_uploads
+            SET preview_status = 'ready', status = %s, total_items = 1, text_items = 1, image_items = 0,
+                current_stage = %s, stage = %s, progress_percent = 30, progress = 30
+            WHERE id = %s AND preview_status = 'building'
+            """,
+            (waiting, waiting, waiting, upload["id"]),
+        )
+
+    def fail_upload(self, upload: dict[str, Any], code: str, message: str) -> None:
+        self.database.execute(
+            "UPDATE rag_uploads SET preview_status = 'failed', status = 'failed', error_code = %s, error_message = %s, current_stage = 'failed', stage = 'failed' WHERE id = %s",
+            (code, message[:500], upload["id"]),
         )
 
     def load_chunk(self, job: dict[str, Any]) -> dict[str, Any]:
@@ -103,16 +180,7 @@ class TaskProcessor:
         collection = self.collection_name(job, modality)
         vector_id = f"vec_{modality}_{chunk['chunk_id']}"
         qdrant_point_id = qdrant_id(vector_id)
-        payload = {
-            "vector_id": vector_id,
-            "kb_id": job.get("external_kb_id"),
-            "dataset_id": job.get("external_dataset_id"),
-            "dataset_name": job.get("dataset_name") or "",
-            "chunk_id": chunk.get("chunk_id"),
-            "title": chunk.get("title"),
-            "content": chunk.get("content"),
-            "modality": modality,
-        }
+        payload = vector_payload(job, chunk, vector_id, modality)
         self.upsert_qdrant(collection, qdrant_point_id, vector, payload)
         self.database.execute(
             """
@@ -212,9 +280,41 @@ def image_text(asset: dict[str, Any], chunk: dict[str, Any]) -> str:
     return "\n".join(str(part) for part in parts if part)
 
 
+def vector_payload(job: dict[str, Any], chunk: dict[str, Any], vector_id: str, modality: str) -> dict[str, Any]:
+    """Same payload keys as PHP RagVectorContractService::forChunk + RagEmbeddingJobService (RAG-036)."""
+    metadata = chunk.get("metadata")
+    if isinstance(metadata, str):
+        try:
+            metadata = json.loads(metadata or "{}")
+        except ValueError:
+            metadata = {}
+    metadata = metadata if isinstance(metadata, dict) else {}
+    return {
+        "vector_id": vector_id,
+        "kb_id": job.get("external_kb_id"),
+        "dataset_id": job.get("external_dataset_id"),
+        "dataset_name": job.get("dataset_name") or "",
+        "chunk_id": chunk.get("chunk_id"),
+        "document_key": metadata.get("document_key") or "",
+        "title": chunk.get("title") or "",
+        "content": chunk.get("content") or "",
+        "modality": modality,
+        "image_id": job.get("external_image_id"),
+        "source_uri": metadata.get("source_uri") or "",
+        "human_annotation": metadata.get("human_annotation") or {},
+        "ai_annotation": metadata.get("ai_annotation") or {},
+    }
+
+
 def storage_path(root: str, path: str) -> str:
-    if path.startswith("/srv/app/storage"):
+    """Maps a path recorded by PHP to this container. Source installs store absolute host
+    paths (e.g. /opt/tokenhub/storage/rag/...); the worker mounts storage at ``root``."""
+    path = path.replace("\\", "/")
+    if os.path.isabs(path) and os.path.exists(path):
         return path
+    marker = "/storage/"
+    if marker in path:
+        return os.path.join(root, path.split(marker, 1)[1])
     if os.path.isabs(path):
         return path
-    return os.path.join(root, path.replace("\\", "/").removeprefix("storage/"))
+    return os.path.join(root, path.removeprefix("storage/"))

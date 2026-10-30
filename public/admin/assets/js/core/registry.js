@@ -21,6 +21,8 @@ const loaders = {
   rag: () => import("../pages/rag.js"),
   ragUpload: () => import("../pages/rag-upload.js"),
   ragQuality: () => import("../pages/rag-quality.js"),
+  ragAccess: () => import("../pages/rag-access.js"),
+  ragIndexHealth: () => import("../pages/rag-index-health.js"),
   generic: () => import("../lib/resource-table.js")
 };
 
@@ -40,6 +42,8 @@ const pages = {
   "rag-image-preview": ["ragUpload", (m, content, ctx) => m.renderRagImagePreviewPage(content, ctx.filters)],
   "rag-retrieval-evaluation": ["ragQuality", (m, content) => m.renderRagEvaluationPage(content)],
   "rag-evaluation": ["ragQuality", (m, content) => m.renderRagEvaluationPage(content)],
+  "rag-access": ["ragAccess", (m, content, ctx) => m.renderRagAccessPage(content, ctx.filters)],
+  "rag-index-health": ["ragIndexHealth", (m, content) => m.renderRagIndexHealthPage(content)],
   "content-archive": ["content", (m, content, ctx) => m.renderContentArchivePage(content, ctx.filters, ctx)],
   "content-retention-policy": ["content", (m, content) => m.renderContentRetentionPolicyPage(content)],
   "permission-config": ["permissionConfig", (m, content) => m.renderPermissionConfigPage(content)],

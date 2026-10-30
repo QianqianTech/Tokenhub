@@ -37,6 +37,8 @@ final class WorkerService
             'rag.vectorize' => $this->runRagVectorize($job),
             'rag.index' => $this->runRagVectorize($job),
             'rag.cleanup' => $this->runRagCleanup(),
+            'rag.publish-versions' => App::logger()->info('worker', 'rag document versions published', (new RagDocumentVersionService())->publishPending((int) ($job['limit'] ?? 50))),
+            'rag.reconcile' => App::logger()->info('worker', 'rag reconcile completed', array_intersect_key((new RagIndexMaintenanceService())->reconcile(null, true), array_flip(['orphans', 'missing', 'finished_at']))),
             'alerts.notify' => (new AlertNotifier())->deliverDue(),
             'tasks.poll' => (new MultimodalTaskService())->pollProcessing((int) ($job['limit'] ?? 20)),
             'tasks.expire' => (new MultimodalTaskService())->expireStale(),

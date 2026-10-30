@@ -40,12 +40,19 @@ final class RagUploadService
      */
     public function upload(array $apiKey, string $kbId, array $data): array
     {
-        $kb = (new RagPermissionService())->knowledgeBase($apiKey, $kbId, 'write');
         $processing = is_array($data['processing'] ?? null) ? $data['processing'] : [];
+        $permissions = new RagPermissionService();
         $dataset = null;
         if (!empty($processing['target_dataset_id'])) {
-            $dataset = (new RagPermissionService())->datasetByExternalId($apiKey, (string) $processing['target_dataset_id'], 'write');
+            // Write on the target dataset is enough (a dataset grant does not imply the whole knowledge base).
+            $dataset = $permissions->datasetByExternalId($apiKey, (string) $processing['target_dataset_id'], 'write');
+            $kb = App::db()->first('SELECT * FROM rag_knowledge_bases WHERE kb_id = ? AND deleted_at IS NULL AND status != "disabled"', [$kbId]);
+            if ($kb === null) {
+                abort_json('RAG_KB_NOT_FOUND', 'Knowledge base not found', 404);
+            }
             $this->assertDatasetMatchesKnowledgeBase((int) $kb['id'], $dataset);
+        } else {
+            $kb = $permissions->knowledgeBase($apiKey, $kbId, 'write');
         }
 
         $packageMode = $this->isPackageUpload($data, $processing);
@@ -58,6 +65,20 @@ final class RagUploadService
             abort_json('RAG_UPLOAD_TOO_LARGE', 'Upload exceeds RAG file size limit', 413);
         }
 
+        $documentMode = $this->isDocumentUpload($data, $processing, $fileName, $packageMode);
+        $redactionTypes = RagRedactionService::resolveTypes($processing, $kb['chunking_profile'] ?? null);
+        $sha256 = hash('sha256', $binary);
+        if ($documentMode && ($processing['allow_duplicate'] ?? false) !== true) {
+            // Same file already in this knowledge base: tell the caller instead of indexing it twice (RAG-022).
+            $duplicate = App::db()->first(
+                'SELECT upload_id FROM rag_uploads WHERE kb_id = ? AND sha256 = ? AND status NOT IN ("failed","rejected","deleted") ORDER BY id DESC LIMIT 1',
+                [$kb['id'], $sha256]
+            );
+            if ($duplicate !== null) {
+                abort_json('RAG_UPLOAD_DUPLICATE', 'This file is already in the knowledge base (upload ' . $duplicate['upload_id'] . '); set processing.allow_duplicate=true to import it again', 409);
+            }
+        }
+
         $dir = storage_path('rag' . DIRECTORY_SEPARATOR . 'uploads');
         if (!is_dir($dir)) {
             mkdir($dir, 0775, true);
@@ -66,8 +87,9 @@ final class RagUploadService
         $path = $dir . DIRECTORY_SEPARATOR . $uploadId . '_' . $fileName;
         file_put_contents($path, $binary);
 
-        $template = $packageMode ? 'image' : (string) ($processing['template'] ?? $data['content_type'] ?? 'text');
-        $contentType = $packageMode ? 'zip' : (string) ($data['content_type'] ?? ($template === 'qa' ? 'qa' : ($template === 'image' ? 'image' : 'excel')));
+        $template = $packageMode ? 'image' : ($documentMode ? 'document' : (string) ($processing['template'] ?? $data['content_type'] ?? 'text'));
+        $contentType = $packageMode ? 'zip' : ($documentMode ? 'document' : (string) ($data['content_type'] ?? ($template === 'qa' ? 'qa' : ($template === 'image' ? 'image' : 'excel'))));
+        $documentKey = $documentMode ? $this->documentKey($data, $processing, (string) ($data['filename'] ?? $fileName)) : null;
         $sourceType = !empty($apiKey['_admin_upload']) ? 'admin' : 'api';
         App::db()->execute(
             'INSERT INTO rag_uploads (upload_id, kb_id, dataset_id, owner_user_id, department_id, api_key_id, device_id, source_type, content_type, original_filename, mime_type, size_bytes, sha256, file_hash, storage_path, metadata, preview_status, vectorize_status, status, confirm_required, review_status, current_stage, stage, progress_percent, progress)
@@ -85,10 +107,18 @@ final class RagUploadService
                 $fileName,
                 $data['mime_type'] ?? 'application/octet-stream',
                 strlen($binary),
-                hash('sha256', $binary),
-                hash('sha256', $binary),
+                $sha256,
+                $sha256,
                 $path,
-                json_encode(['template' => $template, 'package_mode' => $packageMode ? 'manifest_zip' : null, 'client_metadata' => $data['metadata'] ?? []], JSON_UNESCAPED_UNICODE),
+                json_encode(array_filter([
+                    'template' => $template,
+                    'package_mode' => $packageMode ? 'manifest_zip' : null,
+                    'client_metadata' => $data['metadata'] ?? [],
+                    'original_filename' => $documentMode ? (string) ($data['filename'] ?? $fileName) : null,
+                    'document_key' => $documentKey,
+                    'chunking_profile' => $documentMode && is_array($processing['chunking_profile'] ?? null) ? $processing['chunking_profile'] : null,
+                    'redaction_types' => $redactionTypes === [] ? null : $redactionTypes,
+                ], static fn ($value): bool => $value !== null), JSON_UNESCAPED_UNICODE),
                 !empty($processing['confirm_required']) || !($processing['auto_vectorize'] ?? false) ? 1 : 0,
             ]
         );
@@ -97,7 +127,7 @@ final class RagUploadService
         $this->applyUploadReviewGate($uploadId);
         $upload = $this->findById($uploadId, $apiKey);
 
-        if (($processing['auto_vectorize'] ?? false) === true && (int) $upload['confirm_required'] === 0 && (string) ($upload['review_status'] ?? 'not_required') !== 'pending') {
+        if (($processing['auto_vectorize'] ?? false) === true && (int) $upload['confirm_required'] === 0 && (string) ($upload['review_status'] ?? 'not_required') !== 'pending' && (string) $upload['preview_status'] === 'ready') {
             return $this->confirm($apiKey, $uploadId, ['dataset_id' => $dataset['dataset_id'] ?? null]);
         }
 
@@ -357,11 +387,19 @@ final class RagUploadService
                 json_encode($metadata, JSON_UNESCAPED_UNICODE),
                 $upload['id'],
             ]);
+        } elseif ($template === 'document') {
+            $items = $this->documentPreviewItems($upload, $metadata);
+            if ($items === null) {
+                return; // handed to the Python worker (scanned PDF / OCR); it writes the preview
+            }
         } else {
             $items = (new RagExcelImportService())->parse((string) $upload['storage_path'], $template);
         }
         $imageService = new RagImageProcessingService();
+        $redactionTypes = RagRedactionService::normalizeTypes($metadata['redaction_types'] ?? []);
+        $redactor = new RagRedactionService();
         foreach ($items as $item) {
+            $item = $redactor->redactItem($item, $redactionTypes);
             $asset = $item['item_type'] === 'image' ? $imageService->createAsset($upload, $item) : null;
             App::db()->execute(
                 'INSERT INTO rag_upload_preview_items (preview_item_id, upload_id, kb_id, dataset_id, item_type, title, content, question, answer, image_asset_id, purpose, description, detailed_description, `row_number`, sheet_name, validation_status, validation_errors, metadata)
@@ -553,6 +591,88 @@ final class RagUploadService
         return ($processing['package_mode'] ?? null) === 'manifest_zip'
             || ($processing['template'] ?? null) === 'image_package'
             || ($data['content_type'] ?? null) === 'zip';
+    }
+
+    /**
+     * PDF, Word, PowerPoint, Markdown, HTML and plain text are imported as
+     * documents (structure-preserving parse + p2 chunking). CSV/XLSX keep the
+     * template import unless processing.template = "document".
+     *
+     * @param array<string, mixed> $data
+     * @param array<string, mixed> $processing
+     */
+    private function isDocumentUpload(array $data, array $processing, string $fileName, bool $packageMode): bool
+    {
+        if ($packageMode) {
+            return false;
+        }
+        if (($processing['template'] ?? null) === 'document' || ($data['content_type'] ?? null) === 'document') {
+            return true;
+        }
+        if (isset($processing['template']) || in_array($data['content_type'] ?? null, ['excel', 'text', 'qa', 'image'], true)) {
+            return false;
+        }
+        $format = RagDocumentParserService::formatFor((string) ($data['filename'] ?? $fileName), (string) ($data['mime_type'] ?? ''));
+
+        return $format !== null && !in_array($format, ['csv', 'xlsx', 'xls'], true);
+    }
+
+    /**
+     * Stable identity of a document across re-uploads; a new upload with the
+     * same key replaces the previous version once it is indexed (RAG-025).
+     *
+     * @param array<string, mixed> $data
+     * @param array<string, mixed> $processing
+     */
+    private function documentKey(array $data, array $processing, string $fileName): string
+    {
+        $metadata = is_array($data['metadata'] ?? null) ? $data['metadata'] : [];
+        $key = trim((string) ($processing['document_key'] ?? $metadata['document_key'] ?? $metadata['source_uri'] ?? ''));
+
+        return mb_substr($key !== '' ? $key : 'file:' . mb_strtolower(trim($fileName)), 0, 255);
+    }
+
+    /**
+     * @param array<string, mixed> $upload
+     * @param array<string, mixed> $metadata
+     * @return list<array<string, mixed>>|null null when parsing was queued for the Python worker
+     */
+    private function documentPreviewItems(array $upload, array $metadata): ?array
+    {
+        $filename = (string) ($metadata['original_filename'] ?? $upload['original_filename'] ?? 'document');
+        $parsed = (new RagDocumentParserService())->parse((string) $upload['storage_path'], $filename, (string) ($upload['mime_type'] ?? ''));
+        if ($parsed['needs_worker']) {
+            App::db()->execute(
+                'INSERT INTO rag_embedding_jobs (job_id, kb_id, dataset_id, upload_id, job_type, execution_backend, status, total_items) VALUES (?, ?, ?, ?, "parse", "python_local", "queued", 1)',
+                [$this->id('job'), $upload['kb_id'], $upload['dataset_id'], $upload['id']]
+            );
+            App::db()->execute(
+                'UPDATE rag_uploads SET current_stage = "parsing", stage = "parsing", progress_percent = 15, progress = 15 WHERE id = ?',
+                [$upload['id']]
+            );
+
+            return null;
+        }
+        if (trim(preg_replace('/<!--\s*page:\d+\s*-->/', '', $parsed['markdown']) ?? '') === '') {
+            abort_json('RAG_DOCUMENT_EMPTY', 'No text could be extracted from the document', 422);
+        }
+
+        return [[
+            'item_type' => 'text',
+            'title' => $parsed['title'],
+            'content' => $parsed['markdown'],
+            'metadata' => [
+                'document_format' => $parsed['format'],
+                'parser' => $parsed['parser'],
+                'pages' => $parsed['pages'],
+                'parse_warnings' => $parsed['warnings'],
+                'chunker' => RagStructuredChunkerService::VERSION,
+                'document_key' => $metadata['document_key'] ?? null,
+                'chunking_profile' => $metadata['chunking_profile'] ?? null,
+            ],
+            'validation_status' => $parsed['warnings'] === [] ? 'valid' : 'warning',
+            'validation_errors' => $parsed['warnings'],
+        ]];
     }
 
     private function maxBytes(bool $packageMode): int

@@ -17,7 +17,7 @@ export async function renderRagUploadWorkbenchPage(content, options = {}) {
   const form = el("form", { className: "edit-form rag-upload-workbench", onSubmit: (event) => event.preventDefault() });
   const kbOptions = knowledgeBases.map((row) => [row.kb_id, `${row.name || row.kb_id} (${row.kb_id})`]);
   const datasetOptions = datasets.map((row) => [row.dataset_id, `${row.name || row.dataset_id} (${row.dataset_id})`]);
-  const fileInput = el("input", { type: "file", name: "rag_file", accept: ".xlsx,.csv,.txt,.zip" });
+  const fileInput = el("input", { type: "file", name: "rag_file", accept: ".xlsx,.csv,.txt,.zip,.docx,.pptx,.pdf,.md,.markdown,.html,.htm" });
   const output = el("p", { className: "notice", hidden: true });
   const uploadResult = el("section", { className: "rag-upload-result" });
 
@@ -25,7 +25,9 @@ export async function renderRagUploadWorkbenchPage(content, options = {}) {
     field({ name: "kb_id", label: "知识库", type: "select", options: kbOptions }),
     field({ name: "target_dataset_id", label: "向量数据集", type: "select", options: datasetOptions }),
     field({ name: "department_id", label: "部门", type: "select", coerce: "number", options: departmentOptions }),
-    field({ name: "template", label: "导入类型", type: "select", options: [["text", "文本"], ["qa", "问答"], ["image", "图片清单"], ["image_package", "ZIP 图片包"]] }),
+    field({ name: "template", label: "导入类型", type: "select", options: [["text", "文本"], ["qa", "问答"], ["document", "文档（Word / PDF / PPT / Markdown / HTML）"], ["image", "图片清单"], ["image_package", "ZIP 图片包"]] }),
+    // RAG-022: optional masking before indexing; nothing selected = knowledge base / system default.
+    field({ name: "redaction", label: "导入前脱敏（不选则按知识库或系统默认）", type: "multiselect", optional: true, options: [["phone", "手机号"], ["email", "邮箱"], ["id_card", "身份证号"], ["bank_card", "银行卡号"], ["ipv4", "IP 地址"]] }),
     field({ name: "confirm_required", label: "上传后确认", type: "select", options: [["true", "需要预览确认"], ["false", "允许自动向量化"]] }),
     el("label", { className: "field" }, [
       el("span", { text: "上传文件" }),
@@ -51,11 +53,12 @@ async function submitRagUploadWorkbench(form, fileInput, output, uploadResult, o
     { name: "target_dataset_id" },
     { name: "department_id", coerce: "number" },
     { name: "template" },
-    { name: "confirm_required" }
+    { name: "confirm_required" },
+    { name: "redaction", type: "multiselect", optional: true }
   ]);
   const file = fileInput.files?.[0];
   if (!file) {
-    setErrorOutput(output, "请选择要上传的 Excel、CSV、文本或 ZIP 文件");
+    setErrorOutput(output, "请选择要上传的 Excel、CSV、文本、文档或 ZIP 文件");
     return;
   }
   const template = String(values.template || "text");
@@ -68,6 +71,9 @@ async function submitRagUploadWorkbench(form, fileInput, output, uploadResult, o
   };
   if (template === "image_package") {
     processing.package_mode = "manifest_zip";
+  }
+  if (Array.isArray(values.redaction) && values.redaction.length > 0) {
+    processing.redaction = values.redaction;
   }
   try {
     const kbId = String(values.kb_id || "");

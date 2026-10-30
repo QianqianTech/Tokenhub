@@ -33,7 +33,12 @@ final class RagAdminEvaluationCaseService
                 $this->queryModality($input['query_modality'] ?? 'text'),
                 json_encode($expectedChunkIds, JSON_UNESCAPED_UNICODE),
                 $status,
-                json_encode(['created_by' => 'admin_workspace'], JSON_UNESCAPED_UNICODE),
+                json_encode(array_filter([
+                    'created_by' => 'admin_workspace',
+                    'expected_anchors' => (new RagEvaluationAnchorService())->anchorsFor($expectedChunkIds),
+                    // RAG-041: optional reference answer for the answer-level judge.
+                    'expected_answer' => is_string($input['expected_answer'] ?? null) && trim($input['expected_answer']) !== '' ? mb_substr(trim($input['expected_answer']), 0, 4000) : null,
+                ], static fn ($value): bool => $value !== null), JSON_UNESCAPED_UNICODE),
             ]
         );
 
