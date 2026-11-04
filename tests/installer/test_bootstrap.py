@@ -156,7 +156,7 @@ exit 0
         sentinel.write_text("keep-this-config")
         result = self.run_installer(self.option("--download-only", "-DownloadOnly"))
         self.assertNotEqual(result.returncode, 0)
-        self.assertEqual(sentinel.read_text(), "keep-this-config")
+        self.assertEqual(sentinel.read_text(encoding="utf-8"), "keep-this-config")
         self.assertFalse(self.capture.exists())
 
     def test_stopped_docker_and_old_versions_stop_before_download(self):
@@ -193,7 +193,7 @@ exit 0
         result = self.run_installer(INSTALL_EXIT="7")
         self.assertNotEqual(result.returncode, 0)
         self.assertTrue((self.destination / ".git").is_dir())
-        self.assertIn("fixture-config", (self.destination / "deploy/docker/.env").read_text())
+        self.assertIn("fixture-config", (self.destination / "deploy/docker/.env").read_text(encoding="utf-8"))
         self.assertEqual(list(self.base.glob(".tokenhub-download.*")), [])
 
     def test_rejects_invalid_port_and_missing_option_value(self):
@@ -204,18 +204,18 @@ exit 0
 
     def test_actual_installer_generates_config_without_starting(self):
         for name in ("deploy/docker/install.sh", "deploy/docker/install.ps1", "deploy/docker/lib.sh", ".env.example"):
-            self.write(name, (ROOT / name).read_text())
+            self.write(name, (ROOT / name).read_text(encoding="utf-8"))
         self.git("add", ".")
         self.git("-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "-qm", "actual installer")
         args = (["-Site", "http://localhost", "-HttpPort", "8080", "-NoStart", "-Yes"] if self.powershell else ["--site", "http://localhost", "--http-port", "8080", "--no-start", "--yes"])
         self.assert_ok(self.run_installer(*args))
-        contents = (self.destination / "deploy/docker/.env").read_text()
+        contents = (self.destination / "deploy/docker/.env").read_text(encoding="utf-8")
         # Never include a generated .env (and its random credentials) in failure logs.
         for expected in ("APP_URL=http://localhost:8080", "SESSION_SECURE=false", "TOKENHUB_IMAGE_TAG=source-", "DB_PASSWORD=", "TOKENHUB_ADMIN_PASSWORD=", "我的设备"):
-            self.assertTrue(expected in contents, "Generated config lost a required setting or its UTF-8 comments")
+            self.assertTrue(expected in contents, "Generated config lost required marker: " + expected)
         self.assertTrue("APP_KEY=change-me" not in contents, "Template APP_KEY was not replaced")
-        self.assertLess(len(contents), len((ROOT / ".env.example").read_text()) * 2, "UTF-8 comments expanded during repeated writes")
-        calls = (self.base / "docker-calls").read_text()
+        self.assertLess(len(contents), len((ROOT / ".env.example").read_text(encoding="utf-8")) * 2, "UTF-8 comments expanded during repeated writes")
+        calls = (self.base / "docker-calls").read_text(encoding="utf-8")
         self.assertNotIn("build", calls)
         self.assertNotIn(" up ", calls)
 
