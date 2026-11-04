@@ -27,6 +27,93 @@ final class CrudService
         'system_settings',
     ];
 
+    /**
+     * Columns (and virtual fields such as users.password / providers.secret)
+     * a client may write through the generic admin CRUD endpoints (SEC-101).
+     * Derived from the console forms (public/admin/assets/js/resources.js and
+     * the page modules) plus the service logic that normalizes them; never
+     * from SHOW COLUMNS. Anything else - role-escalation columns, tree
+     * bookkeeping (path, level), storage paths, hashes, encrypted secrets,
+     * pipeline state - is set only by dedicated, validated code paths.
+     * A table missing here (or mapped to []) accepts no fields at all.
+     */
+    private const WRITABLE_COLUMNS = [
+        // path and level are computed by DepartmentService (SEC-103).
+        'departments' => ['name', 'parent_id', 'sort_order', 'status'],
+        // role is checked by assertUserRoleWriteAllowed(); password is hashed in normalizeForWrite().
+        // admin_type/admin_scope/admin_permission_mode/email belong to the admin-users endpoints.
+        'users' => ['department_id', 'username', 'password', 'role', 'status', 'managed_department_ids'],
+        // secret is encrypted into encrypted_secret; default_headers go through ProviderHeaderVault.
+        'providers' => ['name', 'protocol', 'base_url', 'secret', 'timeout_ms', 'retry_count', 'default_headers', 'status'],
+        'models' => ['provider_id', 'name', 'external_name', 'capability', 'context_length', 'max_output_tokens', 'route_priority', 'route_weight', 'max_in_flight', 'rpm_limit', 'tpm_limit', 'status', 'capabilities', 'capability_tags'],
+        'model_prices' => [
+            'model_id', 'input_token_price', 'output_token_price', 'audio_second_price', 'tts_char_price', 'image_price', 'video_second_price',
+            'request_price', 'cache_read_token_price', 'cache_write_token_price', 'reasoning_token_price', 'pricing_rules', 'currency', 'effective_at',
+        ],
+        'api_key_model_quotas' => ['api_key_id', 'model_id', 'period', 'request_limit', 'input_token_limit', 'output_token_limit', 'total_token_limit', 'status'],
+        'quota_policies' => [
+            'name', 'period', 'request_limit', 'input_token_limit', 'output_token_limit', 'total_token_limit', 'audio_second_limit',
+            'tts_char_limit', 'image_limit', 'video_second_limit', 'cost_limit', 'concurrency_limit', 'status',
+        ],
+        'quota_bindings' => ['quota_policy_id', 'target_type', 'target_id'],
+        // Gateway-owned records: the console only lists and disables them.
+        'multimodal_tasks' => [],
+        'media_assets' => [],
+        'desensitization_policies' => ['name', 'scope_type', 'scope_id', 'parsers', 'action', 'status'],
+        'log_retention_policies' => [
+            'log_type', 'online_retention_days', 'archive_retention_days', 'min_retention_days', 'compress_enabled', 'encrypt_enabled',
+            'retention_days', 'archive_days', 'status',
+        ],
+        'system_settings' => ['setting_key', 'setting_value', 'description'],
+        // visibility / acl_mode go through the knowledge-set ACL endpoints; owner_user_id is not client-chosen.
+        'rag_knowledge_bases' => [
+            'name', 'description', 'department_id', 'status', 'default_text_vector_config_id', 'default_image_vector_config_id',
+            'default_multimodal_vector_config_id', 'chunking_profile', 'retrieval_profile',
+        ],
+        'rag_knowledge_base_bindings' => ['kb_id', 'subject_type', 'subject_id', 'permission', 'is_default', 'include_descendants', 'expires_at'],
+        // collection_prefix is derived from dataset_id on create; counters are maintained by the indexer.
+        'rag_vector_datasets' => [
+            'kb_id', 'name', 'description', 'dataset_type', 'status', 'text_vector_config_id', 'image_vector_config_id',
+            'multimodal_vector_config_id', 'retrieval_profile',
+        ],
+        'rag_dataset_bindings' => ['dataset_id', 'subject_type', 'subject_id', 'permission', 'is_default', 'priority', 'include_descendants', 'expires_at'],
+        'rag_vector_configs' => [
+            'config_id', 'name', 'modality', 'provider_id', 'model_id', 'model_name', 'dimension', 'distance_metric', 'vector_store',
+            'collection_name', 'batch_size', 'max_input_tokens', 'image_max_pixels', 'normalize_vector', 'enabled', 'config_json',
+        ],
+        // storage_path is written only by RagTemplateService.
+        'rag_import_templates' => ['name', 'template_type', 'version', 'required_columns', 'optional_columns', 'style_profile', 'enabled'],
+        // Upload rows (storage_path, hashes, workflow state) are owned by the upload pipeline.
+        'rag_uploads' => [],
+        'rag_upload_preview_items' => ['title', 'content', 'question', 'answer', 'purpose', 'description', 'detailed_description'],
+        'rag_documents' => ['title', 'doc_type', 'language', 'metadata', 'effective_at', 'expires_at'],
+        'rag_chunks' => ['title', 'content', 'question', 'answer', 'enabled', 'lifecycle_status', 'effective_at', 'expires_at', 'metadata'],
+        // storage_path / thumbnail_path are written only by the image pipeline.
+        'rag_image_assets' => ['purpose', 'short_description', 'detailed_description', 'ocr_text', 'labels'],
+        'rag_embedding_jobs' => [],
+        'rag_vector_records' => [],
+        'rag_retrieval_logs' => [],
+        'rag_answer_feedback' => ['status'],
+        'rag_correction_tasks' => ['kb_id', 'dataset_id', 'feedback_id', 'retrieval_id', 'issue_type', 'source_type', 'action', 'status', 'priority', 'reason', 'details'],
+        'rag_retention_policies' => ['kb_id', 'dataset_id', 'name', 'expires_after_days', 'inactive_after_days', 'action_on_expiry', 'require_approval', 'enabled'],
+        'rag_eval_cases' => ['kb_id', 'dataset_id', 'query', 'query_modality', 'expected_chunk_ids', 'status', 'metadata'],
+    ];
+
+    /** External identifiers a client may choose when creating a row, but never change afterwards. */
+    private const CREATE_ONLY_COLUMNS = [
+        'rag_knowledge_bases' => ['kb_id'],
+        'rag_vector_datasets' => ['dataset_id'],
+        'rag_import_templates' => ['template_id'],
+        'rag_correction_tasks' => ['task_id'],
+        'rag_retention_policies' => ['policy_id'],
+        'rag_eval_cases' => ['case_id'],
+    ];
+
+    /** Request-control keys that are not columns. */
+    private const CONTROL_KEYS = ['expected_updated_at'];
+
+    private const USER_ROLES = ['user', 'admin', 'super_admin'];
+
     public function list(string $table, array $query): array
     {
         $this->assertTable($table);
@@ -61,9 +148,11 @@ final class CrudService
         $this->assertTable($table);
         $this->assertWritableTable($table);
         $this->requireSuperAdminForGlobalWrite($table);
+        $this->assertWritableColumns($table, $data, true);
         $this->requireWritePermission($table, $data);
         (new RagAdminScopeGuard())->assertCreateHasOwner(App::context()->adminUser() ?? [], $table, $data);
         $this->assertUserRoleWriteAllowed($table, $data);
+        $this->assertScopedReferences($table, $data, null);
         unset($data['expected_updated_at']);
         $this->validateConfigWrite($table, $data, null);
         $data = $this->normalizeForWrite($table, $data);
@@ -91,15 +180,22 @@ final class CrudService
         $this->assertWritableTable($table);
         $this->requireSuperAdminForGlobalWrite($table);
         $this->assertExistingScope($table, $id);
+        $this->assertWritableColumns($table, $data, false);
         $this->requireWritePermission($table, $data);
         $this->assertUserRoleWriteAllowed($table, $data, $id);
+        $this->assertScopedReferences($table, $data, $id);
         $this->assertNotStale($table, $id, $data);
         unset($data['expected_updated_at']);
         $this->validateConfigWrite($table, $data, $id);
         $data = $this->normalizeForWrite($table, $data, false, $id);
         unset($data['id']);
+        if ($table === 'model_prices' && $data !== []) {
+            // BIZ-011: an effective price is history; changes go into a new row.
+            \TokenHub\Services\Billing\PriceVersionPolicy::assertEditable(App::db()->first('SELECT * FROM model_prices WHERE id = ?', [$id]) ?: [], $data);
+        }
         if ($data === []) {
-            return App::db()->first("SELECT * FROM {$table} WHERE id = ?", [$id]) ?: ['id' => $id];
+            // Same redaction as every other CRUD response (SEC-106): no password_hash / encrypted_secret.
+            return (new SensitiveDataService())->sanitizeRow($table, App::db()->first("SELECT * FROM {$table} WHERE id = ?", [$id]) ?: ['id' => $id]);
         }
         $sets = implode(', ', array_map(fn (string $column): string => "{$column} = ?", array_keys($data)));
         App::db()->execute("UPDATE {$table} SET {$sets} WHERE id = ?", [...array_values($data), $id]);
@@ -403,7 +499,7 @@ final class CrudService
                 if ($table === 'rag_vector_configs') {
                     $data = $vectorConfigs->normalizeForWrite($data, $creating, $id);
                 } else {
-                    $vectorConfigs->assertBindingReferences($table, $data);
+                    $vectorConfigs->assertBindingReferences($table, $data, $creating ? null : $id);
                 }
             } catch (\RuntimeException $exception) {
                 $code = $exception->getMessage();
@@ -661,6 +757,13 @@ final class CrudService
             'log_archive_files' => [
                 'status' => 'log_type',
             ],
+            // Audit trail by console/APP channel and APP device (APP-009).
+            'audit_logs' => array_intersect_key([
+                'actor_user_id' => 'actor_user_id',
+                'action' => 'action',
+                'channel' => 'channel',
+                'device_id' => 'device_id',
+            ], array_flip($this->tableColumns($table))),
             default => array_intersect_key($shared, array_flip($this->tableColumns($table))),
         };
     }
@@ -808,6 +911,10 @@ final class CrudService
             unset($data['key_hash']);
         }
 
+        if ($table === 'users') {
+            unset($data['password_hash'], $data['password']);
+        }
+
         return $data;
     }
 
@@ -833,10 +940,146 @@ final class CrudService
         (new RagAdminScopeGuard())->assertWrite($actor, $table, $data);
     }
 
+    /**
+     * SEC-101: every key must be a plain column name and on the table's
+     * allowlist. Unknown, sensitive or malformed keys (e.g. "role " with a
+     * trailing space, which would otherwise slip past the role check and still
+     * be accepted by MySQL as a column name) are rejected with 422.
+     *
+     * @param array<mixed> $data
+     */
+    private function assertWritableColumns(string $table, array $data, bool $creating): void
+    {
+        $allowed = self::WRITABLE_COLUMNS[$table] ?? [];
+        if ($creating) {
+            $allowed = [...$allowed, ...(self::CREATE_ONLY_COLUMNS[$table] ?? [])];
+        }
+        foreach (array_keys($data) as $key) {
+            if (!is_string($key) || preg_match('/^[a-z_][a-z0-9_]*$/', $key) !== 1) {
+                abort_json('ADMIN_VALIDATION_FAILED', 'Invalid field name', 422);
+            }
+            if (in_array($key, self::CONTROL_KEYS, true) || (!$creating && $key === 'id')) {
+                continue;
+            }
+            if (!in_array($key, $allowed, true)) {
+                abort_json('ADMIN_VALIDATION_FAILED', "Field {$key} cannot be written through this endpoint", 422);
+            }
+        }
+    }
+
+    public static function writableColumns(string $table, bool $creating = false): array
+    {
+        $allowed = self::WRITABLE_COLUMNS[$table] ?? [];
+        return $creating ? [...$allowed, ...(self::CREATE_ONLY_COLUMNS[$table] ?? [])] : $allowed;
+    }
+
+    /**
+     * Reference checks for tables whose scope is not a department_id column
+     * (SEC-103 department parents, SEC-104 quota policies and bindings, and
+     * the managed departments of a user).
+     *
+     * @param array<string, mixed> $data
+     */
+    private function assertScopedReferences(string $table, array $data, ?int $id): void
+    {
+        $actor = App::context()->adminUser() ?? [];
+        $permission = new PermissionService();
+        $global = $actor !== [] && $permission->usesGlobalScope($actor);
+
+        if ($table === 'quota_policies' && !$global) {
+            // Policies have no department: a change applies to every binding platform-wide.
+            abort_json('ADMIN_PERMISSION_DENIED', 'Quota policies can only be changed by a global administrator', 403);
+        }
+
+        if ($table === 'quota_bindings') {
+            $current = $id !== null ? App::db()->first('SELECT target_type, target_id FROM quota_bindings WHERE id = ?', [$id]) : null;
+            $targetType = (string) ($data['target_type'] ?? ($current['target_type'] ?? ''));
+            $targetId = (int) ($data['target_id'] ?? ($current['target_id'] ?? 0));
+            if (!in_array($targetType, ['api_key', 'user', 'department'], true) || $targetId <= 0) {
+                abort_json('ADMIN_VALIDATION_FAILED', 'target_type must be api_key, user or department with a target_id', 422);
+            }
+            if (!$global && !$permission->canManageQuotaTarget($actor, $targetType, $targetId)) {
+                abort_json('ADMIN_PERMISSION_DENIED', 'Quota target is outside admin scope', 403);
+            }
+        }
+
+        if ($table === 'departments' && array_key_exists('parent_id', $data)) {
+            $parentId = $data['parent_id'] === null || $data['parent_id'] === '' ? null : (int) $data['parent_id'];
+            $currentParent = $id !== null ? App::db()->first('SELECT parent_id FROM departments WHERE id = ?', [$id]) : null;
+            // The edit form always resends parent_id; an unchanged parent is not a move.
+            $unchanged = $currentParent !== null && ($currentParent['parent_id'] === null ? null : (int) $currentParent['parent_id']) === $parentId;
+            if (!$unchanged && $parentId !== null) {
+                $parent = App::db()->first('SELECT id, path FROM departments WHERE id = ?', [$parentId]);
+                if (!$parent) {
+                    abort_json('ADMIN_NOT_FOUND', 'Parent department not found', 404);
+                }
+                if ($id !== null) {
+                    $self = App::db()->first('SELECT path FROM departments WHERE id = ?', [$id]);
+                    if ($self && str_starts_with((string) $parent['path'], (string) $self['path'])) {
+                        abort_json('ADMIN_INVALID_DEPARTMENT_MOVE', 'Cannot move department into its descendant', 422);
+                    }
+                }
+            }
+            if (!$unchanged && !$global && ($parentId === null || !$permission->canManage($actor, $parentId))) {
+                abort_json('ADMIN_PERMISSION_DENIED', 'Parent department is outside admin scope', 403);
+            }
+        } elseif ($table === 'departments' && $id === null && !$global) {
+            // A scoped administrator cannot create a new top-level department.
+            abort_json('ADMIN_PERMISSION_DENIED', 'Parent department is outside admin scope', 403);
+        }
+
+        if ($table === 'users' && array_key_exists('managed_department_ids', $data) && ($actor['role'] ?? '') !== 'super_admin') {
+            $next = $this->departmentIdList($data['managed_department_ids']);
+            $currentRow = $id !== null ? App::db()->first('SELECT managed_department_ids FROM users WHERE id = ?', [$id]) : null;
+            $current = $this->departmentIdList($currentRow['managed_department_ids'] ?? null, false);
+            if ($next !== $current) {
+                foreach ($next as $departmentId) {
+                    if (!$permission->canManage($actor, $departmentId)) {
+                        abort_json('ADMIN_PERMISSION_DENIED', 'Managed department is outside admin scope', 403);
+                    }
+                }
+            }
+        }
+    }
+
+    /** @return list<int> */
+    private function departmentIdList(mixed $value, bool $strict = true): array
+    {
+        if (is_string($value)) {
+            $value = trim($value) === '' ? [] : json_decode($value, true);
+        }
+        if ($value === null) {
+            return [];
+        }
+        if (!is_array($value)) {
+            if (!$strict) {
+                return [];
+            }
+            abort_json('ADMIN_VALIDATION_FAILED', 'managed_department_ids must be a JSON array of department ids', 422);
+        }
+        $ids = [];
+        foreach ($value as $item) {
+            if (!is_int($item) && !(is_string($item) && ctype_digit($item))) {
+                if (!$strict) {
+                    continue;
+                }
+                abort_json('ADMIN_VALIDATION_FAILED', 'managed_department_ids must be a JSON array of department ids', 422);
+            }
+            $ids[(int) $item] = (int) $item;
+        }
+        ksort($ids);
+
+        return array_values($ids);
+    }
+
     private function assertUserRoleWriteAllowed(string $table, array $data, ?int $id = null): void
     {
         if ($table !== 'users') {
             return;
+        }
+
+        if (array_key_exists('role', $data) && !in_array($data['role'], self::USER_ROLES, true)) {
+            abort_json('ADMIN_VALIDATION_FAILED', 'role must be user, admin or super_admin', 422);
         }
 
         $actor = App::context()->adminUser();
@@ -860,6 +1103,16 @@ final class CrudService
         }
 
         $permission = new PermissionService();
+        if ($table === 'quota_policies') {
+            abort_json('ADMIN_PERMISSION_DENIED', 'Quota policies can only be changed by a global administrator', 403);
+        }
+        if ($table === 'quota_bindings') {
+            $row = App::db()->first('SELECT target_type, target_id FROM quota_bindings WHERE id = ?', [$id]);
+            if (!$row || !$permission->canManageQuotaTarget($actor, (string) $row['target_type'], (int) $row['target_id'])) {
+                abort_json('ADMIN_PERMISSION_DENIED', 'Resource is outside admin scope', 403);
+            }
+            return;
+        }
         if ($table === 'departments') {
             $row = App::db()->first('SELECT path FROM departments WHERE id = ?', [$id]);
             if (!$row || !$permission->canAccessDepartmentPath($actor, (string) $row['path'])) {
@@ -894,7 +1147,7 @@ final class CrudService
 
     public function invalidateUserSessions(int $userId): void
     {
-        App::db()->execute('UPDATE admin_sessions SET revoked_at = COALESCE(revoked_at, NOW()) WHERE user_id = ?', [$userId]);
+        App::db()->execute('UPDATE admin_sessions SET revoked_at = COALESCE(revoked_at, UTC_TIMESTAMP()) WHERE user_id = ?', [$userId]);
     }
 
     public function invalidateUserApiKeys(int $userId): void

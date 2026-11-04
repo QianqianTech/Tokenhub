@@ -21,4 +21,10 @@ return [
         'collection_prefix' => env('QDRANT_COLLECTION_PREFIX', 'tokenhub_rag'),
         'timeout_seconds' => (float) env('QDRANT_TIMEOUT_SECONDS', 5),
     ],
+    // SEC-107: limits for uploaded ZIP containers (image packages, docx/pptx/xlsx).
+    'zip' => [
+        'max_entries' => (int) env('RAG_ZIP_MAX_ENTRIES', 5000),
+        'max_entry_bytes' => (int) env('RAG_ZIP_MAX_ENTRY_BYTES', 104857600),
+        'max_total_bytes' => (int) env('RAG_ZIP_MAX_TOTAL_BYTES', 536870912),
+    ],
 ];

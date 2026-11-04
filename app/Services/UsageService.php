@@ -108,14 +108,14 @@ final class UsageService
                 App::db()->execute("DELETE FROM {$table} WHERE bucket_at >= ? AND bucket_at < ?", [$fromBucket, $toBucket]);
                 $counts[$table] = App::db()->execute(
                     "INSERT INTO {$table} (bucket_at, department_id, user_id, api_key_id, provider_id, model_id, capability, request_count, success_count, failed_count, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, total_cost, latency_ms_sum, latency_bucket_100, latency_bucket_300, latency_bucket_1000, latency_bucket_3000, latency_bucket_over_3000, latency_bucket_10000, latency_bucket_30000, latency_bucket_120000, latency_bucket_over_120000)
-                     SELECT DATE_FORMAT(created_at, '{$format}') AS bucket_at, department_id, user_id, api_key_id, provider_id, model_id, capability,
+                     SELECT DATE_FORMAT(created_at, '{$format}') AS bucket_at, COALESCE(department_id, 0), COALESCE(user_id, 0), COALESCE(api_key_id, 0), COALESCE(provider_id, 0), COALESCE(model_id, 0), capability,
                             COUNT(*), SUM(status = 'success'), SUM(status <> 'success'), SUM(input_tokens), SUM(output_tokens), SUM(cache_read_tokens), SUM(cache_write_tokens),
                             SUM(CASE WHEN cost_amount IS NOT NULL AND (cost_currency IS NULL OR cost_currency = ?) THEN cost_amount END),
                             SUM(COALESCE(latency_ms, 0)), SUM(COALESCE(latency_ms, 0) <= 100), SUM(latency_ms > 100 AND latency_ms <= 300), SUM(latency_ms > 300 AND latency_ms <= 1000), SUM(latency_ms > 1000 AND latency_ms <= 3000), SUM(latency_ms > 3000),
                             SUM(latency_ms > 3000 AND latency_ms <= 10000), SUM(latency_ms > 10000 AND latency_ms <= 30000), SUM(latency_ms > 30000 AND latency_ms <= 120000), SUM(latency_ms > 120000)
                      FROM usage_records
                      WHERE created_at >= ? AND created_at < ?
-                     GROUP BY bucket_at, department_id, user_id, api_key_id, provider_id, model_id, capability",
+                     GROUP BY DATE_FORMAT(created_at, '{$format}'), COALESCE(department_id, 0), COALESCE(user_id, 0), COALESCE(api_key_id, 0), COALESCE(provider_id, 0), COALESCE(model_id, 0), capability",
                     [$this->baseCurrency(), $fromBucket, $toBucket]
                 );
             });
@@ -351,7 +351,7 @@ final class UsageService
         if ($currency !== null && $record['cost_amount'] !== null && SchemaInspector::hasColumn('usage_cost_aggregates_day', 'currency')) {
             App::db()->execute(
                 'INSERT INTO usage_cost_aggregates_day (bucket_at, department_id, user_id, api_key_id, provider_id, model_id, currency, request_count, total_cost) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?) ON DUPLICATE KEY UPDATE request_count = request_count + 1, total_cost = total_cost + VALUES(total_cost)',
-                [gmdate('Y-m-d 00:00:00', $createdAt), $record['department_id'] ?? null, $record['user_id'] ?? null, $record['api_key_id'] ?? null, $record['provider_id'] ?? null, $record['model_id'] ?? null, $currency, $record['cost_amount']]
+                [gmdate('Y-m-d 00:00:00', $createdAt), ...self::dimensions($record), $currency, $record['cost_amount']]
             );
         }
         $latencyBuckets = $this->latencyBuckets((int) ($record['latency_ms'] ?? 0), SchemaInspector::hasColumn('usage_aggregates_day', 'latency_bucket_over_120000'));
@@ -379,11 +379,7 @@ final class UsageService
                 "INSERT INTO {$table} (" . implode(', ', $columns) . ') VALUES (' . implode(', ', array_fill(0, count($columns), '?')) . ') ON DUPLICATE KEY UPDATE ' . implode(', ', $updates),
                 [
                     $bucket,
-                    $record['department_id'] ?? null,
-                    $record['user_id'] ?? null,
-                    $record['api_key_id'] ?? null,
-                    $record['provider_id'] ?? null,
-                    $record['model_id'] ?? null,
+                    ...self::dimensions($record),
                     $record['capability'] ?? 'text_generation',
                     1,
                     ($record['status'] ?? '') === 'success' ? 1 : 0,
@@ -398,6 +394,24 @@ final class UsageService
                 ]
             );
         }
+    }
+
+    /**
+     * Aggregate dimension values (BIZ-013): "none" is stored as 0, never
+     * NULL, because NULL never matches in the unique key and every request
+     * without a department / key / model used to add a new aggregate row.
+     *
+     * @param array<string, mixed> $record
+     * @return list<int>
+     */
+    public static function dimensions(array $record): array
+    {
+        $values = [];
+        foreach (['department_id', 'user_id', 'api_key_id', 'provider_id', 'model_id'] as $column) {
+            $values[] = max(0, (int) ($record[$column] ?? 0));
+        }
+
+        return $values;
     }
 
     /**

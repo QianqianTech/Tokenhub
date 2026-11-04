@@ -37,6 +37,7 @@ foreach (['TASK_BILLING_SETTLEMENT', 'TASK_BILLING_ALLOW_INCREASE', 'BILLING_BAS
 
 $pdo = new PDO('sqlite::memory:', null, null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC]);
 $pdo->sqliteCreateFunction('NOW', static fn (): string => gmdate('Y-m-d H:i:s'));
+$pdo->sqliteCreateFunction('UTC_TIMESTAMP', static fn (): string => gmdate('Y-m-d H:i:s'));
 $pdo->sqliteCreateFunction('FIELD', static function (...$args): int {
     $needle = array_shift($args);
     $index = array_search($needle, $args, true);
@@ -77,9 +78,11 @@ $pdo->exec("INSERT INTO quota_bindings (quota_policy_id, target_type, target_id)
 App::redis()->delete((new QuotaService())->policyCacheKey(['id' => $keyId, 'user_id' => 1, 'department_id' => 1]));
 
 $now = gmdate('Y-m-d H:i:s');
-$bucket = gmdate('Ymd');
+// Day buckets follow the business time zone; cost is counted in integer
+// micro-units (BIZ-012, BIZ-014).
+$bucket = (new \TokenHub\Services\QuotaService())->periodWindow('day')['bucket'];
 $secondsKey = "quota:{$policyId}:api_key:{$keyId}:video_seconds:{$bucket}";
-$costKey = "quota:{$policyId}:api_key:{$keyId}:cost_amount:{$bucket}";
+$costKey = "quota:{$policyId}:api_key:{$keyId}:cost_amount_u6:{$bucket}";
 
 /**
  * A task charged at submission: usage record + aggregates + quota counters,
@@ -110,7 +113,7 @@ $charge = static function (string $taskId, string $status, array $charged, array
                 ->execute([gmdate('Y-m-d 00:00:00'), $keyId, $modelId, $charged['cost_amount']]);
         }
         App::redis()->incrementByFloat($secondsKey, (float) ($charged['video_seconds'] ?? 0), 86400);
-        App::redis()->incrementByFloat($costKey, (float) $charged['cost_amount'], 86400);
+        App::redis()->incrementByFloat($costKey, \TokenHub\Services\QuotaService::toMicro($charged['cost_amount']), 86400);
     }
     $pdo->prepare('INSERT INTO multimodal_tasks (task_id, task_type, status, provider_task_id, user_id, department_id, api_key_id, model_id, usage_record_id, submit_payload, result, error_code, finished_at) VALUES (?, "video_generation", ?, ?, 1, 1, ?, ?, ?, ?, ?, ?, ?)')
         ->execute([$taskId, $status, 'up_' . $taskId, $keyId, $modelId, $recordId, json_encode(['model' => 'seedance', 'duration' => $charged['video_seconds'] ?? 0, 'resolution' => '1080p']), json_encode($result), $errorCode, $now]);
@@ -135,7 +138,7 @@ assert_same(0.0, (float) $record('t_fail')['cost_amount'], 'Usage record cost is
 assert_same(0.0, $dayCost(), 'Daily aggregate cost is reduced.');
 assert_same(0.0, (float) App::db()->first('SELECT total_cost FROM usage_cost_aggregates_day WHERE model_id = 301')['total_cost'], 'Currency cost aggregate is reduced.');
 assert_same(0.0, $counter($secondsKey), 'Quota video seconds are given back.');
-assert_same(0.0, $counter($costKey), 'Quota cost is given back.');
+assert_same(0.0, $counter($costKey) / 1000000, 'Quota cost is given back.');
 $journal = App::db()->first('SELECT * FROM usage_settlements WHERE task_id = ?', ['t_fail']);
 assert_same('refund_failed', $journal['reason'] ?? null, 'The refund is journaled.');
 assert_same('refund_failed', json_decode((string) $task('t_fail')['result'], true)['billing']['reason'] ?? null, 'The task shows its billing outcome.');
@@ -143,7 +146,7 @@ assert_true(!empty($task('t_fail')['settled_at']), 'The task is marked settled.'
 
 // 2. Exactly once.
 assert_same('already_settled', $billing->settleByTaskId('t_fail')['reason'], 'A settled task is never settled twice.');
-assert_same(0.0, $counter($costKey), 'Counters are not touched again.');
+assert_same(0.0, $counter($costKey) / 1000000, 'Counters are not touched again.');
 
 // 3. Success with a shorter measured duration: true-up down.
 $charge('t_short', 'succeeded', ['video_seconds' => 10, 'cost_amount' => '1.00000000'], ['settled_usage' => ['video_seconds' => 6]]);
@@ -153,7 +156,7 @@ assert_same('-0.40000000', $short['cost_delta'], '4 s at 0.10 are refunded.');
 assert_same(6, (int) $record('t_short')['video_seconds'], 'Usage record bills the measured seconds.');
 assert_same(0.6, round((float) $record('t_short')['cost_amount'], 8), 'Usage record cost is the measured cost.');
 assert_same(6.0, $counter($secondsKey), 'Quota holds the measured seconds.');
-assert_same(0.6, round($counter($costKey), 8), 'Quota holds the measured cost.');
+assert_same(0.6, round($counter($costKey) / 1000000, 8), 'Quota holds the measured cost.');
 
 // 4. Success with a longer measured duration: charged more by default...
 $charge('t_long', 'succeeded', ['video_seconds' => 5, 'cost_amount' => '0.50000000'], ['settled_usage' => ['video_seconds' => 12]]);

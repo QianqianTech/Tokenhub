@@ -50,11 +50,29 @@ assert_true(!isset($modelsPayload['ok']), 'GET /v1/models response should not us
 
 $detail = $modelService->detail($apiKey, 'gap-chat-' . $suffix);
 assert_same('gap-chat-' . $suffix, $detail['model']['name'], 'Model detail should resolve authorized model by name.');
-assert_same('active', $detail['model']['health']['status'], 'Model detail should expose active route health.');
+assert_same('active', $detail['model']['health']['route_status'], 'Model detail should expose the enabled route separately.');
+assert_same('unknown', $detail['model']['health']['status'], 'A route with no observed traffic must not be reported as healthy.');
 
 $health = $modelService->health($apiKey);
 assert_true(isset($health['models'][0]['model']), 'Model health should expose per-model entries.');
-assert_true(isset($health['summary']['active']), 'Model health should include active summary count.');
+assert_same(1, $health['summary']['active'], 'The configured route should be counted as active.');
+assert_same(1, $health['summary']['unknown'], 'Unobserved health should have its own count.');
+assert_same(0, $health['summary']['healthy'], 'No traffic is not evidence of successful calls.');
+assert_same(0, $health['summary']['degraded'], 'Unknown health should not count as degraded.');
+
+$db->execute('INSERT INTO usage_aggregates_minute (bucket_at, department_id, user_id, api_key_id, provider_id, model_id, capability, request_count, success_count) VALUES (?, ?, ?, ?, ?, ?, "text_generation", 2, 2)', [gmdate('Y-m-d H:i:00'), $departmentId, $userId, $apiKeyId, $providerId, $modelId]);
+try {
+    $observed = $modelService->health($apiKey);
+    assert_same(1, $observed['summary']['healthy'], 'Successful observed traffic should count as healthy.');
+    assert_same(0, $observed['summary']['unknown'], 'Observed traffic must leave the unknown bucket.');
+    $db->execute('UPDATE usage_aggregates_minute SET success_count = 1 WHERE model_id = ?', [$modelId]);
+    $degraded = $modelService->health($apiKey);
+    assert_same(1, $degraded['summary']['degraded'], 'A low observed success rate should count as degraded.');
+    assert_same(0, $degraded['summary']['healthy'], 'Degraded health must not also count as healthy.');
+    assert_same(1, $degraded['summary']['active'], 'A degraded route can still be configured as active.');
+} finally {
+    $db->execute('DELETE FROM usage_aggregates_minute WHERE model_id = ?', [$modelId]);
+}
 
 $fileService = new ExternalFileService();
 $uploaded = $fileService->upload($apiKey, [
@@ -67,7 +85,7 @@ assert_true(count($files['files']) >= 1, 'File list should return API-key owned 
 assert_same($uploaded['file_id'], $files['files'][0]['file_id'], 'File list should include uploaded file id.');
 
 $webhookService = new WebhookService();
-$webhook = $webhookService->create($apiKey, ['url' => 'https://example.com/tokenhub-webhook', 'event_types' => ['request.completed']]);
+$webhook = $webhookService->create($apiKey, ['url' => 'https://8.8.8.8/tokenhub-webhook', 'event_types' => ['request.completed']]);
 $testDelivery = $webhookService->test($apiKey, (string) $webhook['id']);
 assert_same('webhook.test', $testDelivery['event_type'], 'Webhook test should create a diagnostic delivery.');
 

@@ -24,6 +24,7 @@ if (!in_array('sqlite', PDO::getAvailableDrivers(), true) || !function_exists('p
 }
 $queue = 'tokenhub:gwtest:' . bin2hex(random_bytes(4));
 $_ENV['QUEUE_NAME'] = $queue;
+$_ENV['QUEUE_ROUTING'] = 'false'; // these assertions read the main queue (PERF-015 routes usage.write to <name>:usage)
 $_ENV['OUTBOUND_PRIVATE_ALLOWLIST'] = '127.0.0.1/32';
 $_ENV['PROVIDER_RETRY_MAX_BACKOFF_MS'] = '1';
 $_ENV['GATEWAY_MAX_CHANNELS_PER_REQUEST'] = '2';
@@ -89,6 +90,7 @@ $insertModel->execute([60, 2, 'reranker', 'bge-reranker-up', 'rerank', 1]);
 $insertModel->execute([61, 2, 'guard', 'omni-moderation-up', 'moderation', 1]);
 $insertModel->execute([62, 2, 'legacy', 'legacy-up', 'text_generation', 1]);
 $insertModel->execute([63, 3, 'legacy-stream', 'legacy-stream-up', 'text_generation', 1]);
+$insertModel->execute([64, 2, 'decision', 'decision-model-preview', 'moderation', 1]);
 
 // Route/quota/policy caches and circuit state from earlier runs point at
 // other fake ports or would reorder channels.
@@ -172,6 +174,13 @@ assert_same(7, (int) ($stream['record']['total_tokens'] ?? 0), 'Stream usage com
 assert_same('eof', $stream['record']['stream_outcome'] ?? null, 'Transport outcome is recorded.');
 
 // 7. Tool-call contract is checked before routing.
+$decision = $call('/v1/systemone', ['model' => 'decision', 'state' => ['value' => 2], 'questions' => ['check' => ['type' => 'choice']]], [64]);
+assert_same(200, $decision['status'], 'Structured decision requests pass through the gateway.');
+assert_same('yes', $decision['json']['answers']['check']['choice'] ?? null, 'Decision answers are forwarded without wrapping as chat messages.');
+assert_same(10, $decision['record']['input_tokens'] ?? null, 'Decision token usage is measured from upstream input_tokens.');
+assert_same('measured', $decision['record']['usage_source'] ?? null, 'Decision usage is not replaced by a local estimate.');
+assert_same(403, $call('/v1/systemone', ['model' => 'decision', 'state' => []], [20])['status'], 'An ungranted decision model remains forbidden.');
+
 $orphan = $call('/v1/chat/completions', ['model' => 'shared', 'messages' => [['role' => 'tool', 'tool_call_id' => 'x', 'content' => 'r']]], [20]);
 assert_same('TOOL_CALL_MISMATCH', $orphan['json']['error']['code'] ?? null, 'Orphan tool results are rejected early.');
 
@@ -192,11 +201,21 @@ $budgetKey = $keyId + 1;
 $budgetPolicy = $policyId + 1;
 $pdo->exec("INSERT INTO quota_policies (id, name, period, status, total_token_limit) VALUES ({$budgetPolicy}, 'budget', 'day', 'active', 500)");
 $pdo->exec("INSERT INTO quota_bindings (quota_policy_id, target_type, target_id) VALUES ({$budgetPolicy}, 'api_key', {$budgetKey})");
+// The full declared bound is reserved when neither a cap nor history applies.
+$_ENV['GATEWAY_OUTPUT_RESERVE_P95'] = 'false';
+$_ENV['GATEWAY_OUTPUT_RESERVE_CAP_TOKENS'] = '0';
 $overBudget = $call('/v1/chat/completions', ['model' => 'shared', 'max_tokens' => 1000, 'messages' => [['role' => 'user', 'content' => 'hi']]], [20], $budgetKey);
 assert_same('QUOTA_EXCEEDED', $overBudget['json']['error']['code'] ?? null, 'Declared output that cannot fit the hard budget is refused up front.');
 $withinBudget = $call('/v1/chat/completions', ['model' => 'shared', 'max_tokens' => 100, 'messages' => [['role' => 'user', 'content' => 'hi']]], [20], $budgetKey);
 assert_same(200, $withinBudget['status'], 'A request whose bound fits is served.');
 assert_same(15.0, (float) App::redis()->get("quota:{$budgetPolicy}:api_key:{$budgetKey}:total_tokens:{$bucket}"), 'After settlement the counter holds measured usage, not the reservation.');
+// MT-001: a reservation cap keeps a huge max_tokens from holding the budget;
+// settlement still charges the measured usage.
+$_ENV['GATEWAY_OUTPUT_RESERVE_CAP_TOKENS'] = '256';
+$capped = $call('/v1/chat/completions', ['model' => 'shared', 'max_tokens' => 1000, 'messages' => [['role' => 'user', 'content' => 'hi']]], [20], $budgetKey);
+assert_same(200, $capped['status'], 'The output reservation is capped instead of reserving the whole max_tokens.');
+assert_same(30.0, (float) App::redis()->get("quota:{$budgetPolicy}:api_key:{$budgetKey}:total_tokens:{$bucket}"), 'The capped request settles to its measured usage.');
+unset($_ENV['GATEWAY_OUTPUT_RESERVE_P95'], $_ENV['GATEWAY_OUTPUT_RESERVE_CAP_TOKENS']);
 
 // 10. /v1/rerank: routed to rerank models only, usage from total_tokens.
 $rerank = $call('/v1/rerank', ['model' => 'reranker', 'query' => '报销流程', 'documents' => ['差旅报销需要发票', '年假规定']], [60]);

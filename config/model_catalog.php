@@ -19,6 +19,8 @@ return [
         // rerank and moderation before embeddings: "bge-reranker" must not match "bge-"
         ['pattern' => 'rerank', 'capability' => 'rerank'],
         ['pattern' => 'moderation', 'capability' => 'moderation'],
+        // Structured classification uses /v1/systemone rather than chat.
+        ['pattern' => '^decision-model(?:-|$)', 'capability' => 'moderation'],
         // embeddings first among the rest: "qwen3-embedding" must not match qwen chat rules
         ['pattern' => '(embed|bge-|\be5-|gte-|jina-embeddings|voyage-)', 'capability' => 'embedding'],
 
@@ -39,10 +41,12 @@ return [
         ['pattern' => '(seedream|gpt-image|dall-e|imagen|nano-banana|-image(-|$)|flux|ideogram|recraft|kolors|cogview|glm-image|qwen-image|wan[0-9.]*-(t2i|image)|hunyuan-image|image-01|stable-diffusion|sd3|grok-imagine-image|midjourney)', 'capability' => 'image_generation'],
 
         // chat models that also take video (video_url parts) / audio (input_audio parts)
+        ['pattern' => '^qwen3\.8-flash(?:-|$)', 'capability' => 'video_understanding', 'tags' => ['text_generation', 'vision_understanding'], 'input' => ['text', 'image', 'video']],
         ['pattern' => '(qwen[0-9.]*-vl|qwen[0-9.]*-omni|doubao-seed|glm-[0-9.]+v)', 'capability' => 'video_understanding', 'tags' => ['text_generation', 'vision_understanding'], 'input' => ['text', 'image', 'video']],
         ['pattern' => '(gpt-4o-audio|gpt-audio|audio-preview)', 'capability' => 'audio_understanding', 'tags' => ['text_generation'], 'input' => ['text', 'audio']],
 
         // multimodal chat models (vision understanding also serves text)
+        ['pattern' => '^qwen3\.(8-max|7-plus|6-flash)(?:-|$)', 'capability' => 'vision_understanding', 'tags' => ['text_generation'], 'input' => ['text', 'image']],
         ['pattern' => '(kimi-k2\.6|kimi-k3|(^|/)k3(\.|-|$)|deepseek-flash|deepseek-v4\.1|deepseek-v4-flash|-vl\b|-vl-|qwen[0-9.]*-vl|qvq|qwen[0-9.]*-omni|glm-[0-9.]+v|-vision|llava|pixtral|gemini|claude|gpt-4o|gpt-4\.1|gpt-5|gpt-6|grok-4|mistral-large-4|doubao-seed|mimo-v|step-[0-9]+v)', 'capability' => 'vision_understanding', 'tags' => ['text_generation'], 'input' => ['text', 'image']],
     ],
 ];

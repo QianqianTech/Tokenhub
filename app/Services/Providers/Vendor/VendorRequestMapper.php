@@ -382,6 +382,14 @@ final class VendorRequestMapper
         ];
     }
 
+    private function qianwenImage(array $p, string $model): array
+    {
+        $request = $this->wanImage($p, $model);
+        $request['path'] = '/api/v1/services/aigc/multimodal-generation/generation';
+        unset($request['headers']); // Token Plan images return synchronously.
+        return $request;
+    }
+
     private function bflImage(array $p, string $model): array
     {
         $images = array_values(array_filter([$this->firstFrame($p), ...$this->references($p)]));
@@ -488,6 +496,14 @@ final class VendorRequestMapper
         ]];
     }
 
+    private function qianwenTts(array $p, string $model): array
+    {
+        $request = $this->cosyvoiceTts($p, $model);
+        $request['json']['input']['voice'] = (string) ($p['voice'] ?? 'longanhuan_v3.6');
+        $request['json']['input']['sample_rate'] = (int) ($p['sample_rate'] ?? 24000);
+        return $request;
+    }
+
     private function elevenlabsTts(array $p, string $model): array
     {
         $voice = rawurlencode((string) ($p['voice'] ?? ''));
@@ -554,6 +570,29 @@ final class VendorRequestMapper
         }
 
         return ['path' => '/compatible-mode/v1/chat/completions', 'json' => $body];
+    }
+
+    private function qianwenAudioAsr(array $p, string $model): array
+    {
+        $source = $this->qwenAsr($p, $model)['json'];
+        $audio = (string) ($source['messages'][0]['content'][0]['input_audio']['data'] ?? '');
+        $format = isset($p['format']) ? (string) $p['format'] : '';
+        if ($format === '' && preg_match('#^data:audio/([^;,]+)[;,]#i', $audio, $match)) {
+            $format = match (strtolower($match[1])) {
+                'x-wav', 'wave' => 'wav', 'mpeg' => 'mp3', 'mp4' => 'm4a',
+                default => strtolower($match[1]),
+            };
+        }
+        if ($format === '' && preg_match('#\.(wav|mp3|m4a|aac|flac|ogg|pcm|webm)(?:\?|$)#i', $audio, $match)) $format = strtolower($match[1]);
+        $parameters = [];
+        if (isset($p['language'])) $parameters['language_hints'] = [(string) $p['language']];
+        if ($format !== '') $parameters['format'] = $format;
+        if (isset($p['sample_rate'])) $parameters['sample_rate'] = (int) $p['sample_rate'];
+        return [
+            'path' => '/api/v1/services/aigc/multimodal-generation/generation',
+            'headers' => ['X-DashScope-SSE' => 'disable'],
+            'json' => ['model' => $model, 'input' => ['messages' => $source['messages']], ...($parameters ? ['parameters' => $parameters] : [])],
+        ];
     }
 
     private function deepgramListen(array $p, string $model): array

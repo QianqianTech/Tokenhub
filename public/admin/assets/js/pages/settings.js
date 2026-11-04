@@ -4,9 +4,12 @@ import { metric, operationSuccessText } from "../lib/output.js";
 import { SETTINGS_SECTION_CATEGORIES, SETTINGS_SECTION_PAGES } from "./settings-config.js";
 import { columnLabel, formatResourceValue } from "../resources.js";
 import { pageHead } from "../lib/resource-table.js";
+import { smtpSettingsPanel } from "./smtp-settings.js";
+import { guardForm, markClean } from "../lib/dirty-guard.js";
 
 // What each settings page controls, shown under its title.
 const SETTINGS_DESCRIPTIONS = {
+  "settings-smtp": "配置密码找回邮件的发送服务，并发送测试邮件。仅超级管理员可以修改和测试。",
   "settings-brand-identity": "产品名称、后台与大屏标题和图标；登录页、侧栏和浏览器标签会同步显示。",
   "settings-tls-certificates": "申请、验证、部署和续期 HTTPS 证书，并查看服务器上的真实证书。",
   "settings-entry-security": "限定管理后台与接口入口允许访问的网段。",
@@ -185,11 +188,12 @@ function renderCertificateCenterRequestForm(values) {
     { name: "request_ip_addresses", label: "申请 IP（每行一个）", type: "textarea", optional: true, rows: 3 }
   ];
   const initialType = ["domain", "public_ip", "internal_ip"].includes(values.certificate_mode) ? values.certificate_mode : "domain";
-  const form = el("form", { className: "edit-form certificate-request-form", onSubmit: (event) => event.preventDefault() });
-  const typeField = field(fields[0], initialType);
+  const form = guardForm(el("form", { className: "edit-form certificate-request-form", onSubmit: (event) => event.preventDefault() }));
+  // The type cards are the only type control (the old duplicate select is gone);
+  // the hidden input carries the choice into readFields().
+  const typeField = el("input", { type: "hidden", name: "certificate_request_type", value: initialType });
   const domainField = field(fields[1], values.domain_names || "");
   const ipField = field(fields[2], values.ip_addresses || "");
-  typeField.classList.add("certificate-request-type-select");
   const typeHelp = el("p", { className: "notice certificate-type-help" });
   const internalChoices = el("div", { className: "internal-ip-choices", hidden: true });
   const output = el("p", { className: "notice", hidden: true });
@@ -198,7 +202,7 @@ function renderCertificateCenterRequestForm(values) {
     certificateTypeCard("public_ip", "公网 IP 证书", "Let’s Encrypt · 约 6 天 · 每 12 小时检查"),
     certificateTypeCard("internal_ip", "内网 IP 证书", "内部 CA / 自签名 · 信任内部根证书")
   ];
-  form.append(el("div", { className: "certificate-type-grid" }, cards), typeField, typeHelp, internalChoices, domainField, ipField);
+  form.append(el("div", { className: "certificate-type-grid", role: "radiogroup", "aria-label": "申请类型" }, cards), typeField, typeHelp, internalChoices, domainField, ipField);
   const typeControl = form.querySelector('[name="certificate_request_type"]');
   const showOutput = (text) => {
     setText(output, text);
@@ -210,7 +214,10 @@ function renderCertificateCenterRequestForm(values) {
     ipField.hidden = type === "domain";
     setText(typeHelp, certificateRequestTypeHelp(type));
     for (const card of cards) {
-      card.classList.toggle("active", card.dataset.certificateType === type);
+      const active = card.dataset.certificateType === type;
+      card.classList.toggle("active", active);
+      card.setAttribute("role", "radio");
+      card.setAttribute("aria-checked", active ? "true" : "false");
     }
     internalChoices.hidden = type !== "internal_ip";
     if (type === "internal_ip") {
@@ -239,6 +246,7 @@ function renderCertificateCenterRequestForm(values) {
             ip_addresses: payload.request_ip_addresses
           })
         });
+        markClean(form);
         const verified = await certificateRequestIsDeployed(payload);
         showOutput(verified ? "证书已部署，真实状态已回读。" : "申请已受理，正在验证与部署；只有真实证书回读成功后才视为完成。");
       } catch (error) {
@@ -374,7 +382,10 @@ function renderCertificateAlertCheck() {
 }
 
 function settingsFormPanel(title, section, fields, values, { standalone = false } = {}) {
-  const form = el("form", { className: "edit-form settings-form", onSubmit: (event) => event.preventDefault() });
+  if (section === "smtp") {
+    return smtpSettingsPanel(fields, values);
+  }
+  const form = guardForm(el("form", { className: "edit-form settings-form", onSubmit: (event) => event.preventDefault() }));
   for (const config of fields) {
     form.append(field(config, values[config.name]));
   }
@@ -391,6 +402,7 @@ function settingsFormPanel(title, section, fields, values, { standalone = false 
           method: "PUT",
           body: JSON.stringify(payload)
         });
+        markClean(form);
         showOutput(`${title}已保存`);
       } catch (error) {
         showOutput(adminErrorMessage(error, "保存设置失败，请检查输入内容"));

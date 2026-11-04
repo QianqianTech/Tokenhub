@@ -9,6 +9,7 @@ use TokenHub\Support\App;
 final class SystemSettingsService
 {
     private const SECTION_KEYS = [
+        'smtp' => 'smtp',
         'tls_certificates' => 'tls_certificates',
         'brand_identity' => 'brand_identity',
         'entry_security' => 'entry_security',
@@ -33,6 +34,7 @@ final class SystemSettingsService
     public function defaults(): array
     {
         return [
+            'smtp' => (new SmtpSettingsService())->defaults(),
             'tls_certificates' => [
                 'threshold_days' => 14,
                 'certificate_mode' => 'domain',
@@ -126,6 +128,9 @@ final class SystemSettingsService
     public function loadSection(string $section): array
     {
         $this->assertKnownSection($section);
+        if ($section === 'smtp') {
+            return (new SmtpSettingsService())->settings();
+        }
         $row = App::db()->first('SELECT setting_value FROM system_settings WHERE setting_key = ?', [self::SECTION_KEYS[$section]]);
         $decoded = is_string($row['setting_value'] ?? null) ? json_decode((string) $row['setting_value'], true) : null;
 
@@ -139,6 +144,9 @@ final class SystemSettingsService
     public function saveSection(string $section, array $data): array
     {
         $this->assertKnownSection($section);
+        if ($section === 'smtp') {
+            return (new SmtpSettingsService())->save($data);
+        }
         $this->requireSuperAdmin();
         $normalized = $this->normalizeSection($section, $data);
         App::db()->execute(
@@ -164,6 +172,7 @@ final class SystemSettingsService
         $default = $this->defaults()[$section];
 
         return match ($section) {
+            'smtp' => (new SmtpSettingsService())->normalize($data),
             'tls_certificates' => [
                 'threshold_days' => $this->intRange($data['threshold_days'] ?? null, (int) $default['threshold_days'], 1, 365),
                 'certificate_mode' => $this->choice($data['certificate_mode'] ?? null, (string) $default['certificate_mode'], ['domain', 'public_ip', 'internal_ip']),
@@ -272,6 +281,7 @@ final class SystemSettingsService
     private function description(string $section): string
     {
         return match ($section) {
+            'smtp' => 'SMTP 邮件发送与管理员密码找回设置',
             'tls_certificates' => 'TLS certificate alert settings',
             'brand_identity' => '管理后台和运营大屏的标题、Logo 与浏览器图标设置',
             'entry_security' => 'Admin and API entry security settings',

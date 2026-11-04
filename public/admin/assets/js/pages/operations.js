@@ -176,6 +176,7 @@ function backlogPanel(status, certificates) {
     el("header", { className: "ops-panel-head" }, [el("h3", { text: "队列与积压" })]),
     metricRow("任务队列 待处理", readable ? queues.pending : null),
     metricRow("任务队列 处理中", readable ? queues.processing : null),
+    metricRow("任务队列 等待重试", readable ? (queues.delayed ?? null) : null),
     metricRow("失败任务", readable ? queues.failed : null, { warn: Number(queues.failed) > 0 }),
     metricRow("额度预占（进行中 / 已过期）", leases.active === undefined ? null : `${leases.active ?? "–"} / ${leases.expired ?? "–"}`, { warn: Number(leases.expired) > 0, hint: "过期未释放的预占会由回收任务处理" }),
     metricRow("告警通知 待发送 / 失败", notifications.pending === undefined ? null : `${notifications.pending ?? "–"} / ${notifications.dead ?? "–"}`, { warn: Number(notifications.dead) > 0 }),

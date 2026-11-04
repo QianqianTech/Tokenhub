@@ -56,7 +56,8 @@ export async function renderRagIndexHealthPage(content) {
         stat("陈旧向量", t.stale_vectors, t.stale_vectors > 0 ? "warn" : ""),
         stat("失败任务", t.failed_jobs, t.failed_jobs > 0 ? "error" : ""),
         stat("待建关键词索引", t.lexical_pending, t.lexical_pending > 0 ? "warn" : ""),
-        stat("未绑定模型的向量配置", data.unbound_vector_configs, data.unbound_vector_configs > 0 ? "error" : "")
+        stat("未绑定模型的向量配置", data.unbound_vector_configs, data.unbound_vector_configs > 0 ? "error" : ""),
+        stat("24 小时内向量检索失败", data.vector_degraded_24h ?? 0, (data.vector_degraded_24h ?? 0) > 0 ? "error" : "")
       ]));
       const last = data.last_reconcile;
       body.append(el("div", { className: "toolbar-actions" }, [

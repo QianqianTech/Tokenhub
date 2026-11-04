@@ -38,3 +38,9 @@ Thumbs.db
 
 # Local Redis snapshots
 dump.rdb
+
+# Local validation output and transfer backups
+/output/
+/Claude outputs/
+/_to_delete/
+/qwen-smoke-output/

@@ -29,7 +29,9 @@ try {
     $service = new WebhookService(static function (string $queue, array $payload) use (&$published): void {
         $published[] = [$queue, $payload];
     });
-    $webhook = $service->create($apiKey, ['url' => 'https://example.com/tokenhub-webhook', 'event_types' => ['request.success']]);
+    // This test only records queue publications; a public literal IP avoids
+    // depending on external DNS. No delivery worker is started by the test.
+    $webhook = $service->create($apiKey, ['url' => 'https://8.8.8.8/tokenhub-webhook', 'event_types' => ['request.success']]);
     $deliveryIds = $service->emit($apiKey, 'request.success', ['request_id' => 'req_' . $suffix]);
 
     assert_same(1, count($deliveryIds), 'Matching webhook events should create one delivery.');

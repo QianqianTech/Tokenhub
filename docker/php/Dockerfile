@@ -1,21 +1,29 @@
 # Development image: application code is bind mounted from the repository.
 # Keep the extension list identical to docker/release/php/Dockerfile.
 ARG PHP_VERSION=8.4
-FROM php:${PHP_VERSION}-fpm-bookworm
+ARG PHP_BASE_IMAGE=php:${PHP_VERSION}-fpm-bookworm
+ARG COMPOSER_IMAGE=composer:2
+FROM ${COMPOSER_IMAGE} AS composer-bin
 
+FROM ${PHP_BASE_IMAGE}
+
+ARG PHPREDIS_VERSION=6.2.0
+
+# poppler-utils: `pdftotext` lets PHP parse text PDFs for the RAG knowledge base with page
+# numbers; without it every PDF waits for the Python RAG worker.
 RUN sed -i 's|http://deb.debian.org|https://deb.debian.org|g' /etc/apt/sources.list.d/debian.sources \
     && apt-get -o Acquire::Retries=3 update \
-    && apt-get -o Acquire::Retries=3 install -y --no-install-recommends git unzip libzip-dev libpng-dev libjpeg62-turbo-dev libfreetype6-dev default-mysql-client libfcgi-bin openssl \
+    && apt-get -o Acquire::Retries=3 install -y --no-install-recommends git unzip libzip-dev libpng-dev libjpeg62-turbo-dev libfreetype6-dev default-mysql-client libfcgi-bin openssl poppler-utils \
     && docker-php-ext-configure gd --with-freetype --with-jpeg \
     && docker-php-ext-install pdo_mysql gd zip opcache pcntl \
-    && pecl install redis \
+    && pecl install "redis-${PHPREDIS_VERSION}" \
     && docker-php-ext-enable redis \
     && rm -rf /var/lib/apt/lists/* /tmp/pear
 
 ENV PHP_FPM_MAX_CHILDREN=16 \
     PHP_OPCACHE_VALIDATE_TIMESTAMPS=1
 
-COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
+COPY --from=composer-bin /usr/bin/composer /usr/bin/composer
 COPY docker/php/conf/zz-tokenhub-fpm.conf /usr/local/etc/php-fpm.d/zz-tokenhub.conf
 COPY docker/php/conf/tokenhub.ini /usr/local/etc/php/conf.d/zz-tokenhub.ini
 COPY docker/php/entrypoint.sh /usr/local/bin/tokenhub-entrypoint

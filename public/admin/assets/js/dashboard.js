@@ -2,6 +2,7 @@ import { adminErrorMessage, api, isAbortError } from "./api.js";
 import { button, el, statusMessage } from "./dom.js";
 import { errorState, loadingState, toast } from "./components/feedback.js";
 import { formatResourceValue } from "./resources.js";
+import { formatDateTime, parseServerTime, utcStamp } from "./lib/format.js";
 import { departmentSelectOptions } from "./lib/references.js";
 import { canLookup, resolveLookup } from "./lib/lookups.js";
 
@@ -276,7 +277,7 @@ function resultPanel(title, className, outcome, request, render, isCurrent, opti
 }
 
 function sqlTimestamp(value) {
-  return value.toISOString().slice(0, 19).replace("T", " ");
+  return utcStamp(value);
 }
 
 // Periods start at the administrator's local midnight; the server stores and
@@ -374,14 +375,9 @@ function ascendingByBucket(rows) {
   return (Array.isArray(rows) ? [...rows] : []).sort((left, right) => bucketTime(left) - bucketTime(right));
 }
 
+// Server timestamps are UTC (with or without a zone suffix).
 function parseUtc(value) {
-  if (!value) {
-    return null;
-  }
-  const text = String(value).trim();
-  const iso = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}(:\d{2})?$/.test(text) ? `${text.replace(" ", "T")}Z` : text;
-  const date = new Date(iso);
-  return Number.isFinite(date.getTime()) ? date : null;
+  return parseServerTime(value);
 }
 
 function operationsStatusStrip(today, performance, security, openAlerts, navigate) {
@@ -756,15 +752,17 @@ function trendChart(rows, bucket = "hour") {
   return el("div", { className: "chart-area trend-chart" }, [
     el("div", { className: "chart-toolbar" }, [legend]),
     frame,
-    dataTable("查看趋势数据表", columns, data)
+    dataTable("查看趋势数据表", columns, data, bucket)
   ]);
 }
 
 // Accessible fallback for charts: the same numbers as a plain table.
-function dataTable(summary, columns, rows) {
+function dataTable(summary, columns, rows, bucket = "hour") {
   const head = el("tr", {}, columns.map((column) => el("th", { scope: "col", text: TABLE_LABELS[column] || column })));
   const body = el("tbody", {}, rows.map((row) => el("tr", {}, columns.map((column) => el("td", {
-    text: column === "bucket_at" ? String(row[column] ?? "") : formatResourceValue(column, row[column])
+    text: column === "bucket_at"
+      ? (bucket === "day" ? String(row[column] ?? "").slice(0, 10) : formatDateTime(row[column]))
+      : formatResourceValue(column, row[column])
   })))));
   return el("details", { className: "chart-data-table" }, [
     el("summary", { text: summary }),
@@ -773,7 +771,7 @@ function dataTable(summary, columns, rows) {
 }
 
 const TABLE_LABELS = {
-  bucket_at: "时间 (UTC)",
+  bucket_at: "时间（本地）",
   request_count: "请求量",
   success_count: "成功请求",
   failed_count: "失败请求",

@@ -11,7 +11,7 @@ App::bootstrap(dirname(__DIR__, 2));
 
 $db = App::db();
 $service = new ScreenService();
-$prefix = 'test_screen_' . bin2hex(random_bytes(4));
+$prefix = 'tst_scr_' . bin2hex(random_bytes(4));
 
 $cleanup = static function () use ($db, $prefix): void {
     $ids = array_map(
@@ -36,7 +36,7 @@ $cleanup();
 
 try {
     $created = $service->createShareLink([
-        'share_code' => $prefix . '_main',
+        'share_code' => $prefix . '_K7q2Xz9P',
         'name' => 'Main screen',
         'username' => 'screen_user',
         'password' => 'first-secret',
@@ -57,7 +57,7 @@ try {
     assert_true($row['password_hash'] !== 'first-secret', 'Share link password must be hashed in storage.');
     assert_true(password_verify('first-secret', (string) $row['password_hash']), 'Stored hash should verify original password.');
 
-    $shareLogin = $service->loginByShareCode($prefix . '_main', '10.1.2.3', 'ScreenTest/1.0');
+    $shareLogin = $service->loginByShareCode($prefix . '_K7q2Xz9P', '10.1.2.3', 'ScreenTest/1.0');
     assert_true(($shareLogin['ok'] ?? false) === true, 'Share code should login without username or password.');
     assert_true(isset($shareLogin['session']), 'Share-code login should return a session token.');
     assert_true($service->session((string) $shareLogin['session'], '10.1.2.3') !== null, 'Share-code session should authenticate.');
@@ -66,29 +66,61 @@ try {
     assert_true(($credentialLogin['ok'] ?? false) === true, 'Screen username and password should login without a share code.');
     assert_true(isset($credentialLogin['session']), 'Credential login should return a session token.');
 
-    $login = $service->login($prefix . '_main', 'screen_user', 'first-secret', '10.1.2.3', 'ScreenTest/1.0');
+    $login = $service->login($prefix . '_K7q2Xz9P', 'screen_user', 'first-secret', '10.1.2.3', 'ScreenTest/1.0');
     assert_true(($login['ok'] ?? false) === true, 'Correct screen credentials should login successfully.');
     assert_true(isset($login['session']), 'Successful login should return a session token.');
     assert_true(!array_key_exists('password_hash', $login['share']), 'Login response must not expose password_hash.');
 
     $shareId = (int) $created['id'];
-    assert_true($service->session((string) $login['session'], '10.1.2.3') !== null, 'Fresh session should authenticate.');
-    $db->execute('UPDATE dashboard_share_links SET expires_at = "2000-01-01 00:00:00" WHERE id = ?', [$shareId]);
-    assert_true($service->session((string) $login['session'], '10.1.2.3') !== null, 'Existing session should survive share login expiry.');
 
-    $expiredLogin = $service->login($prefix . '_main', 'screen_user', 'first-secret', '10.1.2.3', 'ScreenTest/1.0');
+    // SEC-001: operator-chosen share codes must be long and random-looking.
+    foreach (['short', 'aaaaaaaaaaaaaaaaaaaa', 'abcdefghijklmnopqrst', 'screen-2026-lobby'] as $weakCode) {
+        $rejected = false;
+        try {
+            $service->createShareLink(['share_code' => $weakCode, 'username' => 'weak', 'password' => 'x']);
+        } catch (\TokenHub\Support\HttpAbortException $exception) {
+            $rejected = $exception->errorCode === 'ADMIN_INVALID_PAYLOAD';
+        }
+        assert_true($rejected, "Weak custom share code {$weakCode} should be rejected.");
+    }
+    $generated = $service->createShareLink(['share_code' => '', 'name' => 'Generated', 'username' => 'gen_' . $prefix, 'password' => 'x']);
+    assert_true(str_starts_with((string) $generated['share_code'], 'screen_') && strlen((string) $generated['share_code']) >= 16, 'An empty share code should be generated.');
+    assert_true(isset($generated['share_url'], $generated['password']), 'Create should return share_url and the one-time password.');
+    $db->execute('DELETE FROM dashboard_share_access_logs WHERE share_link_id = ?', [(int) $generated['id']]);
+    $db->execute('DELETE FROM dashboard_share_links WHERE id = ?', [(int) $generated['id']]);
+    assert_true($service->session((string) $login['session'], '10.1.2.3') !== null, 'Fresh session should authenticate.');
+    // SCR-002: activity is recorded at most once per session per interval.
+    $refreshCount = static fn () => count(array_filter($events($shareId), static fn (string $event): bool => str_starts_with($event, 'refresh:')));
+    $refreshesBefore = $refreshCount();
+    $service->session((string) $login['session'], '10.1.2.3');
+    assert_same($refreshesBefore, $refreshCount(), 'A fresh session should not write a refresh row on every poll.');
+    $db->execute('UPDATE dashboard_share_sessions SET updated_at = DATE_SUB(NOW(), INTERVAL 10 MINUTE) WHERE session_hash = ?', [\TokenHub\Support\Crypto::hashKey((string) $login['session'])]);
+    assert_true($service->session((string) $login['session'], '10.1.2.3') !== null, 'A session idle for minutes (below the idle limit) should authenticate.');
+    $service->session((string) $login['session'], '10.1.2.3');
+    assert_same($refreshesBefore + 1, $refreshCount(), 'An idle interval should produce exactly one refresh row.');
+
+    // SEC-002: a session idle beyond the sliding lifetime ends.
+    $idleLogin = $service->loginByShareCode($prefix . '_K7q2Xz9P', '10.1.2.3', 'ScreenTest/1.0');
+    $db->execute('UPDATE dashboard_share_sessions SET updated_at = DATE_SUB(NOW(), INTERVAL 2 DAY) WHERE session_hash = ?', [\TokenHub\Support\Crypto::hashKey((string) $idleLogin['session'])]);
+    assert_true($service->session((string) $idleLogin['session'], '10.1.2.3') === null, 'A session unused for longer than SCREEN_SESSION_IDLE_SECONDS should end.');
+
+    // SEC-002: the link's access deadline ends existing sessions as well.
+    $db->execute('UPDATE dashboard_share_links SET expires_at = "2000-01-01 00:00:00" WHERE id = ?', [$shareId]);
+    assert_true($service->session((string) $login['session'], '10.1.2.3') === null, 'Existing sessions should end when the share link expires.');
+
+    $expiredLogin = $service->login($prefix . '_K7q2Xz9P', 'screen_user', 'first-secret', '10.1.2.3', 'ScreenTest/1.0');
     assert_same(false, $expiredLogin['ok'] ?? null, 'Expired link should reject new login.');
     assert_same('SCREEN_LINK_EXPIRED', $expiredLogin['code'] ?? null, 'Expired link should return screen-specific error code.');
     $db->execute('UPDATE dashboard_share_links SET expires_at = NULL WHERE id = ?', [$shareId]);
 
-    $badPassword = $service->login($prefix . '_main', 'screen_user', 'wrong-secret', '10.1.2.3', 'ScreenTest/1.0');
+    $badPassword = $service->login($prefix . '_K7q2Xz9P', 'screen_user', 'wrong-secret', '10.1.2.3', 'ScreenTest/1.0');
     assert_same(false, $badPassword['ok'] ?? null, 'Wrong password should reject login.');
     assert_same('SCREEN_UNAUTHENTICATED', $badPassword['code'] ?? null, 'Wrong password should return screen-specific error code.');
 
-    $badIp = $service->login($prefix . '_main', 'screen_user', 'first-secret', '192.168.1.20', 'ScreenTest/1.0');
+    $badIp = $service->login($prefix . '_K7q2Xz9P', 'screen_user', 'first-secret', '192.168.1.20', 'ScreenTest/1.0');
     assert_same(false, $badIp['ok'] ?? null, 'Out-of-range IP should reject login.');
     assert_same('SCREEN_IP_FORBIDDEN', $badIp['code'] ?? null, 'Out-of-range IP should return screen-specific error code.');
-    $badShareIp = $service->loginByShareCode($prefix . '_main', '192.168.1.20', 'ScreenTest/1.0');
+    $badShareIp = $service->loginByShareCode($prefix . '_K7q2Xz9P', '192.168.1.20', 'ScreenTest/1.0');
     assert_same(false, $badShareIp['ok'] ?? null, 'Out-of-range IP should reject share-code login.');
     assert_same('SCREEN_IP_FORBIDDEN', $badShareIp['code'] ?? null, 'Out-of-range share-code login should return screen-specific error code.');
     $badCredentialIp = $service->loginByCredentials('screen_user', 'first-secret', '192.168.1.20', 'ScreenTest/1.0');
@@ -99,7 +131,7 @@ try {
     assert_true(in_array('192.168.1.20', json_decode((string) $allowedShare['allowed_ip_cidrs'], true), true), 'Allowed client IP should be added to share CIDRs.');
     $allowedShareAgain = $service->allowClientIp($shareId, '192.168.1.20');
     assert_same($allowedShare['allowed_ip_cidrs'], $allowedShareAgain['allowed_ip_cidrs'], 'Allowing the same IP twice should not duplicate it.');
-    $allowedIpLogin = $service->loginByShareCode($prefix . '_main', '192.168.1.20', 'ScreenTest/1.0');
+    $allowedIpLogin = $service->loginByShareCode($prefix . '_K7q2Xz9P', '192.168.1.20', 'ScreenTest/1.0');
     assert_true(($allowedIpLogin['ok'] ?? false) === true, 'Newly allowed IP should login by share code.');
 
     $reset = $service->resetPassword($shareId, 'second-secret');
@@ -107,24 +139,24 @@ try {
     assert_true(!array_key_exists('password_hash', $reset), 'Password reset response must not expose password_hash.');
     assert_true($service->session((string) $login['session'], '10.1.2.3') === null, 'Password reset should revoke old sessions.');
 
-    $oldPassword = $service->login($prefix . '_main', 'screen_user', 'first-secret', '10.1.2.3', 'ScreenTest/1.0');
+    $oldPassword = $service->login($prefix . '_K7q2Xz9P', 'screen_user', 'first-secret', '10.1.2.3', 'ScreenTest/1.0');
     assert_same(false, $oldPassword['ok'] ?? null, 'Old password should stop working after reset.');
-    $newLogin = $service->login($prefix . '_main', 'screen_user', 'second-secret', '10.1.2.3', 'ScreenTest/1.0');
+    $newLogin = $service->login($prefix . '_K7q2Xz9P', 'screen_user', 'second-secret', '10.1.2.3', 'ScreenTest/1.0');
     assert_true(($newLogin['ok'] ?? false) === true, 'New password should work after reset.');
 
     $service->revokeSessions($shareId);
     assert_true($service->session((string) $newLogin['session'], '10.1.2.3') === null, 'Manual session revoke should invalidate existing sessions.');
 
-    $latestLogin = $service->login($prefix . '_main', 'screen_user', 'second-secret', '10.1.2.3', 'ScreenTest/1.0');
+    $latestLogin = $service->login($prefix . '_K7q2Xz9P', 'screen_user', 'second-secret', '10.1.2.3', 'ScreenTest/1.0');
     assert_true(($latestLogin['ok'] ?? false) === true, 'Login should work before disabling link.');
     $service->disableShareLink($shareId);
     assert_true($service->session((string) $latestLogin['session'], '10.1.2.3') === null, 'Disabled link should invalidate existing sessions.');
-    $disabledLogin = $service->login($prefix . '_main', 'screen_user', 'second-secret', '10.1.2.3', 'ScreenTest/1.0');
+    $disabledLogin = $service->login($prefix . '_K7q2Xz9P', 'screen_user', 'second-secret', '10.1.2.3', 'ScreenTest/1.0');
     assert_same(false, $disabledLogin['ok'] ?? null, 'Disabled link should reject login.');
     assert_same('SCREEN_LINK_DISABLED', $disabledLogin['code'] ?? null, 'Disabled link should return screen-specific error code.');
 
     $eventText = implode('|', $events($shareId));
-    foreach (['login_success:', 'refresh:', 'login_expired:share_expired', 'login_failed:bad_password', 'ip_denied:ip_forbidden', 'session_revoked:password_reset', 'session_revoked:admin_revoked', 'link_disabled:link_disabled'] as $expected) {
+    foreach (['login_success:', 'refresh:', 'session_expired:idle_timeout', 'session_expired:share_expired', 'login_expired:share_expired', 'login_failed:bad_password', 'ip_denied:ip_forbidden', 'session_revoked:password_reset', 'session_revoked:admin_revoked', 'link_disabled:link_disabled'] as $expected) {
         assert_true(str_contains($eventText, $expected), "Expected access log event {$expected}.");
     }
 } finally {

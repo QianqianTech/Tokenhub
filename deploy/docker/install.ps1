@@ -204,7 +204,7 @@ if ($Build) {
     Info 'Pulling images...'
     Invoke-Compose pull
 } else {
-    foreach ($image in @('tokenhub-php', 'tokenhub-caddy', 'tokenhub-rag-worker')) {
+    foreach ($image in @('tokenhub-php', 'tokenhub-caddy', 'tokenhub-rag-worker', 'tokenhub-realtime-gateway')) {
         & docker image inspect "${image}:$tagNow" *> $null
         if ($LASTEXITCODE -ne 0) { Die "Image ${image}:$tagNow not found. Use -Build, -ImagePrefix or load the offline bundle first." }
     }

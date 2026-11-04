@@ -6,23 +6,108 @@ namespace TokenHub\Services;
 
 use TokenHub\Services\Pricing\PricingRules;
 use TokenHub\Support\App;
+use TokenHub\Support\ConfigVersion;
 use TokenHub\Support\Decimal;
 
+/**
+ * Prices usage with the model price version effective at a point in time.
+ *
+ * PERF-012: the gateway prices a request up to four times (reservation,
+ * final reservation, settlement, usage record). The newest price rows of a
+ * model (up to RECENT_ROWS, future-dated versions included) are cached per
+ * process and in Redis under a ConfigVersion-suffixed key, so any audited
+ * admin price change (and catalog price sync) invalidates them at once;
+ * GATEWAY_PRICE_CACHE_SECONDS (default 300, 0 = off) bounds staleness
+ * otherwise. The effective row is still chosen per call from that list by
+ * effective_at, so a version that starts mid-day applies on time. Times older
+ * than every cached row fall back to the database.
+ */
 final class PriceService
 {
+    private const RECENT_ROWS = 20;
+    private const MEMO_SECONDS = 30;
+
+    /** @var array<string, array{rows: list<array<string, mixed>>, until: float}> */
+    private static array $memo = [];
+
     /**
      * @param array<string, mixed> $usage
      * @return array{cost_amount: ?string, price_snapshot: ?array<string, mixed>}
      */
     public function priceUsage(int $modelId, array $usage, ?string $at = null): array
     {
-        $lookup = $this->lookupConstraint($modelId, $at ?? gmdate('Y-m-d H:i:s'));
-        $price = App::db()->first(
+        $at ??= gmdate('Y-m-d H:i:s');
+
+        return $this->applyPrice($usage, $this->effectivePrice($modelId, $at), $at);
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    public function effectivePrice(int $modelId, string $at): ?array
+    {
+        $ttl = (int) env_value('GATEWAY_PRICE_CACHE_SECONDS', 300);
+        if ($ttl > 0) {
+            $rows = $this->recentPrices($modelId, $ttl);
+            if ($rows !== null) {
+                foreach ($rows as $row) {
+                    if ((string) ($row['effective_at'] ?? '') <= $at) {
+                        return $row;
+                    }
+                }
+                if (count($rows) < self::RECENT_ROWS) {
+                    return null;
+                }
+            }
+        }
+        $lookup = $this->lookupConstraint($modelId, $at);
+
+        return App::db()->first(
             'SELECT * FROM model_prices WHERE ' . $lookup['where'] . ' ORDER BY ' . $lookup['order'] . ' LIMIT 1',
             $lookup['params']
         );
+    }
 
-        return $this->applyPrice($usage, $price, $at ?? gmdate('Y-m-d H:i:s'));
+    public static function flushCache(): void
+    {
+        self::$memo = [];
+    }
+
+    /**
+     * @return list<array<string, mixed>>|null newest first; null when unavailable
+     */
+    private function recentPrices(int $modelId, int $ttl): ?array
+    {
+        $key = 'model_prices:' . $modelId . ConfigVersion::cacheSuffix();
+        $now = microtime(true);
+        if (isset(self::$memo[$key]) && self::$memo[$key]['until'] > $now) {
+            return self::$memo[$key]['rows'];
+        }
+        try {
+            $cached = App::redis()->get($key);
+        } catch (\Throwable) {
+            $cached = null;
+        }
+        if (is_array($cached) && array_is_list($cached)) {
+            $rows = $cached;
+        } else {
+            try {
+                $rows = App::db()->select('SELECT * FROM model_prices WHERE model_id = ? ORDER BY effective_at DESC, id DESC LIMIT ' . self::RECENT_ROWS, [$modelId]);
+            } catch (\Throwable) {
+                return null;
+            }
+            try {
+                // An empty list is cached too (unpriced model).
+                App::redis()->set($key, $rows === [] ? '[]' : $rows, $ttl);
+            } catch (\Throwable) {
+            }
+        }
+        if (count(self::$memo) > 512) {
+            self::$memo = [];
+        }
+        self::$memo[$key] = ['rows' => $rows, 'until' => $now + min($ttl, self::MEMO_SECONDS)];
+
+        return $rows;
     }
 
     /**

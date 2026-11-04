@@ -24,7 +24,7 @@ $unixImporter = $read($root . '/scripts/import-offline-release.sh');
 
 assert_true(str_contains($phpDockerfile, 'composer install --no-dev'), 'PHP image must install production Composer dependencies.');
 assert_true(str_contains($phpDockerfile, 'docker-php-ext-install pdo_mysql gd zip'), 'PHP dependency stage must install PDO MySQL, GD and ZIP before Composer validates platform requirements.');
-assert_true(str_contains($phpDockerfile, 'pecl install redis'), 'PHP dependency stage must install Redis before Composer validates platform requirements.');
+assert_true(str_contains($phpDockerfile, 'pecl install "redis-${PHPREDIS_VERSION}"') && preg_match('/ARG PHPREDIS_VERSION=\d+\.\d+\.\d+/', $phpDockerfile) === 1, 'PHP dependency stage must install a pinned phpredis before Composer validates platform requirements.');
 assert_true(str_contains($phpDockerfile, 'COPY app ./app'), 'PHP image must contain PHP application code.');
 assert_true(str_contains($caddyDockerfile, 'COPY public /srv/app/public'), 'Caddy image must contain public assets.');
 assert_true(str_contains($ragDockerfile, 'COPY python-rag-worker/tokenhub_rag_worker'), 'RAG image must contain worker code.');

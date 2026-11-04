@@ -123,7 +123,7 @@ final class TaskBillingService
         if (array_key_exists('aggregated_at', $record) && $record['aggregated_at'] === null) {
             return ['settled' => false, 'reason' => 'usage_record_pending'];
         }
-        if (App::db()->execute('UPDATE multimodal_tasks SET settled_at = NOW() WHERE id = ? AND settled_at IS NULL', [(int) $task['id']]) !== 1) {
+        if (App::db()->execute('UPDATE multimodal_tasks SET settled_at = UTC_TIMESTAMP() WHERE id = ? AND settled_at IS NULL', [(int) $task['id']]) !== 1) {
             return ['settled' => false, 'reason' => 'already_settled'];
         }
 
@@ -177,6 +177,35 @@ final class TaskBillingService
         App::logger()->info('billing', 'task settled', ['task_id' => $task['task_id'] ?? null, 'reason' => $reason, 'cost_delta' => $costDelta, 'delta' => array_filter($delta)]);
 
         return ['settled' => true, 'reason' => $reason, 'cost_delta' => $costDelta, 'delta' => array_filter($delta)];
+    }
+
+    /**
+     * Prices measured usage with the snapshot stored on the usage record
+     * (the price that was in force when the task was submitted). Returns null
+     * when there is no usable snapshot.
+     *
+     * @param array<string, mixed> $usage
+     * @return array{cost_amount: ?string, price_snapshot: ?array<string, mixed>}|null
+     */
+    public static function priceFromSnapshot(mixed $snapshot, array $usage, string $at): ?array
+    {
+        if (is_string($snapshot) && $snapshot !== '') {
+            $snapshot = json_decode($snapshot, true);
+        }
+        if (!is_array($snapshot) || $snapshot === []) {
+            return null;
+        }
+        $upstreamCost = $usage['upstream_cost'] ?? null;
+        if (($snapshot['source'] ?? '') === 'upstream_cost' && isset($snapshot['upstream_cost_multiplier']) && is_numeric($upstreamCost) && (float) $upstreamCost >= 0) {
+            return ['cost_amount' => Decimal::mulDecimal((string) $upstreamCost, (string) $snapshot['upstream_cost_multiplier']), 'price_snapshot' => $snapshot];
+        }
+        // The snapshot holds the resolved prices (rules already applied), so
+        // it is priced without rules.
+        $price = $snapshot;
+        unset($price['applied_rules'], $price['pricing_rules'], $price['upstream_cost'], $price['upstream_cost_multiplier'], $price['source']);
+        $price['id'] = (int) ($snapshot['price_id'] ?? 0);
+        $priced = (new PriceService())->applyPrice($usage, $price, $at);
+        return $priced['cost_amount'] === null ? null : $priced;
     }
 
     /**
@@ -250,9 +279,12 @@ final class TaskBillingService
                 $usage['upstream_cost'] = $upstreamCost;
             }
             $at = (string) ($record['created_at'] ?? gmdate('Y-m-d H:i:s'));
+            // BIZ-011: the price frozen on the usage record at submission wins;
+            // the catalog is only consulted for records without a snapshot.
             $priced = $this->pricer !== null
                 ? ($this->pricer)((int) $task['model_id'], $usage, $at)
-                : (new PriceService())->priceUsage((int) $task['model_id'], $usage, $at);
+                : (self::priceFromSnapshot($record['price_snapshot'] ?? null, $usage, $at)
+                    ?? (new PriceService())->priceUsage((int) $task['model_id'], $usage, $at));
             if ($priced['cost_amount'] !== null) {
                 $final['cost_amount'] = (string) $priced['cost_amount'];
             }
@@ -293,11 +325,13 @@ final class TaskBillingService
         $currency = isset($record['cost_currency']) && $record['cost_currency'] !== null ? strtoupper((string) $record['cost_currency']) : null;
         $baseCurrency = strtoupper((string) env_value('BILLING_BASE_CURRENCY', 'USD'));
         $baseCostDelta = $costDelta !== null && ($currency === null || $currency === $baseCurrency) ? $costDelta : null;
-        $scope = '(department_id = ? OR (department_id IS NULL AND ? IS NULL)) AND (user_id = ? OR (user_id IS NULL AND ? IS NULL)) AND (api_key_id = ? OR (api_key_id IS NULL AND ? IS NULL)) AND (provider_id = ? OR (provider_id IS NULL AND ? IS NULL)) AND (model_id = ? OR (model_id IS NULL AND ? IS NULL))';
+        // BIZ-013: "none" is 0 in the aggregates; the IS NULL branch also
+        // matches rows written before the NOT NULL migration ran.
+        $scope = '(department_id = ? OR (department_id IS NULL AND ? = 0)) AND (user_id = ? OR (user_id IS NULL AND ? = 0)) AND (api_key_id = ? OR (api_key_id IS NULL AND ? = 0)) AND (provider_id = ? OR (provider_id IS NULL AND ? = 0)) AND (model_id = ? OR (model_id IS NULL AND ? = 0))';
         $scopeParams = [];
-        foreach (['department_id', 'user_id', 'api_key_id', 'provider_id', 'model_id'] as $column) {
-            $scopeParams[] = $record[$column] ?? null;
-            $scopeParams[] = $record[$column] ?? null;
+        foreach (\TokenHub\Services\UsageService::dimensions($record) as $value) {
+            $scopeParams[] = $value;
+            $scopeParams[] = $value;
         }
         foreach ([
             'usage_aggregates_minute' => gmdate('Y-m-d H:i:00', $createdAt),

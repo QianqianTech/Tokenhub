@@ -21,7 +21,7 @@ $restore(['APP_ENV' => 'testing', 'APP_KEY' => 'unit-test-key-0123456789abcdef-0
 
 // --- Crypto keyring (TH-039) ---
 $cipher = Crypto::encrypt('provider-secret');
-assert_true(str_starts_with($cipher, 'v2:k1:'), 'New ciphertexts carry the key id.');
+assert_true(str_starts_with($cipher, 'v3:k1:'), 'New ciphertexts carry the key id (HKDF-derived encryption key, SEC-112).');
 assert_same('provider-secret', Crypto::decrypt($cipher), 'Ciphertext decrypts with the primary key.');
 assert_same(false, Crypto::needsReencryption($cipher), 'Ciphertext under the primary key needs no rotation.');
 
@@ -29,7 +29,7 @@ $hashBefore = Crypto::hashKey('tkh_example');
 $restore(['APP_HASH_KEY' => 'unit-test-key-0123456789abcdef-0123', 'APP_KEY' => 'rotated-key-abcdefghijklmnopqrstuvwxyz', 'APP_KEY_ID' => 'k2', 'APP_PREVIOUS_KEYS' => 'k1:unit-test-key-0123456789abcdef-0123']);
 assert_same('provider-secret', Crypto::decrypt($cipher), 'Old ciphertext still decrypts through APP_PREVIOUS_KEYS during rotation.');
 assert_same(true, Crypto::needsReencryption($cipher), 'Old ciphertext is reported for re-encryption.');
-assert_true(str_starts_with(Crypto::encrypt('x'), 'v2:k2:'), 'New writes use the new key id.');
+assert_true(str_starts_with(Crypto::encrypt('x'), 'v3:k2:'), 'New writes use the new key id.');
 assert_same($hashBefore, Crypto::hashKey('tkh_example'), 'Pinned APP_HASH_KEY keeps API key hashes stable across APP_KEY rotation.');
 
 $restore(['APP_HASH_KEY' => null]);

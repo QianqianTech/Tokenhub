@@ -52,7 +52,9 @@ final class RagAdminTrialService
         }
 
         $startedAt = microtime(true);
-        $sources = (new RagRetrievalService())->searchSourcesForDatasets([$dataset], $query, $topK, $queryModality);
+        $retrieval = new RagRetrievalService();
+        $sources = $retrieval->searchSourcesForDatasets([$dataset], $query, $topK, $queryModality);
+        $vector = $retrieval->lastVectorStatus();
 
         return [
             'query' => $query,
@@ -60,6 +62,8 @@ final class RagAdminTrialService
             'top_k' => $topK,
             'latency_ms' => (int) ((microtime(true) - $startedAt) * 1000),
             'fallback_used' => false,
+            'vector_status' => $vector['status'],
+            'vector_errors' => $vector['errors'],
             'dataset' => [
                 'dataset_id' => (string) $dataset['dataset_id'],
                 'name' => (string) $dataset['name'],

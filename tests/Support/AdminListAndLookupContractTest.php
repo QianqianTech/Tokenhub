@@ -49,5 +49,5 @@ assert_true(str_contains($apiKeys, "App::db()->transaction(function () use (\$id
 // Session renewal (UI-026).
 assert_true(str_contains($kernel, "\$router->post('/admin-api/session/renew', [\$admin, 'renewSession'], [new AdminAuthMiddleware(), new CsrfMiddleware()]);"), 'Session renewal should require authentication and CSRF.');
 assert_same(null, $permissions->capabilityForAdminRequest($request('POST', '/admin-api/session/renew')), 'Any signed-in administrator may renew their own session.');
-assert_true(str_contains($auth, 'expires_at > NOW()') && str_contains($auth, 'public function renew(string $session): ?string'), 'Only active sessions can be renewed.');
+assert_true(str_contains($auth, 'expires_at > UTC_TIMESTAMP()') && str_contains($auth, 'public function renew(string $session): ?string'), 'Only active sessions can be renewed.');
 assert_true(str_contains($controller, "'session_expires_at' => (new AuthService())->sessionExpiresAt("), 'The admin profile should report when the session expires.');

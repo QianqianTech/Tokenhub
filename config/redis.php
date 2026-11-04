@@ -8,5 +8,8 @@ return [
     'password' => env('REDIS_PASSWORD', ''),
     'database' => (int) env('REDIS_DATABASE', 0),
     'timeout' => (float) env('REDIS_TIMEOUT', 2.0),
+    // PERF-011: reuse the Redis connection across FPM requests (pconnect).
+    'persistent' => env('REDIS_PERSISTENT', true),
+    'persistent_id' => env('REDIS_PERSISTENT_ID', 'tokenhub'),
 ];
 

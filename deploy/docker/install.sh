@@ -190,10 +190,33 @@ elif [ -n "$(env_get TOKENHUB_IMAGE_PREFIX)" ]; then
   info "Pulling images..."
   compose pull
 else
-  for image in tokenhub-php tokenhub-caddy tokenhub-rag-worker; do
+  for image in tokenhub-php tokenhub-caddy tokenhub-rag-worker tokenhub-realtime-gateway; do
     docker image inspect "$image:$(env_get TOKENHUB_IMAGE_TAG)" >/dev/null 2>&1 \
       || die "Image $image:$(env_get TOKENHUB_IMAGE_TAG) not found. Use --build (source tree), --image-prefix (registry) or load the offline bundle first."
   done
+fi
+
+# ------------------------------------------------------------------ trusted proxies
+# SEC-114: trust the stack's own Docker network as proxies, so X-Forwarded-For
+# from Caddy and the realtime gateway is believed (Caddy replaces the header of
+# untrusted clients, so it cannot be forged from outside). Only while the value
+# is still the template default; doctor warns when all clients share one address.
+detect_compose_subnets() {
+  local project network
+  project="$(env_get COMPOSE_PROJECT_NAME)"; project="${project:-tokenhub}"
+  network="${project}_default"
+  docker network inspect -f '{{range .IPAM.Config}}{{.Subnet}} {{end}}' "$network" 2>/dev/null | tr ' ' '\n' | grep -E '^[0-9a-fA-F:.]+/[0-9]+$' | paste -sd, - || true
+}
+current_trusted="$(env_get TRUSTED_PROXY_CIDRS)"
+if [ -z "$current_trusted" ] || [ "$current_trusted" = "127.0.0.1/32,::1/128" ]; then
+  compose up --no-start >/dev/null 2>&1 || true
+  subnets="$(detect_compose_subnets)"
+  if [ -n "$subnets" ]; then
+    env_set TRUSTED_PROXY_CIDRS "127.0.0.1/32,::1/128,$subnets"
+    info "TRUSTED_PROXY_CIDRS: added the Docker network $subnets"
+  else
+    warn "Could not detect the Docker network; TRUSTED_PROXY_CIDRS stays $current_trusted (bin/doctor.php reports if clients share one address)."
+  fi
 fi
 
 # ------------------------------------------------------------------ start

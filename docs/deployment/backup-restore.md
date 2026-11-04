@@ -10,9 +10,11 @@
 
 ```sh
 cd deploy/docker            # 或离线包中的 tokenhub/ 目录
-./backup.sh                 # 写入 ./backups/<时间>/，默认保留最近 7 份（KEEP=14 可调整）
-CONFIRM_RESTORE=1 ./restore.sh ./backups/20261028-023000
+./backup.sh                 # 写入 <备份目录>/<时间>/，默认保留最近 7 份（KEEP=14 可调整）
+CONFIRM_RESTORE=1 ./restore.sh /var/backups/tokenhub/20261028-023000
 ```
+
+备份目录（SEC-007）：备份含 `APP_KEY` 和全部口令，默认不再放在源码 / 部署目录里。依次取：环境变量或 `.env` 中的 `BACKUP_DIR` → `/var/backups/tokenhub`（root 或已授权的目录）→ `~/tokenhub-backups`；都不可写时才退回 `./backups/` 并给出警告。Windows（`backup.ps1`）默认 `%ProgramData%\TokenHub\backups`。旧版本写在 `deploy/docker/backups/` 的备份请手动移走。
 
 备份内容如下：
 

@@ -17,7 +17,7 @@ export async function renderRagUploadWorkbenchPage(content, options = {}) {
   const form = el("form", { className: "edit-form rag-upload-workbench", onSubmit: (event) => event.preventDefault() });
   const kbOptions = knowledgeBases.map((row) => [row.kb_id, `${row.name || row.kb_id} (${row.kb_id})`]);
   const datasetOptions = datasets.map((row) => [row.dataset_id, `${row.name || row.dataset_id} (${row.dataset_id})`]);
-  const fileInput = el("input", { type: "file", name: "rag_file", accept: ".xlsx,.csv,.txt,.zip,.docx,.pptx,.pdf,.md,.markdown,.html,.htm" });
+  const fileInput = el("input", { type: "file", name: "rag_file", accept: RAG_UPLOAD_ACCEPT });
   const output = el("p", { className: "notice", hidden: true });
   const uploadResult = el("section", { className: "rag-upload-result" });
 
@@ -25,13 +25,14 @@ export async function renderRagUploadWorkbenchPage(content, options = {}) {
     field({ name: "kb_id", label: "知识库", type: "select", options: kbOptions }),
     field({ name: "target_dataset_id", label: "向量数据集", type: "select", options: datasetOptions }),
     field({ name: "department_id", label: "部门", type: "select", coerce: "number", options: departmentOptions }),
-    field({ name: "template", label: "导入类型", type: "select", options: [["text", "文本"], ["qa", "问答"], ["document", "文档（Word / PDF / PPT / Markdown / HTML）"], ["image", "图片清单"], ["image_package", "ZIP 图片包"]] }),
+    field({ name: "template", label: "导入类型", type: "select", options: [["text", "文本（表格模板）"], ["qa", "问答（表格模板）"], ["document", "文档（PDF / Word / WPS / PPT / RTF / Markdown / HTML / TXT）"], ["image", "图片清单"], ["image_package", "ZIP 图片包"]] }),
     // RAG-022: optional masking before indexing; nothing selected = knowledge base / system default.
     field({ name: "redaction", label: "导入前脱敏（不选则按知识库或系统默认）", type: "multiselect", optional: true, options: [["phone", "手机号"], ["email", "邮箱"], ["id_card", "身份证号"], ["bank_card", "银行卡号"], ["ipv4", "IP 地址"]] }),
     field({ name: "confirm_required", label: "上传后确认", type: "select", options: [["true", "需要预览确认"], ["false", "允许自动向量化"]] }),
     el("label", { className: "field" }, [
       el("span", { text: "上传文件" }),
-      fileInput
+      fileInput,
+      el("small", { className: "field-hint", text: "文档：PDF、Word（.docx/.doc）、WPS 文字（.wps）、RTF、ODT、PPT（.pptx/.ppt）、WPS 演示（.dps）、ODP、Markdown、HTML、TXT；表格：XLSX、XLS、WPS 表格（.et）、ODS、CSV。单个文件不超过 20 MB；扫描版 PDF 需要启用 OCR。" })
     ]),
     el("div", { className: "toolbar-actions" }, [
       button("上传并生成预览", async () => {
@@ -41,10 +42,30 @@ export async function renderRagUploadWorkbenchPage(content, options = {}) {
     output
   );
 
+  // Documents can only be imported as "document"; switch the import type when one is chosen
+  // so a PDF or Word file is not sent to the spreadsheet template reader.
+  fileInput.addEventListener("change", () => {
+    const template = form.querySelector('[name="template"]');
+    const name = fileInput.files?.[0]?.name || "";
+    if (template && isRagDocumentFile(name) && template.value !== "document") {
+      template.value = "document";
+      template.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+  });
+
   content.append(el("section", { className: "panel" }, [
     el("h2", { text: "RAG 上传工作台" }),
     form
   ]), uploadResult);
+}
+
+export const RAG_DOCUMENT_EXTENSIONS = ["pdf", "docx", "doc", "wps", "rtf", "odt", "pptx", "ppt", "dps", "odp", "md", "markdown", "html", "htm", "txt"];
+export const RAG_SPREADSHEET_EXTENSIONS = ["xlsx", "xls", "et", "ods", "csv"];
+const RAG_UPLOAD_ACCEPT = [...RAG_SPREADSHEET_EXTENSIONS, ...RAG_DOCUMENT_EXTENSIONS, "zip"].map((ext) => `.${ext}`).join(",");
+
+export function isRagDocumentFile(name) {
+  const ext = String(name || "").toLowerCase().split(".").pop();
+  return RAG_DOCUMENT_EXTENSIONS.includes(ext);
 }
 
 async function submitRagUploadWorkbench(form, fileInput, output, uploadResult, onUploaded = null) {
@@ -58,7 +79,7 @@ async function submitRagUploadWorkbench(form, fileInput, output, uploadResult, o
   ]);
   const file = fileInput.files?.[0];
   if (!file) {
-    setErrorOutput(output, "请选择要上传的 Excel、CSV、文本、文档或 ZIP 文件");
+    setErrorOutput(output, "请选择要上传的文档（PDF、Word、PPT 等）、表格或 ZIP 文件");
     return;
   }
   const template = String(values.template || "text");

@@ -50,6 +50,9 @@ done
 
 cp "$ROOT"/deploy/docker/{compose.yml,lib.sh,install.sh,install.ps1,upgrade.sh,upgrade.ps1,backup.sh,backup.ps1,restore.sh,verify.sh,verify.ps1,README.md} "$BUNDLE/tokenhub/"
 cp "$ROOT/.env.example" "$BUNDLE/tokenhub/.env.example"
+# upgrade.sh prints the changelog entries between the installed and the new version.
+[ -f "$ROOT/CHANGELOG.md" ] && cp "$ROOT/CHANGELOG.md" "$BUNDLE/tokenhub/CHANGELOG.md"
+[ -f "$ROOT/docker/release/base-images.lock" ] && cp "$ROOT/docker/release/base-images.lock" "$BUNDLE/base-images.lock"
 printf '%s\n' "$VERSION" >"$BUNDLE/tokenhub/VERSION"
 printf '%s\n' "$VERSION" >"$BUNDLE/VERSION"
 cp "$ROOT/scripts/import-offline-release.sh" "$BUNDLE/load-images.sh"
@@ -76,6 +79,15 @@ Upgrade an existing installation: load the new images, copy the new tokenhub/ fi
 ones (keep .env), then run ./upgrade.sh --tag $VERSION (upgrade.ps1 -Tag $VERSION on Windows).
 TXT
 
-(cd "$BUNDLE" && find . -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum >SHA256SUMS)
+# sha256sum (GNU coreutils) or shasum -a 256 (macOS); both write the same format.
+if command -v sha256sum >/dev/null 2>&1; then
+  SHA256=(sha256sum)
+elif command -v shasum >/dev/null 2>&1; then
+  SHA256=(shasum -a 256)
+else
+  echo "sha256sum or shasum is required" >&2
+  exit 1
+fi
+(cd "$BUNDLE" && find . -type f ! -name SHA256SUMS -print0 | LC_ALL=C sort -z | xargs -0 "${SHA256[@]}" >SHA256SUMS)
 echo "Offline bundle created: $BUNDLE"
 du -sh "$BUNDLE" 2>/dev/null || true

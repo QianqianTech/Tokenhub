@@ -7,15 +7,20 @@ namespace TokenHub\Services;
 use TokenHub\Services\Gateway\AggregatorPayloadPolicy;
 use TokenHub\Services\Gateway\AnthropicRequestParser;
 use TokenHub\Services\Gateway\BudgetEstimator;
+use TokenHub\Services\Gateway\ChannelLimiter;
+use TokenHub\Services\Gateway\DeferredWork;
 use TokenHub\Services\Gateway\GatewayRequest;
 use TokenHub\Services\Gateway\GatewayUsageRecorder;
 use TokenHub\Services\Gateway\KimiClaudeCodeBridge;
 use TokenHub\Services\Gateway\ModelRouter;
 use TokenHub\Services\Gateway\OpenAIRequestParser;
+use TokenHub\Services\Gateway\OutboundHeaders;
+use TokenHub\Services\Gateway\OutputTokenStats;
 use TokenHub\Services\Gateway\PublicVendorMask;
 use TokenHub\Services\Gateway\RequestLifecycle;
 use TokenHub\Services\Gateway\ReservationLeaseStore;
 use TokenHub\Services\Gateway\RouteHealth;
+use TokenHub\Services\Gateway\Stream\GeminiJsonArrayStream;
 use TokenHub\Services\Gateway\Stream\StreamAccumulator;
 use TokenHub\Services\Gateway\ToolCallContractValidator;
 use TokenHub\Services\Gateway\UpstreamErrorDetail;
@@ -37,26 +42,39 @@ use TokenHub\Support\Response;
 
 final class GatewayService
 {
+    /** Seconds spent waiting on upstream calls in this request (PERF-030). */
+    private float $upstreamSeconds = 0.0;
+    /** Settlement and usage record run after the response (PERF-010). */
+    private bool $deferred = false;
+
     public function handle(Request $request): Response
     {
         $started = microtime(true);
+        // QUAL-001: a client that disconnects must not kill the script before
+        // settlement and the usage record; streams stop reading upstream via
+        // connection_aborted() instead.
+        ignore_user_abort(true);
         $gatewayRequest = $this->parse($request);
+        $forward = OutboundHeaders::fromClient($request);
+        if ($forward !== []) {
+            $gatewayRequest = $this->withOptions($gatewayRequest, ['forward_headers' => $forward]);
+        }
         $recorder = new GatewayUsageRecorder();
         $apiKey = App::context()->apiKey() ?? [];
 
         if ($gatewayRequest->model === '') {
             $recorder->record($request, $gatewayRequest, 'blocked', 'MODEL_FORBIDDEN', 403, $started);
-            return Response::error('MODEL_FORBIDDEN', 'No enabled provider route for model', 403);
+            return $this->clientError($gatewayRequest, 'MODEL_FORBIDDEN', 'No enabled provider route for model', 403);
         }
         $contract = (new ToolCallContractValidator())->validate(UsageNormalizer::kindForEndpoint($gatewayRequest->endpoint, $gatewayRequest->protocol), $gatewayRequest->payload);
         if (!$contract['ok']) {
             $recorder->record($request, $gatewayRequest, 'blocked', $contract['code'], 400, $started);
-            return Response::error($contract['code'], $contract['message'], 400);
+            return $this->clientError($gatewayRequest, $contract['code'], $contract['message'], 400);
         }
         if (isset($gatewayRequest->estimatedUsage['upload_error'])) {
             [$code, $message] = explode(':', (string) $gatewayRequest->estimatedUsage['upload_error'], 2) + [1 => 'Invalid upload'];
             $recorder->record($request, $gatewayRequest, 'blocked', $code, 422, $started);
-            return Response::error($code, $message, 422);
+            return $this->clientError($gatewayRequest, $code, $message, 422);
         }
 
         $router = new ModelRouter();
@@ -68,21 +86,21 @@ final class GatewayService
                 ? ['code' => 'CAPABILITY_UNAVAILABLE', 'message' => 'This capability has no execution backend on the configured channels', 'status' => 501]
                 : $router->diagnose($gatewayRequest, $allowedModelIds);
             $recorder->record($request, $gatewayRequest, 'blocked', $diagnosis['code'], $diagnosis['status'], $started);
-            return Response::error($diagnosis['code'], $diagnosis['message'], $diagnosis['status']);
+            return $this->clientError($gatewayRequest, $diagnosis['code'], $diagnosis['message'], $diagnosis['status']);
         }
         $route = $candidates[0];
 
         $quotaService = new QuotaService();
         $modelQuotaService = new ApiKeyModelQuotaService();
         $budget = new BudgetEstimator();
-        $estimate = $budget->estimate($gatewayRequest->estimatedUsage, $gatewayRequest->payload, $gatewayRequest->capability);
+        $estimate = $budget->estimate($gatewayRequest->estimatedUsage, $gatewayRequest->payload, $gatewayRequest->capability, $route);
         $requiresCostTracking = $apiKey !== [] && $quotaService->requiresCostTracking($apiKey);
         if ($requiresCostTracking) {
             $priced = $budget->withCost($route, $this->withPricingContext($gatewayRequest, $estimate));
             unset($priced['estimate']['pricing_dimensions']);
             if (!$priced['ok']) {
                 $recorder->record($request, $gatewayRequest, 'blocked', 'PRICE_UNKNOWN', 402, $started, $route);
-                return Response::error('PRICE_UNKNOWN', 'Model price is not configured and the cost limit cannot be enforced', 402);
+                return $this->clientError($gatewayRequest, 'PRICE_UNKNOWN', 'Model price is not configured and the cost limit cannot be enforced', 402);
             }
             $estimate = $priced['estimate'];
         }
@@ -92,7 +110,7 @@ final class GatewayService
             $code = $quota['code'] ?? 'QUOTA_EXCEEDED';
             $status = (int) ($quota['status'] ?? 429);
             $recorder->record($request, $gatewayRequest, 'blocked', $code, $status, $started, $route);
-            return Response::error($code, $quota['message'] ?? 'Quota exceeded', $status);
+            return $this->clientError($gatewayRequest, $code, $quota['message'] ?? 'Quota exceeded', $status);
         }
 
         $lifecycle = new RequestLifecycle(
@@ -107,6 +125,9 @@ final class GatewayService
             App::context()->requestId(),
             (int) ceil(((int) ($route['timeout_ms'] ?? 60000)) / 1000) * max(1, (int) ($route['retry_count'] ?? 1)) + 120,
         );
+        // Registered before the lifecycle's own shutdown guard: the deferred
+        // settlement must run first.
+        DeferredWork::arm();
         $lifecycle->guardShutdown();
         $streaming = false;
 
@@ -117,7 +138,7 @@ final class GatewayService
                 $code = $modelQuota['code'] ?? 'MODEL_QUOTA_EXCEEDED';
                 $status = (int) ($modelQuota['status'] ?? 429);
                 $recorder->record($request, $gatewayRequest, 'blocked', $code, $status, $started, $route);
-                return Response::error($code, $modelQuota['message'] ?? 'Model quota exceeded', $status);
+                return $this->clientError($gatewayRequest, $code, $modelQuota['message'] ?? 'Model quota exceeded', $status);
             }
             $lifecycle->attachModelQuota($route, $modelQuota['reservations'] ?? []);
 
@@ -137,13 +158,13 @@ final class GatewayService
             if (!$prepared['ok']) {
                 $lifecycle->reject();
                 $recorder->record($request, $gatewayRequest, 'blocked', $prepared['code'], $prepared['status'], $started, $route);
-                return Response::error($prepared['code'], $prepared['message'], $prepared['status']);
+                return $this->clientError($gatewayRequest, $prepared['code'], $prepared['message'], $prepared['status']);
             }
             $finalRequest = $this->withPayload($gatewayRequest, $prepared['payload']);
             $ragResult = $prepared['rag'];
 
             // Budget follows the FINAL payload (RAG context included).
-            $finalEstimate = $budget->estimate($gatewayRequest->estimatedUsage, $finalRequest->payload, $gatewayRequest->capability);
+            $finalEstimate = $budget->estimate($gatewayRequest->estimatedUsage, $finalRequest->payload, $gatewayRequest->capability, $route);
             if ($requiresCostTracking) {
                 $finalEstimate = $budget->withCost($route, $this->withPricingContext($gatewayRequest, $finalEstimate))['estimate'];
                 unset($finalEstimate['pricing_dimensions']);
@@ -154,14 +175,14 @@ final class GatewayService
                 if (!$extra['allowed']) {
                     $lifecycle->reject();
                     $recorder->record($request, $finalRequest, 'blocked', $extra['code'] ?? 'QUOTA_EXCEEDED', 429, $started, $route);
-                    return Response::error($extra['code'] ?? 'QUOTA_EXCEEDED', $extra['message'] ?? 'Quota exceeded', 429);
+                    return $this->clientError($gatewayRequest, $extra['code'] ?? 'QUOTA_EXCEEDED', $extra['message'] ?? 'Quota exceeded', 429);
                 }
                 $extraModel = $modelQuotaService->reserveDelta($apiKey, $route, $delta);
                 if (!$extraModel['allowed']) {
                     $quotaService->rollbackReservations($extra['reservations'] ?? []);
                     $lifecycle->reject();
                     $recorder->record($request, $finalRequest, 'blocked', $extraModel['code'] ?? 'MODEL_QUOTA_EXCEEDED', 429, $started, $route);
-                    return Response::error($extraModel['code'] ?? 'MODEL_QUOTA_EXCEEDED', $extraModel['message'] ?? 'Model quota exceeded', 429);
+                    return $this->clientError($gatewayRequest, $extraModel['code'] ?? 'MODEL_QUOTA_EXCEEDED', $extraModel['message'] ?? 'Model quota exceeded', 429);
                 }
                 $lifecycle->addReservations($extra['reservations'] ?? [], $extraModel['reservations'] ?? []);
                 $estimate = $finalEstimate;
@@ -176,13 +197,156 @@ final class GatewayService
         } catch (HttpAbortException $abort) {
             $lifecycle->finalizeAbandoned();
             $recorder->record($request, $gatewayRequest, $lifecycle->upstreamStarted() ? 'failed' : 'blocked', $abort->errorCode, $abort->status, $started, $lifecycle->route() ?? $route);
-            return $abort->response();
+            return $this->clientError($gatewayRequest, $abort->errorCode, $abort->getMessage(), $abort->status);
         } finally {
-            // The streaming writer runs after handle() returns and finalizes itself.
-            if (!$streaming) {
+            // The streaming writer runs after handle() returns and finalizes
+            // itself; a deferred settlement runs after the response is sent
+            // (and the lifecycle's shutdown guard still backs it up).
+            if (!$streaming && !$this->deferred) {
                 $lifecycle->finalizeAbandoned();
             }
         }
+    }
+
+    /**
+     * PERF-010: runs $job after the response was sent when php-fpm allows it
+     * (fastcgi_finish_request), inline otherwise.
+     *
+     * @param callable(): void $job
+     */
+    private function afterResponse(callable $job, bool $settlement = false): void
+    {
+        if ($settlement && DeferredWork::enabled()) {
+            $this->deferred = true;
+        }
+        DeferredWork::add($job);
+    }
+
+    /**
+     * PERF-030: Server-Timing for the client and gateway_overhead_ms for the
+     * access log: time spent in TokenHub itself, i.e. total minus upstream.
+     *
+     * @return array{total_ms: int, upstream_ms: int, overhead_ms: int}
+     */
+    private function timing(float $started): array
+    {
+        $total = (int) round((microtime(true) - $started) * 1000);
+        $upstream = (int) round($this->upstreamSeconds * 1000);
+
+        return ['total_ms' => $total, 'upstream_ms' => $upstream, 'overhead_ms' => max(0, $total - $upstream)];
+    }
+
+    /**
+     * @param array{total_ms: int, upstream_ms: int, overhead_ms: int} $timing
+     */
+    private static function serverTiming(array $timing): string
+    {
+        return 'gateway;dur=' . $timing['overhead_ms'] . ', upstream;dur=' . $timing['upstream_ms'] . ', total;dur=' . $timing['total_ms'];
+    }
+
+    /**
+     * Error response in the client protocol's shape (QUAL-007): every error
+     * carries error.type like the vendor APIs do (OpenAI SDKs read type and
+     * code; Anthropic SDKs and Claude Code need "type": "error" plus
+     * error.type). The TokenHub code stays in error.code.
+     */
+    private function clientError(GatewayRequest $request, string $code, string $message, int $status): Response
+    {
+        if ($request->protocol === 'anthropic') {
+            return Response::errorWith($code, $message, $status, ['type' => UpstreamErrorDetail::anthropicType($status)], ['type' => 'error']);
+        }
+
+        return Response::errorWith($code, $message, $status, ['type' => self::openAiErrorType($code, $status)]);
+    }
+
+    private static function openAiErrorType(string $code, int $status): string
+    {
+        return match (true) {
+            in_array($code, ['QUOTA_EXCEEDED', 'MODEL_QUOTA_EXCEEDED', 'PRICE_UNKNOWN'], true) => 'insufficient_quota',
+            $status === 401 => 'authentication_error',
+            $status === 403 => 'permission_error',
+            $status === 404 => 'not_found_error',
+            $status === 429 => 'rate_limit_error',
+            $status === 501 => 'not_implemented_error',
+            $status >= 500 => 'server_error',
+            default => 'invalid_request_error',
+        };
+    }
+
+    /**
+     * @param array<string, mixed> $options
+     */
+    private function withOptions(GatewayRequest $request, array $options): GatewayRequest
+    {
+        return new GatewayRequest(
+            endpoint: $request->endpoint,
+            protocol: $request->protocol,
+            capability: $request->capability,
+            model: $request->model,
+            stream: $request->stream,
+            payload: $request->payload,
+            estimatedUsage: $request->estimatedUsage,
+            options: [...$request->options, ...$options],
+        );
+    }
+
+    /**
+     * Health bookkeeping for one failed upstream attempt: 429 cools the
+     * channel down for its Retry-After (QUAL-004), credential failures
+     * (401/402/403) count and raise an alert (QUAL-003), other transient
+     * failures count towards the circuit breaker (QUAL-006).
+     *
+     * @param array<string, mixed> $route
+     * @param array<string, mixed> $result
+     */
+    private function recordAttemptFailure(RouteHealth $health, array $route, array $result): void
+    {
+        $status = (int) ($result['status'] ?? 0);
+        $code = (string) ($result['error_code'] ?? 'PROVIDER_ERROR');
+        $modelId = (int) ($route['id'] ?? 0);
+        if ($status === 429) {
+            $retryAfter = $result['retry_after'] ?? null;
+            $health->cooldown($modelId, is_numeric($retryAfter) ? (int) $retryAfter : null);
+            return;
+        }
+        if (ProviderHttpClient::credentialFailure($status)) {
+            $health->recordFailure($modelId, 'PROVIDER_CREDENTIAL_' . $status);
+            $this->credentialAlert($route, $status);
+            return;
+        }
+        if (RouteHealth::countsAsFailure($status, $code)) {
+            $health->recordFailure($modelId, $code);
+        }
+    }
+
+    /**
+     * One alert per channel and 10 minutes when the upstream refuses the
+     * channel credential (expired key, unpaid account, revoked access).
+     *
+     * @param array<string, mixed> $route
+     */
+    private function credentialAlert(array $route, int $status): void
+    {
+        $providerId = (int) ($route['provider_id'] ?? 0);
+        try {
+            if (!App::redis()->setIfAbsent('alert:provider_credential:' . $providerId . ':' . (int) ($route['id'] ?? 0), (string) time(), 600)) {
+                return;
+            }
+        } catch (\Throwable) {
+            return;
+        }
+        App::logger()->error('upstream channel credential rejected', ['provider_id' => $providerId, 'model_id' => $route['id'] ?? null, 'status' => $status]);
+        $this->afterResponse(static function () use ($route, $providerId, $status): void {
+            try {
+                (new AlertService())->record('provider_credential_rejected', 'critical', 'Upstream rejected the channel credential (HTTP ' . $status . '); the channel was skipped', [
+                    'provider_id' => $providerId,
+                    'model_id' => (int) ($route['id'] ?? 0),
+                    'model' => (string) ($route['name'] ?? ''),
+                    'status' => $status,
+                ]);
+            } catch (\Throwable) {
+            }
+        });
     }
 
     /**
@@ -193,7 +357,8 @@ final class GatewayService
     {
         $taskService = new MultimodalTaskService();
         $health = new RouteHealth();
-        $client = new ProviderHttpClient();
+        $client = (new ProviderHttpClient())->onTick(static fn () => $lifecycle->renewLease());
+        $limiter = new ChannelLimiter();
         $bridge = new KimiClaudeCodeBridge();
         $attempts = [];
         $provider = ['ok' => false, 'status' => 0, 'error_code' => 'PROVIDER_ERROR'];
@@ -209,6 +374,13 @@ final class GatewayService
                 continue;
             }
             $route = $candidate;
+            $capacity = $limiter->acquire($route, App::context()->requestId(), (int) ($estimate['total_tokens'] ?? 0));
+            if (!$capacity['ok']) {
+                // MT-003: channel at its in-flight / RPM / TPM limit.
+                $provider = ['ok' => false, 'status' => 429, 'error_code' => 'CHANNEL_CAPACITY_EXCEEDED', 'retry_after' => 1];
+                $attempts[] = ['model_id' => $route['id'] ?? null, 'provider_id' => $route['provider_id'] ?? null, 'status' => 0, 'error_code' => 'CHANNEL_CAPACITY_EXCEEDED', 'reason' => $capacity['reason'] ?? null, 'tries' => 0];
+                continue;
+            }
             $bridgeKimi = $bridge->shouldBridge($gatewayRequest, $route);
             $providerRequest = $bridgeKimi ? $bridge->toOpenAIProviderRequest($finalRequest) : $finalRequest;
             $adapter = $bridgeKimi ? new OpenAIAdapter() : $this->adapterFor($route, $gatewayRequest->capability);
@@ -220,7 +392,13 @@ final class GatewayService
             }
 
             $lifecycle->markUpstreamStarted();
-            $provider = $client->sendJson($route, $providerRequest, $adapter, $this->upstreamIdempotencyKey($request));
+            $upstreamStarted = microtime(true);
+            try {
+                $provider = $client->sendJson($route, $providerRequest, $adapter, $this->upstreamIdempotencyKey($request));
+            } finally {
+                $this->upstreamSeconds += microtime(true) - $upstreamStarted;
+                $limiter->release($route);
+            }
             $attempts[] = [
                 'model_id' => $route['id'] ?? null,
                 'provider_id' => $route['provider_id'] ?? null,
@@ -232,26 +410,29 @@ final class GatewayService
                 $health->recordSuccess((int) ($route['id'] ?? 0));
                 break;
             }
-            if (RouteHealth::countsAsFailure((int) $provider['status'], $provider['error_code'] ?? null)) {
-                $health->recordFailure((int) ($route['id'] ?? 0), (string) ($provider['error_code'] ?? 'PROVIDER_ERROR'));
-            }
-            if (!$client->retryable((int) $provider['status'], $provider['error_code'] ?? null)) {
+            $this->recordAttemptFailure($health, $route, $provider);
+            if (!$client->failoverable($provider)) {
                 break;
             }
         }
 
         if (!$provider['ok']) {
-            $lifecycle->settle([]);
             $code = $provider['error_code'] ?? 'PROVIDER_ERROR';
             $status = $this->gatewayStatusFor($code, (int) $provider['status']);
             if ($task !== null) {
                 $taskService->fail($task, $code, 'Upstream provider request failed', (int) ((microtime(true) - $started) * 1000));
             }
-            $recorder->record($request, $finalRequest, 'failed', $code, $status, $started, $route, [
-                ...($task !== null ? ['task_id' => (string) $task['task_id']] : []),
-                'attempts' => $attempts,
-            ]);
-            return $this->providerError($gatewayRequest, $route, $code, $status, $provider['json'] ?? ($provider['body'] ?? null), $provider['retry_after'] ?? null)['response'];
+            $timing = $this->timing($started);
+            $this->afterResponse(static function () use ($lifecycle, $recorder, $request, $finalRequest, $code, $status, $started, $route, $task, $attempts, $timing): void {
+                $lifecycle->settle([]);
+                $recorder->record($request, $finalRequest, 'failed', $code, $status, $started, $route, [
+                    ...($task !== null ? ['task_id' => (string) $task['task_id']] : []),
+                    'attempts' => $attempts,
+                    'gateway_overhead_ms' => $timing['overhead_ms'],
+                ]);
+            }, true);
+            return $this->providerError($gatewayRequest, $route, $code, $status, $provider['json'] ?? ($provider['body'] ?? null), $provider['retry_after'] ?? null)['response']
+                ->withHeader('Server-Timing', self::serverTiming($timing));
         }
 
         $binaryAudio = null;
@@ -294,7 +475,7 @@ final class GatewayService
                 'attempts' => $attempts,
             ]);
 
-            return Response::error($code, 'Upstream provider rejected the task: ' . (string) ($response['error']['message'] ?? 'unknown error'), 502);
+            return $this->clientError($gatewayRequest, $code, 'Upstream provider rejected the task: ' . (string) ($response['error']['message'] ?? 'unknown error'), 502);
         }
         if ($binaryAudio === null && in_array($gatewayRequest->capability, ['tts', 'music_generation'], true) && is_string($response['b64_json'] ?? null) && isset($response['audio_mime'])) {
             // Vendor speech/music answered in JSON (hex/base64/url): the client
@@ -318,6 +499,7 @@ final class GatewayService
                 'retrieval_id' => $ragResult['retrieval_id'] ?? null,
                 'sources' => $ragResult['sources'] ?? [],
                 'fallback_used' => (bool) ($ragResult['fallback_used'] ?? false),
+                'vector_status' => (string) ($ragResult['vector_status'] ?? 'none'),
                 'context_truncated_sources' => (int) ($ragResult['truncated_sources'] ?? 0),
             ];
         }
@@ -329,22 +511,38 @@ final class GatewayService
             $response = $this->recordMultimodalResult($taskService, new MediaAssetService(), $task, $gatewayRequest, $response, (int) ((microtime(true) - $started) * 1000));
             $usage['task_id'] = (string) $task['task_id'];
         }
-        $lifecycle->settle($usage);
+        if ($task !== null) {
+            // Task settlement (TaskBillingService) reads the usage record
+            // chain right away; keep it synchronous.
+            $lifecycle->settle($usage);
+        }
         $status = $task !== null && $this->isAsyncProviderResponse($response) ? 202 : 200;
         if ($task !== null && $gatewayRequest->endpoint === \TokenHub\Services\Video\OpenAIVideoApi::CREATE_ENDPOINT) {
             // OpenAI Videos API: 200 with a video object (id = task id).
             $response = (new \TokenHub\Services\Video\OpenAIVideoApi())->fromSubmission($response, $gatewayRequest->payload);
             $status = 200;
         }
-        $recordUsage = [...$usage, ...$upstream, 'attempts' => $attempts];
+        if (($usage['usage_source'] ?? null) === 'measured' && isset($usage['output_tokens']) && in_array($gatewayRequest->capability, \TokenHub\Services\Gateway\InputModalities::TEXT_FAMILY, true)) {
+            (new OutputTokenStats())->record((int) ($route['id'] ?? 0), (int) $usage['output_tokens']);
+        }
+        $timing = $this->timing($started);
+        $recordUsage = [...$usage, ...$upstream, 'attempts' => $attempts, 'gateway_overhead_ms' => $timing['overhead_ms']];
         // Retained content never stores media bytes or download links: the
         // assets table already references them.
-        $recorder->record($request, $finalRequest, 'success', null, $status, $started, $route, $recordUsage, $this->contentPayload($finalRequest, $binaryAudio !== null ? ['audio_bytes' => strlen($binaryAudio), 'usage' => $usage] : $this->publicProviderResult($response)));
+        $content = $this->contentPayload($finalRequest, $binaryAudio !== null ? ['audio_bytes' => strlen($binaryAudio), 'usage' => $usage] : $this->publicProviderResult($response));
+        // PERF-010: under php-fpm the client gets its answer first; quota
+        // settlement and the usage record follow after fastcgi_finish_request().
+        $this->afterResponse(static function () use ($lifecycle, $recorder, $request, $finalRequest, $status, $started, $route, $usage, $recordUsage, $content): void {
+            $lifecycle->settle($usage);
+            $recorder->record($request, $finalRequest, 'success', null, $status, $started, $route, $recordUsage, $content);
+        }, true);
+        $serverTiming = self::serverTiming($timing);
 
         if ($plainText !== null && strtolower((string) $request->header('x-tokenhub-response-mode', '')) !== 'json') {
             return Response::raw($plainText, 200, [
                 'Content-Type' => (string) (($provider['headers']['content-type'] ?? '') ?: 'text/plain; charset=utf-8'),
                 'X-Request-Id' => App::context()->requestId(),
+                'Server-Timing' => $serverTiming,
                 ...($task !== null ? ['X-TokenHub-Task-Id' => (string) $task['task_id']] : []),
             ]);
         }
@@ -356,11 +554,12 @@ final class GatewayService
                 'Content-Type' => $contentType,
                 'Content-Length' => (string) strlen($binaryAudio),
                 'X-Request-Id' => App::context()->requestId(),
+                'Server-Timing' => $serverTiming,
                 ...($task !== null ? ['X-TokenHub-Task-Id' => (string) $task['task_id']] : []),
             ]);
         }
 
-        return Response::json($response, $status, ['X-Request-Id' => App::context()->requestId()]);
+        return Response::json($response, $status, ['X-Request-Id' => App::context()->requestId(), 'Server-Timing' => $serverTiming]);
     }
 
     public function task(string $id): array
@@ -566,6 +765,7 @@ final class GatewayService
             stream: $request->stream,
             payload: $payload,
             estimatedUsage: $request->estimatedUsage,
+            options: $request->options,
         );
     }
 
@@ -605,9 +805,16 @@ final class GatewayService
      */
     private function streamResponse(Request $request, GatewayRequest $gatewayRequest, array $candidates, RequestLifecycle $lifecycle, bool $requiresCostTracking, float $started, GatewayUsageRecorder $recorder, array $estimate, ?array $ragResult): Response
     {
-        return Response::stream(function (?Response $response = null) use ($request, $gatewayRequest, $candidates, $lifecycle, $requiresCostTracking, $started, $recorder, $estimate): void {
-            $client = new ProviderHttpClient();
+        // PROTO-003: Gemini clients that did not ask for SSE get a JSON array.
+        $jsonArray = ($gatewayRequest->options['gemini_json_array'] ?? false) === true;
+        $headers = $jsonArray
+            ? ['Content-Type' => 'application/json; charset=UTF-8', 'Cache-Control' => 'no-cache', 'X-Accel-Buffering' => 'no']
+            : Response::sseHeaders();
+
+        return Response::stream(function (?Response $response = null) use ($request, $gatewayRequest, $candidates, $lifecycle, $requiresCostTracking, $started, $recorder, $estimate, $jsonArray): void {
+            $client = (new ProviderHttpClient())->onTick(static fn () => $lifecycle->renewLease());
             $health = new RouteHealth();
+            $limiter = new ChannelLimiter();
             $bridge = new KimiClaudeCodeBridge();
             $normalizer = new UsageNormalizer();
             $attempts = [];
@@ -618,6 +825,33 @@ final class GatewayService
             $delivered = 0;
             $vendorMask = new PublicVendorMask();
             $maskState = [];
+            $arrayStream = $jsonArray ? new GeminiJsonArrayStream() : null;
+            $upstreamStarted = null;
+            $timingSent = false;
+            // Server-Timing goes out with the first byte: gateway time before
+            // the upstream call and the upstream's time to first byte.
+            $emit = function (string $bytes) use (&$timingSent, &$upstreamStarted, $started): void {
+                if ($bytes === '') {
+                    return;
+                }
+                if (!$timingSent) {
+                    $timingSent = true;
+                    if (!headers_sent()) {
+                        $gatewayMs = (int) round((($upstreamStarted ?? microtime(true)) - $started) * 1000);
+                        $ttfbMs = $upstreamStarted !== null ? (int) round((microtime(true) - $upstreamStarted) * 1000) : 0;
+                        header('Server-Timing: gateway;dur=' . $gatewayMs . ', upstream-ttfb;dur=' . $ttfbMs);
+                    }
+                }
+                echo $bytes;
+            };
+            // PERF-013b: SSE comment while an open stream is idle (reasoning
+            // models can think for minutes before the next event).
+            $heartbeat = (float) env_value('GATEWAY_SSE_HEARTBEAT_SECONDS', 15);
+            if (!$jsonArray && $heartbeat > 0) {
+                $client->onIdle(static function () use ($emit): void {
+                    $emit(": keep-alive\n\n");
+                }, $heartbeat);
+            }
 
             $lifecycle->onAbortUsage(function () use (&$accumulator, $normalizer, $estimate): array {
                 if ($accumulator === null) {
@@ -635,6 +869,12 @@ final class GatewayService
                         continue;
                     }
                     $route = $candidate;
+                    $capacity = $limiter->acquire($route, App::context()->requestId(), (int) ($estimate['total_tokens'] ?? 0));
+                    if (!$capacity['ok']) {
+                        $result = ['ok' => false, 'status' => 429, 'error_code' => 'CHANNEL_CAPACITY_EXCEEDED', 'retry_after' => 1];
+                        $attempts[] = ['model_id' => $route['id'] ?? null, 'provider_id' => $route['provider_id'] ?? null, 'status' => 0, 'error_code' => 'CHANNEL_CAPACITY_EXCEEDED', 'reason' => $capacity['reason'] ?? null, 'tries' => 0];
+                        continue;
+                    }
                     $useBridge = $bridge->shouldBridge($gatewayRequest, $route) ? $bridge : null;
                     $providerRequest = $useBridge !== null ? $bridge->toOpenAIProviderRequest($gatewayRequest) : $gatewayRequest;
                     $adapter = $useBridge !== null ? new OpenAIAdapter() : $this->adapterFor($route);
@@ -644,32 +884,42 @@ final class GatewayService
                     $maskState = [];
                     $lifecycle->markUpstreamStarted();
                     $acc = $accumulator;
-                    $result = $client->stream($route, $providerRequest, $adapter, function (string $chunk) use ($gatewayRequest, $route, $useBridge, $acc, &$bridgeState, &$delivered, $vendorMask, &$maskState): void {
-                        $acc->push($chunk);
-                        $out = $useBridge !== null ? $useBridge->transformOpenAIStreamChunk($gatewayRequest, $route, $chunk, $bridgeState) : $chunk;
-                        $out = $vendorMask->streamChunk($out, $maskState);
-                        $delivered += strlen($out);
-                        echo $out;
-                    });
+                    $upstreamStarted = microtime(true);
+                    try {
+                        $result = $client->stream($route, $providerRequest, $adapter, function (string $chunk) use ($gatewayRequest, $route, $useBridge, $acc, &$bridgeState, &$delivered, $vendorMask, &$maskState, $arrayStream, $emit): void {
+                            $acc->push($chunk);
+                            $out = $useBridge !== null ? $useBridge->transformOpenAIStreamChunk($gatewayRequest, $route, $chunk, $bridgeState) : $chunk;
+                            $out = $vendorMask->streamChunk($out, $maskState);
+                            if ($arrayStream !== null) {
+                                $out = $arrayStream->push($out);
+                            }
+                            $delivered += strlen($out);
+                            $emit($out);
+                        });
+                    } finally {
+                        $this->upstreamSeconds += microtime(true) - $upstreamStarted;
+                        $limiter->release($route);
+                    }
                     if ($useBridge !== null && $result['ok']) {
                         $closing = $vendorMask->streamChunk($useBridge->finishStream($gatewayRequest, $route, $bridgeState), $maskState);
                         $delivered += strlen($closing);
-                        echo $closing;
+                        $emit($closing);
                     }
                     $tail = $vendorMask->flush($maskState);
+                    if ($arrayStream !== null && $tail !== '') {
+                        $tail = $arrayStream->push($tail);
+                    }
                     if ($tail !== '') {
                         $delivered += strlen($tail);
-                        echo $tail;
+                        $emit($tail);
                     }
                     $accumulator->finish();
                     $attempts[] = ['model_id' => $route['id'] ?? null, 'provider_id' => $route['provider_id'] ?? null, 'status' => $result['status'], 'error_code' => $result['error_code'] ?? null, 'tries' => $result['attempts'] ?? 1];
                     if ($result['ok']) {
                         break;
                     }
-                    if (RouteHealth::countsAsFailure((int) $result['status'], $result['error_code'] ?? null)) {
-                        $health->recordFailure((int) ($route['id'] ?? 0), (string) ($result['error_code'] ?? 'PROVIDER_ERROR'));
-                    }
-                    if (!$client->retryable((int) $result['status'], $result['error_code'] ?? null)) {
+                    $this->recordAttemptFailure($health, $route, $result);
+                    if (!$client->failoverable($result)) {
                         break;
                     }
                 }
@@ -683,9 +933,9 @@ final class GatewayService
                     // status code and a JSON error, exactly like a direct
                     // upstream call would, instead of 200 + an error event.
                     if (!($delivered === 0 && $response !== null && $response->replaceUncommittedStream($error['response']))) {
-                        echo $this->streamErrorEvent($gatewayRequest, $code, $error);
+                        echo $this->streamErrorEvent($gatewayRequest, $code, $error, $httpStatus, $arrayStream);
                     }
-                    $recorder->record($request, $gatewayRequest, 'failed', $code, $httpStatus, $started, $route, ['attempts' => $attempts]);
+                    $recorder->record($request, $gatewayRequest, 'failed', $code, $httpStatus, $started, $route, ['attempts' => $attempts, 'gateway_overhead_ms' => $this->timing($started)['overhead_ms']]);
                     return;
                 }
 
@@ -705,14 +955,19 @@ final class GatewayService
                 };
                 if ($status === 'success') {
                     $health->recordSuccess((int) ($route['id'] ?? 0));
+                    if (($usage['usage_source'] ?? null) === 'measured' && isset($usage['output_tokens'])) {
+                        (new OutputTokenStats())->record((int) ($route['id'] ?? 0), (int) $usage['output_tokens']);
+                    }
                 } elseif ($errorCode !== 'CLIENT_CANCELLED') {
                     $health->recordFailure((int) ($route['id'] ?? 0), (string) $errorCode);
                 }
                 if (in_array($errorCode, ['PROVIDER_TIMEOUT', 'PROVIDER_STREAM_INCOMPLETE'], true) && $outcome !== 'client_aborted') {
                     $error = $this->providerError($gatewayRequest, $route, (string) $errorCode, $httpStatus, null, null);
                     if (!($delivered === 0 && $response !== null && $response->replaceUncommittedStream($error['response']))) {
-                        echo $this->streamErrorEvent($gatewayRequest, (string) $errorCode, $error);
+                        echo $this->streamErrorEvent($gatewayRequest, (string) $errorCode, $error, $httpStatus, $arrayStream);
                     }
+                } elseif ($arrayStream !== null && $outcome !== 'client_aborted') {
+                    echo $arrayStream->finish();
                 }
 
                 $output = ['stream' => true, 'usage' => $usage, 'terminal_reason' => $accumulator->terminalReason(), 'text' => $accumulator->text(), 'text_truncated' => $accumulator->textTruncated()];
@@ -728,11 +983,13 @@ final class GatewayService
                     'attempts' => $attempts,
                     'stream_outcome' => $outcome,
                     'first_byte_ms' => $result['first_byte_ms'] ?? null,
+                    'gateway_overhead_ms' => max(0, (int) round((($upstreamStarted ?? microtime(true)) - $started) * 1000)),
                 ], $this->contentPayload($gatewayRequest, $output));
             } finally {
+                $limiter->releaseAll();
                 $lifecycle->finalizeAbandoned();
             }
-        }, 200, Response::sseHeaders());
+        }, 200, $headers);
     }
 
     /**
@@ -934,7 +1191,7 @@ final class GatewayService
     {
         return match ($code) {
             'PROVIDER_TIMEOUT' => 504,
-            'PROVIDER_RATE_LIMITED' => 429,
+            'PROVIDER_RATE_LIMITED', 'CHANNEL_CAPACITY_EXCEEDED' => 429,
             'OUTBOUND_BLOCKED' => 502,
             'PROVIDER_ENDPOINT_UNSUPPORTED' => 501,
             'PROVIDER_REJECTED' => in_array($upstreamStatus, [400, 404, 413, 422], true) ? $upstreamStatus : 502,
@@ -974,6 +1231,10 @@ final class GatewayService
             $type = UpstreamErrorDetail::anthropicType($status, $detail['type'] ?? null);
             $fields['type'] = $type;
             $top = ['type' => 'error'];
+        } elseif (!isset($fields['type'])) {
+            // QUAL-007: OpenAI SDKs expect error.type on every error.
+            $type = self::openAiErrorType($code, $status);
+            $fields['type'] = $type;
         }
         $response = Response::errorWith($code, $message, $status, $fields, $top);
         if ($retryAfter !== null && $retryAfter !== '' && (int) $retryAfter > 0) {
@@ -984,14 +1245,34 @@ final class GatewayService
     }
 
     /**
-     * In-band error for a stream that already started.
+     * In-band error for a stream that already started, in the framing the
+     * client protocol's SDK understands (QUAL-007):
+     * - Anthropic: "event: error" + {"type":"error","error":{...}}
+     * - OpenAI-compatible: a bare "data: {"error":{...}}" event followed by
+     *   "data: [DONE]" (the OpenAI SDKs raise APIError on it)
+     * - Gemini: "data: {"error":{code,message,status}}", or the last element
+     *   of the JSON array for non-SSE clients.
      *
      * @param array{response: Response, message: string, type: string} $error
      */
-    private function streamErrorEvent(GatewayRequest $request, string $code, array $error): string
+    private function streamErrorEvent(GatewayRequest $request, string $code, array $error, int $status = 502, ?GeminiJsonArrayStream $arrayStream = null): string
     {
-        return 'event: error' . "\n"
-            . 'data: ' . json_encode(['type' => 'error', 'error' => ['code' => $code, 'type' => $error['type'], 'message' => $error['message']]], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) . "\n\n";
+        $flags = JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE;
+        if ($request->protocol === 'anthropic') {
+            return 'event: error' . "\n"
+                . 'data: ' . json_encode(['type' => 'error', 'error' => ['code' => $code, 'type' => $error['type'], 'message' => $error['message']]], $flags) . "\n\n";
+        }
+        if ($request->protocol === 'gemini') {
+            $body = ['code' => $status, 'message' => $error['message'], 'status' => $code];
+            if ($arrayStream !== null) {
+                return $arrayStream->error($body);
+            }
+            return 'data: ' . json_encode(['error' => $body], $flags) . "\n\n";
+        }
+        $type = $error['type'] !== 'upstream_error' ? $error['type'] : self::openAiErrorType($code, $status);
+
+        return 'data: ' . json_encode(['error' => ['message' => $error['message'], 'type' => $type, 'code' => $code]], $flags) . "\n\n"
+            . "data: [DONE]\n\n";
     }
 
     private function providerErrorMessage(string $code): string
@@ -1003,6 +1284,7 @@ final class GatewayService
             'PROVIDER_ENDPOINT_UNSUPPORTED' => 'The selected channel does not support this endpoint',
             'PROVIDER_REJECTED' => 'Upstream provider rejected the request',
             'PROVIDER_STREAM_INCOMPLETE' => 'Upstream stream ended before completion',
+            'CHANNEL_CAPACITY_EXCEEDED' => 'Every channel for this model is at its capacity limit; retry shortly',
             default => 'Upstream provider request failed',
         };
     }

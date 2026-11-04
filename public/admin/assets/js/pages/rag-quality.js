@@ -1,7 +1,7 @@
 import { adminErrorMessage, api } from "../api.js";
 import { button, clear, el, field, readFields, statusMessage } from "../dom.js";
 import { ragNavigate } from "../lib/navigation.js";
-import { renderDataDetails, setErrorOutput, setOperationOutput } from "../lib/output.js";
+import { setErrorOutput, setOperationOutput } from "../lib/output.js";
 import { lookupRows } from "../lib/references.js";
 import { readFileAsText } from "./rag-upload.js";
 import { ragMetricCard, ragSummaryTable } from "./rag.js";
@@ -32,7 +32,11 @@ export async function renderRagEvaluationPage(content) {
       const activeCases = Number(data.active_cases || 0);
       const caseCount = Number(latest.case_count || 0);
       const failedCases = Number(latest.failed_cases || 0);
-      const qualityStatus = caseCount > 0 && failedCases === caseCount ? "运行完成，质量未达标" : "运行完成";
+      const qualityStatus = caseCount > 0 && failedCases === caseCount
+        ? "运行完成，质量未达标：全部样本均未命中期望内容"
+        : failedCases > 0
+          ? `最近一次评估：${caseCount} 个样本中 ${failedCases} 个未命中期望内容`
+          : `最近一次评估：${caseCount} 个样本全部命中`;
       const runMetrics = runMetadataMetrics(latest);
       const answer = runMetrics.answer_evaluation || null;
       const percent = (value) => (value === null || value === undefined ? "—" : `${value}%`);
@@ -42,24 +46,26 @@ export async function renderRagEvaluationPage(content) {
           el("h2", { text: "RAG 检索评估" }),
           el("div", { className: "toolbar-actions" }, [
             button("创建评估样本", () => ragNavigate("rag-quality", { tab: "rag-eval-cases" }), "secondary"),
-            el("label", { className: "rag-eval-judge-toggle", title: "用评审模型抽样评估答案的忠实度与引用正确率（需配置 RAG_JUDGE_MODEL_ID）" }, [judgeToggle, el("span", { text: " 答案级评测" })]),
+            el("label", { className: "rag-eval-judge-toggle", title: "用评审模型抽样评估答案的忠实度与引用正确率（需配置 RAG_JUDGE_MODEL_ID）" }, [judgeToggle, el("span", { text: "同时评测答案" })]),
             button("运行评估", run, "primary", { disabled: activeCases === 0 })
           ])
         ]),
-        el("p", { className: "notice", text: activeCases === 0 ? "暂无启用评估样本，请先创建并启用样本。" : `数据来源：${source}，启用样本 ${activeCases}，草稿样本 ${data.draft_cases || 0}` }),
-        latest.run_id ? el("p", { className: failedCases > 0 ? "notice error" : "notice", text: qualityStatus }) : null,
-        el("div", { className: "rag-dashboard-cards" }, [
+        el("p", { className: "notice", text: activeCases === 0 ? "暂无启用评估样本，请先创建并启用样本。" : `启用样本 ${activeCases} 个，草稿样本 ${data.draft_cases || 0} 个${latest.run_id ? ` · 最近运行 ${latest.run_id}` : ""}` }),
+        latest.run_id ? el("p", { className: failedCases > 0 ? "notice warning" : "notice success", text: qualityStatus }) : null,
+        el("h3", { className: "rag-eval-section-title", text: "检索指标" }),
+        el("div", { className: "rag-dashboard-cards rag-eval-cards" }, [
           ragMetricCard("Recall@5", latest.recall_at_5 || 0),
           ragMetricCard("Recall@10", latest.recall_at_10 || 0),
           ragMetricCard("Recall@20", latest.recall_at_20 || 0),
           ragMetricCard("MRR", latest.mrr || 0),
-          ragMetricCard("Cases", latest.case_count || 0),
-          ragMetricCard("Failures", latest.failed_cases || 0, Number(latest.failed_cases || 0) > 0 ? "warning" : ""),
+          ragMetricCard("评估样本", latest.case_count || 0),
+          ragMetricCard("未命中样本", latest.failed_cases || 0, Number(latest.failed_cases || 0) > 0 ? "warning" : ""),
           runMetrics.ndcg_at_10 !== undefined ? ragMetricCard("nDCG@10", score(runMetrics.ndcg_at_10)) : null,
           runMetrics.no_result_rate !== undefined ? ragMetricCard("无结果率", percent(runMetrics.no_result_rate), Number(runMetrics.no_result_rate) > 0 ? "warning" : "") : null,
           runMetrics.low_confidence_rate !== undefined ? ragMetricCard("低置信率", percent(runMetrics.low_confidence_rate), Number(runMetrics.low_confidence_rate) > 0 ? "warning" : "") : null
         ].filter(Boolean)),
-        answer ? el("div", { className: "rag-dashboard-cards rag-answer-evaluation" }, [
+        answer ? el("h3", { className: "rag-eval-section-title", text: "答案评测" }) : null,
+        answer ? el("div", { className: "rag-dashboard-cards rag-eval-cards rag-answer-evaluation" }, [
           ragMetricCard("答案忠实度", score(answer.answer_faithfulness)),
           ragMetricCard("答案相关性", score(answer.answer_relevance)),
           ragMetricCard("引用正确率", score(answer.citation_accuracy)),
@@ -67,7 +73,6 @@ export async function renderRagEvaluationPage(content) {
           ragMetricCard("评审样本", answer.judged_cases ?? 0),
           ragMetricCard("评审失败", answer.judge_failures ?? 0, Number(answer.judge_failures || 0) > 0 ? "warning" : "")
         ]) : null,
-        renderDataDetails(data),
         ragSummaryTable("最近评估", data.latest_runs || [], ["run_id", "case_count", "recall_at_1", "recall_at_5", "recall_at_10", "recall_at_20", "mrr", "failed_cases", "created_at"]),
         renderRagEvaluationFailureCards(data.recent_failures || [], refresh)
       ].filter(Boolean));

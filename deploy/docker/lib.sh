@@ -68,6 +68,31 @@ ensure_realtime_token() {
   fi
 }
 
+# Where backups go (SEC-007): never inside the kit / source tree by default,
+# because a backup holds APP_KEY and the database passwords.
+#   1. BACKUP_DIR from the environment or from .env
+#   2. /var/backups/tokenhub when it can be created (root, or a prepared directory)
+#   3. ~/tokenhub-backups
+#   4. $KIT_DIR/backups (last resort, with a warning)
+backup_root() {
+  local configured="${BACKUP_DIR:-}"
+  [ -n "$configured" ] || configured="$(env_get BACKUP_DIR)"
+  if [ -n "$configured" ]; then
+    printf '%s' "$configured"
+    return
+  fi
+  if mkdir -p /var/backups/tokenhub 2>/dev/null && [ -w /var/backups/tokenhub ]; then
+    printf '%s' /var/backups/tokenhub
+    return
+  fi
+  if [ -n "${HOME:-}" ] && mkdir -p "$HOME/tokenhub-backups" 2>/dev/null && [ -w "$HOME/tokenhub-backups" ]; then
+    printf '%s' "$HOME/tokenhub-backups"
+    return
+  fi
+  warn "No writable backup directory outside $KIT_DIR; using $KIT_DIR/backups (set BACKUP_DIR in .env)."
+  printf '%s' "$KIT_DIR/backups"
+}
+
 php_image() {
   printf '%stokenhub-php:%s' "$(env_get TOKENHUB_IMAGE_PREFIX)" "$(env_get TOKENHUB_IMAGE_TAG)"
 }

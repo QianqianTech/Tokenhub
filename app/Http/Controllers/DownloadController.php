@@ -33,7 +33,7 @@ final class DownloadController
         }
 
         if (!empty($payload['file_path'])) {
-            return $this->fileResponse((string) $payload['file_path'], ['export_id' => $payload['export_id'] ?? null], null);
+            return $this->fileResponse((string) $payload['file_path'], ['export_id' => $payload['export_id'] ?? null], null, $this->exportRoots());
         }
 
         $asset = $this->asset($payload);
@@ -68,7 +68,7 @@ final class DownloadController
             return Response::error('CONTENT_FORBIDDEN', 'Download file is not available', 404);
         }
         (new AuditService())->write('log_archive.download', 'log_archive_files', (int) $archive['id']);
-        return $this->fileResponse((string) $archive['archive_path'], ['media_type' => 'file', 'archive_id' => $archive['id']], null);
+        return $this->fileResponse((string) $archive['archive_path'], ['media_type' => 'file', 'archive_id' => $archive['id']], null, $this->logArchiveRoots());
     }
 
     /**
@@ -84,10 +84,11 @@ final class DownloadController
 
     /**
      * @param array<string, mixed> $asset
+     * @param list<string>|null $roots local roots the file must lie in; null = the media storage roots
      */
-    private function fileResponse(string $path, array $asset, ?string $assetId): Response
+    private function fileResponse(string $path, array $asset, ?string $assetId, ?array $roots = null): Response
     {
-        $body = $this->read($path);
+        $body = $this->read($path, $roots);
         if ($body === false) {
             return Response::error('CONTENT_FORBIDDEN', 'Download file is not readable', 404);
         }
@@ -126,10 +127,17 @@ final class DownloadController
         return null;
     }
 
-    private function read(string $path): string|false
+    /**
+     * @param list<string>|null $roots
+     */
+    private function read(string $path, ?array $roots = null): string|false
     {
         if ($path === '') {
             return false;
+        }
+        if ($roots !== null) {
+            // Export / log-archive files: local only, confined to their own directory (SEC-102).
+            return (new \TokenHub\Services\Media\LocalMediaStorage(null, $roots))->read($path);
         }
 
         if (preg_match('/^https?:\/\//i', $path) === 1) {
@@ -146,9 +154,26 @@ final class DownloadController
             return (string) $fetched['body'];
         }
 
+        // Media: the driver for the path; the local driver refuses paths outside the media roots (SEC-102).
         $driver = \TokenHub\Services\Media\MediaStorageManager::forPath($path);
 
         return $driver !== null ? $driver->read($path) : false;
+    }
+
+    /** @return list<string> */
+    private function exportRoots(): array
+    {
+        return [(string) App::config()->get('paths.exports', storage_path('exports'))];
+    }
+
+    /** @return list<string> */
+    private function logArchiveRoots(): array
+    {
+        // LogRetentionService writes archives to <log dir>/archive.
+        return array_values(array_unique([
+            storage_path('logs' . DIRECTORY_SEPARATOR . 'archive'),
+            rtrim((string) App::config()->get('logging.path', storage_path('logs')), DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . 'archive',
+        ]));
     }
 
     /**

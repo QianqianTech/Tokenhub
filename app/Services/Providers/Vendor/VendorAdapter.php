@@ -127,7 +127,7 @@ final class VendorAdapter implements ProviderAdapterInterface, AsyncTaskAdapter
                 $result['duration'] = $usage['audio_seconds'];
             }
 
-            return [...$result, ...($usage !== [] ? ['vendor_usage' => $usage] : [])];
+            return [...$result, ...(is_array($providerResponse['usage'] ?? null) ? ['usage' => $providerResponse['usage']] : []), ...($usage !== [] ? ['vendor_usage' => $usage] : [])];
         }
 
         if (in_array($request->capability, ['tts', 'music_generation'], true)) {

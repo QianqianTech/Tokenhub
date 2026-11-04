@@ -2,8 +2,9 @@
 # Back up a Docker installation: MySQL dump, Qdrant collection snapshots, application storage
 # (media, exports, logs, Caddy fragments), Redis, Caddy certificates and the .env file.
 #
-#   ./backup.sh                      writes ./backups/<timestamp>/
-#   BACKUP_DIR=/data/backup ./backup.sh
+#   ./backup.sh                      writes /var/backups/tokenhub/<timestamp>/ (root), else
+#                                    ~/tokenhub-backups/<timestamp>/ (never inside the source tree)
+#   BACKUP_DIR=/data/backup ./backup.sh   (or BACKUP_DIR=... in .env)
 #   KEEP=14 ./backup.sh              keep the newest 14 backups (default 7)
 #
 # Cron example (daily 02:30):  30 2 * * * /opt/tokenhub/backup.sh >>/var/log/tokenhub-backup.log 2>&1
@@ -15,7 +16,7 @@ set -euo pipefail
 require_docker
 [ -f "$ENV_FILE" ] || die "$ENV_FILE not found."
 
-BACKUP_ROOT="${BACKUP_DIR:-$KIT_DIR/backups}"
+BACKUP_ROOT="$(backup_root)"
 STAMP="$(date +%Y%m%d-%H%M%S)"
 TARGET="$BACKUP_ROOT/$STAMP"
 KEEP="${KEEP:-7}"
@@ -23,7 +24,11 @@ PROJECT="$(env_get COMPOSE_PROJECT_NAME)"; PROJECT="${PROJECT:-tokenhub}"
 IMAGE="$(php_image)"
 
 mkdir -p "$TARGET"
+chmod 700 "$BACKUP_ROOT" 2>/dev/null || true
 chmod 700 "$TARGET"
+if [ "$BACKUP_ROOT" != "$KIT_DIR/backups" ] && ls -1d "$KIT_DIR"/backups/20* >/dev/null 2>&1; then
+  warn "Older backups remain in $KIT_DIR/backups (inside the kit directory); move them to $BACKUP_ROOT."
+fi
 
 volume_tar() {
   local volume="$1" archive="$2"

@@ -137,7 +137,7 @@ assert_same(100.0, (float) ($failMetadata['quality_gate_violations'][0]['require
 
 $noCasesCode = 'require "tests/bootstrap.php"; (new TokenHub\\Services\\RagRetrievalEvaluationService())->run(["case_ids" => ["missing_evalgate_case"]]);';
 $noCasesPipes = [];
-$noCasesProcess = proc_open(['php', '-r', $noCasesCode], [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $noCasesPipes, '/srv/app');
+$noCasesProcess = proc_open(['php', '-r', 'try { ' . $noCasesCode . ' } catch (\TokenHub\Support\HttpAbortException $e) { $e->response()->send(); }'], [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $noCasesPipes, dirname(__DIR__, 2));
 assert_true(is_resource($noCasesProcess), 'No-cases evaluation child process must start.');
 $noCasesOutput = stream_get_contents($noCasesPipes[1]);
 foreach ($noCasesPipes as $pipe) {

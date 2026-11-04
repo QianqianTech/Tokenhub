@@ -4,7 +4,8 @@ declare(strict_types=1);
 
 require __DIR__ . '/../bootstrap.php';
 
-$resources = file_get_contents(__DIR__ . '/../../public/admin/assets/js/resources.js');
+// Column/value labels moved to the i18n dictionary (UX-106).
+$resources = (string) file_get_contents(__DIR__ . '/../../public/admin/assets/js/resources.js') . "\n" . (string) file_get_contents(__DIR__ . '/../../public/admin/assets/js/i18n/zh-CN.js');
 $tableSource = admin_js_bundle();
 
 assert_true(is_string($resources), 'Admin resources source should be readable.');

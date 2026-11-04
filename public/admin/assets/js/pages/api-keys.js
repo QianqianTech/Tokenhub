@@ -7,8 +7,11 @@ import { emptyState, errorState, loadingState } from "../components/feedback.js"
 import { pager, PAGE_SIZES } from "../components/pager.js";
 import { arrangeRowActions, editButton, friendlyTime, pageHead, renderTableCell } from "../lib/resource-table.js";
 import { columnLabel, formatResourceValue, resources } from "../resources.js";
+import { formatDateTime, utcStamp } from "../lib/format.js";
+import { navigateTo } from "../lib/navigation.js";
+import { hasCapability } from "../core/session.js";
 import { confirmDialog } from "../components/modal.js";
-import { API_KEY_DISABLED_BY_LABELS, apiKeyManagementBadge, showApiKeyMcpGrants, showApiKeyQuota, showApiKeyRotate } from "../lib/ops-tools.js";
+import { API_KEY_DISABLED_BY_LABELS, apiKeyManagementBadge, showApiKeyMcpGrants, showApiKeyQuota, showApiKeyRotate } from "../lib/api-key-tools.js";
 
 
 function apiKeyActionIcon(paths) {
@@ -36,9 +39,8 @@ function pad2(value) {
   return String(value).padStart(2, "0");
 }
 
-function serverStamp(date) {
-  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())} ${pad2(date.getHours())}:${pad2(date.getMinutes())}:${pad2(date.getSeconds())}`;
-}
+// Local midnight converted to the UTC timestamps the API compares against.
+const serverStamp = utcStamp;
 
 function compactTokens(value) {
   const number = apiKeyNumber(value);
@@ -336,6 +338,10 @@ function renderApiKeyTable(rows, config, onRefresh, context = {}, { onOpen = nul
     }
     if (row.id && row.status === "active") {
       ops.push(button("轮换", () => showApiKeyRotate(row, onRefresh), "secondary api-key-rotate-button"));
+      if (hasCapability("operations.read")) {
+        // Opens 会话测试 with this key preselected (gateway trial mode).
+        ops.push(button("测试", () => navigateTo("admin-chat-sessions", { api_key_id: row.id }), "secondary api-key-test-button"));
+      }
     }
     if (row.id && row.status !== "disabled" && row.status !== "deleted") {
       ops.push(button("删除", () => deleteApiKey(row, onRefresh), "danger"));
@@ -376,7 +382,7 @@ function renderApiKeyTable(rows, config, onRefresh, context = {}, { onOpen = nul
       el("td", { className: "table-cell table-cell--status" }, [
         el("span", { className: `status-pill ${row.status === "active" ? "is-positive" : "is-muted"}`, text: apiKeyStatusText(row.status, row.disabled_by) })
       ]),
-      el("td", { className: "table-cell table-cell--created_at cell-mono", text: friendlyTime(row.created_at), title: row.created_at || "" }),
+      el("td", { className: "table-cell table-cell--created_at cell-mono", text: friendlyTime(row.created_at), title: formatDateTime(row.created_at) }),
       el("td", { className: "table-cell table-cell--actions" }, [el("div", { className: "row-actions api-key-row-actions" }, arrangeRowActions(ops))])
     ]);
     tr.addEventListener("click", (event) => {

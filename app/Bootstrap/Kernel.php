@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace TokenHub\Bootstrap;
 
 use TokenHub\Http\Controllers\AdminController;
+use TokenHub\Http\Controllers\AdminRecoveryController;
 use TokenHub\Http\Controllers\AgentManagementController;
+use TokenHub\Http\Controllers\AppAuthController;
 use TokenHub\Http\Controllers\DownloadController;
 use TokenHub\Http\Controllers\ExternalController;
 use TokenHub\Http\Controllers\FileController;
@@ -51,15 +53,55 @@ final class Kernel
 
         $router->get('/health', [$health, 'public']);
         $router->get('/ready', [$health, 'ready']);
+        // BIZ-024: Prometheus metrics; 404 unless METRICS_TOKEN is set (Bearer).
+        $router->get('/metrics', [new \TokenHub\Http\Controllers\MetricsController(), 'metrics']);
         $router->get('/admin-api/health', [$health, 'admin']);
         $router->get('/download/{token}', [$download, 'show']);
 
         $router->get('/admin-api/system/brand-identity', [$admin, 'brandIdentity']);
         $router->post('/admin-api/login', [$admin, 'login']);
+        $recovery = new AdminRecoveryController();
+        $router->get('/admin-api/auth/options', [$recovery, 'options']);
+        $router->post('/admin-api/forgot-password', [$recovery, 'forgotPassword']);
+        $router->post('/admin-api/reset-password', [$recovery, 'resetPassword']);
+        $router->post('/admin-api/system/settings-center/smtp/test', [$recovery, 'testSmtp'], [new AdminAuthMiddleware(), new CsrfMiddleware()]);
         $router->post('/admin-api/logout', [$admin, 'logout'], [new AdminAuthMiddleware(), new CsrfMiddleware()]);
         $router->get('/admin-api/me', [$admin, 'me'], [new AdminAuthMiddleware()]);
         $router->get('/admin-api/csrf', [$admin, 'csrf'], [new AdminAuthMiddleware()]);
         $router->post('/admin-api/session/renew', [$admin, 'renewSession'], [new AdminAuthMiddleware(), new CsrfMiddleware()]);
+        // TokenHub APP sign-in (one-time link -> rotating device credential -> bearer access token).
+        $appAuth = new AppAuthController();
+        $router->post('/admin-api/app-auth/exchange', [$appAuth, 'exchange']);
+        $router->post('/admin-api/app-auth/refresh', [$appAuth, 'refresh']);
+        $router->post('/admin-api/app-auth/logout', [$appAuth, 'logout'], [new AdminAuthMiddleware(), new CsrfMiddleware()]);
+        $router->get('/admin-api/app-auth/status', [$appAuth, 'status'], [new AdminAuthMiddleware()]);
+        $router->get('/admin-api/app-auth/stream', [$appAuth, 'stream'], [new AdminAuthMiddleware()]);
+        $router->post('/admin-api/app-auth/pin', [$appAuth, 'setPin'], [new AdminAuthMiddleware(), new CsrfMiddleware()]);
+        $router->post('/admin-api/app-auth/step-up', [$appAuth, 'stepUp'], [new AdminAuthMiddleware(), new CsrfMiddleware()]);
+        $router->post('/admin-api/app-auth/step-up/passkey', [$appAuth, 'stepUpPasskey'], [new AdminAuthMiddleware(), new CsrfMiddleware()]);
+        $router->post('/admin-api/app-auth/passkeys/options', [$appAuth, 'passkeyOptions'], [new AdminAuthMiddleware(), new CsrfMiddleware()]);
+        $router->post('/admin-api/app-auth/passkeys', [$appAuth, 'registerPasskey'], [new AdminAuthMiddleware(), new CsrfMiddleware()]);
+        $router->delete('/admin-api/app-auth/passkeys', [$appAuth, 'removePasskeys'], [new AdminAuthMiddleware(), new CsrfMiddleware()]);
+        $router->get('/admin-api/app-auth/push/key', [$appAuth, 'pushKey'], [new AdminAuthMiddleware()]);
+        $router->post('/admin-api/app-auth/push/subscription', [$appAuth, 'pushSubscribe'], [new AdminAuthMiddleware(), new CsrfMiddleware()]);
+        $router->delete('/admin-api/app-auth/push/subscription', [$appAuth, 'pushUnsubscribe'], [new AdminAuthMiddleware(), new CsrfMiddleware()]);
+        $router->put('/admin-api/app-auth/push/preferences', [$appAuth, 'pushPreferences'], [new AdminAuthMiddleware(), new CsrfMiddleware()]);
+        $router->post('/admin-api/app-auth/push/native', [$appAuth, 'pushNative'], [new AdminAuthMiddleware(), new CsrfMiddleware()]);
+        // Public root certificate of the internal CA (https://IP), for phones to trust it.
+        $router->get('/admin-api/app-auth/ca.crt', [$appAuth, 'caCertificate']);
+        $router->get('/admin-api/app-auth/ca.mobileconfig', [$appAuth, 'caMobileconfig']);
+        $router->get('/admin-api/my/app-devices', [$appAuth, 'myDevices'], [new AdminAuthMiddleware()]);
+        $router->post('/admin-api/my/app-devices/links', [$appAuth, 'createMyLink'], [new AdminAuthMiddleware(), new CsrfMiddleware()]);
+        $router->post('/admin-api/my/app-devices/revoke-all', [$appAuth, 'revokeAllMyDevices'], [new AdminAuthMiddleware(), new CsrfMiddleware()]);
+        $router->delete('/admin-api/my/app-devices/{id}', [$appAuth, 'revokeMyDevice'], [new AdminAuthMiddleware(), new CsrfMiddleware()]);
+        $router->post('/admin-api/my/app-devices/{id}/approve', [$appAuth, 'approveMyDevice'], [new AdminAuthMiddleware(), new CsrfMiddleware()]);
+        $router->post('/admin-api/my/app-devices/{id}/reject', [$appAuth, 'rejectMyDevice'], [new AdminAuthMiddleware(), new CsrfMiddleware()]);
+        $router->get('/admin-api/admin-users/{id}/app-devices', [$appAuth, 'adminDevices'], [new AdminAuthMiddleware()]);
+        $router->post('/admin-api/admin-users/{id}/app-devices/links', [$appAuth, 'createAdminLink'], [new AdminAuthMiddleware(), new CsrfMiddleware()]);
+        $router->post('/admin-api/admin-users/{id}/app-devices/revoke-all', [$appAuth, 'revokeAllAdminDevices'], [new AdminAuthMiddleware(), new CsrfMiddleware()]);
+        $router->delete('/admin-api/admin-users/{id}/app-devices/{device}', [$appAuth, 'revokeAdminDevice'], [new AdminAuthMiddleware(), new CsrfMiddleware()]);
+        $router->post('/admin-api/admin-users/{id}/app-devices/{device}/approve', [$appAuth, 'approveAdminDevice'], [new AdminAuthMiddleware(), new CsrfMiddleware()]);
+        $router->post('/admin-api/admin-users/{id}/app-devices/{device}/reject', [$appAuth, 'rejectAdminDevice'], [new AdminAuthMiddleware(), new CsrfMiddleware()]);
         $router->get('/admin-api/lookups/{type}', [$admin, 'lookup'], [new AdminAuthMiddleware()]);
         $router->get('/admin-api/dashboard-share-links', [$admin, 'dashboardShareLinks'], [new AdminAuthMiddleware()]);
         $router->post('/admin-api/dashboard-share-links', [$admin, 'createDashboardShareLink'], [new AdminAuthMiddleware(), new CsrfMiddleware()]);
@@ -290,7 +332,7 @@ final class Kernel
         $router->get('/screen-api/auth/me', [$screen, 'me'], [new ScreenAuthMiddleware()]);
         $router->get('/screen-api/system/brand-identity', [$screen, 'brandIdentity']);
         $router->get('/screen-api/assets/{id}/download-url', [$screen, 'assetDownloadUrl'], [new ScreenAuthMiddleware()]);
-        foreach (['overview', 'realtime', 'trends', 'rankings', 'security', 'performance', 'multimodal'] as $metric) {
+        foreach (['overview', 'realtime', 'trends', 'rankings', 'security', 'performance', 'multimodal', 'live'] as $metric) {
             $router->get("/screen-api/dashboard/{$metric}", fn ($request) => $screen->dashboard($request, $metric), [new ScreenAuthMiddleware()]);
         }
 

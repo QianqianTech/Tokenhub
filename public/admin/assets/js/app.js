@@ -3,11 +3,15 @@ import { $, clear, el, setText, statusMessage } from "./dom.js";
 import { resources as resourceConfig, valueLabel } from "./resources.js";
 import { preloadPage, renderPage } from "./core/registry.js";
 import { setCurrentUser } from "./core/session.js";
-import { errorState } from "./components/feedback.js";
+import { errorState, toastError } from "./components/feedback.js";
 import { bindPaletteShortcut, configurePalette, openPalette } from "./components/palette.js";
 import { requestRelogin, startSessionMonitor, stopSessionMonitor } from "./components/session.js";
-import { adminHash, domainForPage, domainsForUser, pageAllowed, parseAdminHash } from "./domains.js";
+import { adminHash, domainForPage, domainsForUser, groupLabelBefore, pageAllowed, parseAdminHash } from "./domains.js";
 import { buildHash, hasTransientFilters, replaceHash, withoutTransientFilters } from "./core/router.js";
+import { hidePasswordRecovery, initPasswordRecovery, isPasswordRecoveryVisible } from "./password-recovery.js";
+import { confirmDialog } from "./components/modal.js";
+import { discardUnsavedChanges, hasUnsavedChanges } from "./lib/dirty-guard.js";
+import { t } from "./i18n.js";
 
 const adminState = {
   page: "dashboard",
@@ -301,7 +305,7 @@ function adminUpdateSidebarModeToggle() {
   if (!toggle) {
     return;
   }
-  const mobileClose = window.innerWidth <= 820 && adminSidebarState.mobileOpen;
+  const mobileClose = window.innerWidth <= 900 && adminSidebarState.mobileOpen;
   const compact = adminSidebarState.mode === "compact";
   toggle.textContent = mobileClose ? "×" : compact ? "›" : "‹";
   toggle.setAttribute("aria-label", mobileClose ? "关闭菜单" : compact ? "展开菜单" : "收起菜单");
@@ -344,7 +348,11 @@ function adminToggleNavSection(sectionKey) {
       adminSidebarState.transientOpenKey = "";
     }
   } else {
+    // Accordion: opening one section collapses the others so the menu stays
+    // short enough to scan without scrolling.
+    openKeys.clear();
     openKeys.add(sectionKey);
+    adminSidebarState.transientOpenKey = "";
   }
   adminSidebarState.openKeys = openKeys;
   writeNavOpenCookie(openKeys);
@@ -438,7 +446,7 @@ function adminRenderNavList() {
       "aria-expanded": isOpen ? "true" : "false",
       "aria-controls": listId,
       onClick: () => {
-        if (adminSidebarState.mode === "compact" && window.innerWidth > 820) {
+        if (adminSidebarState.mode === "compact" && window.innerWidth > 900) {
           adminApplySidebarMode("expanded");
           return;
         }
@@ -451,10 +459,14 @@ function adminRenderNavList() {
       domain.items.some(([key]) => key === "alert-events")
         ? el("span", { className: "nav-badge", text: String(adminAlertState.count), hidden: adminAlertState.count <= 0, "aria-hidden": "true" })
         : null,
-      el("span", { className: "nav-caret", text: isOpen ? "−" : "+", "aria-hidden": "true" })
+      el("span", { className: "nav-caret", "aria-hidden": "true" })
     ]);
     const list = el("div", { id: listId, className: "nav-list" });
     for (const item of visibleItems) {
+      const groupLabel = groupLabelBefore({ key: domain.key, tabs: visibleItems.map((entry) => entry.key) }, item.key);
+      if (groupLabel) {
+        list.append(el("div", { className: "nav-group-label", "aria-hidden": "true", text: groupLabel }));
+      }
       const itemActive = item.key === adminState.page;
       list.append(el("a", {
         className: `nav-button ${itemActive ? "active" : ""}`.trim(),
@@ -570,10 +582,6 @@ function adminUpdateNavState(host, sections, activeSectionKey) {
     const toggle = section.querySelector(".nav-section-toggle");
     toggle?.setAttribute("aria-expanded", isOpen ? "true" : "false");
     toggle?.setAttribute("aria-label", `${domain.label}，${isOpen ? "已展开" : "已收起"}`);
-    const caret = section.querySelector(".nav-caret");
-    if (caret) {
-      caret.textContent = isOpen ? "−" : "+";
-    }
     for (const link of section.querySelectorAll("a.nav-button")) {
       const itemActive = link.dataset.page === adminState.page;
       link.classList.toggle("active", itemActive);
@@ -641,7 +649,7 @@ function adminInitSidebarControls() {
   $("sidebar-toggle")?.addEventListener("click", adminOpenMobileNav);
   $("sidebar-backdrop")?.addEventListener("click", () => adminCloseMobileNav());
   $("sidebar-mode-toggle")?.addEventListener("click", () => {
-    if (window.innerWidth <= 820) {
+    if (window.innerWidth <= 900) {
       adminCloseMobileNav();
       return;
     }
@@ -649,7 +657,7 @@ function adminInitSidebarControls() {
   });
   document.addEventListener("keydown", adminHandleSidebarKeydown);
   window.addEventListener("resize", () => {
-    if (window.innerWidth > 820 && adminSidebarState.mobileOpen) {
+    if (window.innerWidth > 900 && adminSidebarState.mobileOpen) {
       adminCloseMobileNav({ restoreFocus: false });
     }
     adminUpdateSidebarModeToggle();
@@ -688,6 +696,11 @@ async function adminRenderRoute() {
   if (route.tabKey !== adminState.page) {
     adminRecordRecentPage(adminState.page);
   }
+  if (route.domainKey !== adminState.domain) {
+    // Entering another domain collapses the previously opened sections.
+    adminSidebarState.openKeys = new Set([route.domainKey]);
+    writeNavOpenCookie(adminSidebarState.openKeys);
+  }
   adminSidebarState.transientOpenKey = route.domainKey;
   adminCaptureNavScroll();
   adminState.domain = route.domainKey;
@@ -719,10 +732,12 @@ async function adminRender() {
 }
 
 function adminShowLogin() {
+  hidePasswordRecovery();
   adminSetLoginShell(true);
   $("login").hidden = false;
   $("content").hidden = true;
   $("logout").hidden = true;
+  $("app-devices").hidden = true;
   clear($("nav"));
   adminSidebarState.shellReady = false;
   adminCloseMobileNav({ restoreFocus: false });
@@ -730,10 +745,12 @@ function adminShowLogin() {
 }
 
 function adminShowApp() {
+  hidePasswordRecovery();
   adminSetLoginShell(false);
   $("login").hidden = true;
   $("content").hidden = false;
   $("logout").hidden = false;
+  $("app-devices").hidden = false;
   const user = adminState.user;
   const name = user ? String(user.display_name || user.username || "") : "";
   setText($("current-user"), name);
@@ -915,12 +932,15 @@ async function adminSubmitLogin(event) {
   const password = $("password");
   const submit = $("login-button");
   const errorNode = $("login-error");
+  if (submit.disabled) return;
   if (!username.value.trim() || !password.value) {
     setText(errorNode, "请输入用户名和密码");
     (username.value.trim() ? password : username).focus();
     return;
   }
+  const idleLabel = submit.textContent;
   submit.disabled = true;
+  submit.textContent = "登录中…";
   submit.setAttribute("aria-busy", "true");
   setText(errorNode, "");
   try {
@@ -935,6 +955,7 @@ async function adminSubmitLogin(event) {
     password.focus();
   } finally {
     submit.disabled = false;
+    submit.textContent = idleLabel;
     submit.removeAttribute("aria-busy");
   }
 }
@@ -949,7 +970,7 @@ async function adminBoot() {
     onAuthRequired: () => {
       if (adminState.user) {
         void requestRelogin();
-      } else {
+      } else if (!isPasswordRecoveryVisible()) {
         adminShowLogin();
       }
     },
@@ -962,6 +983,12 @@ async function adminBoot() {
   $("palette-trigger")?.addEventListener("click", () => openPalette());
   $("login").addEventListener("submit", adminSubmitLogin);
   adminInitLoginForm();
+  const recoveringPassword = initPasswordRecovery(adminShowLogin);
+  $("app-devices").addEventListener("click", () => {
+    import("./pages/app-devices.js")
+      .then((module) => module.openAppDevicesDialog())
+      .catch((error) => toastError(error, "无法打开 APP 设备"));
+  });
   $("logout").addEventListener("click", async () => {
     await api("/admin-api/logout", { method: "POST" }).catch(() => null);
     stopSessionMonitor();
@@ -972,18 +999,70 @@ async function adminBoot() {
     adminShowLogin();
   });
   await adminRefreshPublicBrandIdentity();
+  if (recoveringPassword) {
+    return;
+  }
   try {
     const csrf = await api("/admin-api/csrf", { silent: true });
     setCsrf(csrf.data.csrf_token);
     const me = await api("/admin-api/me", { silent: true });
     await adminSignedIn(me.data.user, me.data);
   } catch {
-    adminShowLogin();
+    if (!isPasswordRecoveryVisible()) adminShowLogin();
   }
 }
 
-window.addEventListener("hashchange", () => {
+// Unsaved page forms (settings, SMTP, certificates …): leaving the page asks
+// first; staying puts the previous URL back without re-rendering.
+let adminLeaveConfirmOpen = false;
+
+async function adminConfirmLeave(oldUrl) {
+  if (!adminState.user || !hasUnsavedChanges()) {
+    return true;
+  }
+  const oldHash = (() => {
+    try {
+      return new URL(oldUrl).hash;
+    } catch {
+      return "";
+    }
+  })();
+  if (adminLeaveConfirmOpen) {
+    return false;
+  }
+  adminLeaveConfirmOpen = true;
+  try {
+    const leave = await confirmDialog({
+      title: t("guard.leaveTitle"),
+      message: t("guard.leaveMessage"),
+      confirmLabel: t("guard.leaveConfirm"),
+      cancelLabel: t("modal.keepEditing")
+    });
+    if (leave) {
+      discardUnsavedChanges();
+      return true;
+    }
+    if (oldHash) {
+      replaceHash(oldHash);
+    }
+    return false;
+  } finally {
+    adminLeaveConfirmOpen = false;
+  }
+}
+
+window.addEventListener("hashchange", async (event) => {
+  if (!(await adminConfirmLeave(event.oldURL))) {
+    return;
+  }
   adminRenderRoute().catch((error) => setText($("global-error"), adminErrorMessage(error)));
+});
+
+window.addEventListener("beforeunload", (event) => {
+  if (adminState.user && hasUnsavedChanges()) {
+    event.preventDefault();
+    event.returnValue = "";
+  }
 });
 
 adminBoot();

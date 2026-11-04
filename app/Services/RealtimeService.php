@@ -230,6 +230,12 @@ final class RealtimeService
         if ($template !== '') {
             return str_replace('{model}', rawurlencode($upstreamModel), $template);
         }
+        $map = $controls['tokenhub_endpoint_map'] ?? [];
+        if (is_string($map)) $map = json_decode($map, true);
+        if (strtolower((string) parse_url((string) ($route['base_url'] ?? ''), PHP_URL_HOST)) === 'token-plan.maas.qianwenaiapi.com'
+            && !(is_array($map) && array_key_exists('/v1/realtime', $map))) {
+            return 'wss://token-plan.maas.qianwenaiapi.com/api-ws/v1/realtime?model=' . rawurlencode($upstreamModel);
+        }
         $resolved = (new ProviderEndpointResolver())->resolve((string) ($route['base_url'] ?? ''), '/v1/realtime', $controls);
         $url = (string) ($resolved['url'] ?? rtrim((string) ($route['base_url'] ?? ''), '/') . '/v1/realtime');
         $url = (string) preg_replace('#^http(s?)://#i', 'ws$1://', $url);

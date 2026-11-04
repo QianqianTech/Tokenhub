@@ -17,11 +17,16 @@ final class ScreenController
     public function shareLogin(Request $request): Response
     {
         $data = $request->json();
-        $result = (new ScreenService())->loginByShareCode((string) ($data['share_code'] ?? ''), $request->clientIp(), $request->header('user-agent', '') ?? '');
+        $service = new ScreenService();
+        $shareCode = (string) ($data['share_code'] ?? '');
+        if (($limited = $this->throttled($service, $request, 'code:' . $shareCode)) !== null) {
+            return $limited;
+        }
+        $result = $service->loginByShareCode($shareCode, $request->clientIp(), $request->header('user-agent', '') ?? '');
         if (($result['ok'] ?? false) !== true) {
             return Response::error((string) ($result['code'] ?? 'SCREEN_UNAUTHENTICATED'), (string) ($result['message'] ?? 'Invalid screen link'), (int) ($result['status'] ?? 401));
         }
-        return $this->withSessionCookie(Response::ok(['share' => $result['share']]), $result['session'], time() + 315360000);
+        return $this->withSessionCookie(Response::ok(['share' => $result['share']]), $result['session'], time() + $service->sessionIdleSeconds());
     }
 
     public function login(Request $request): Response
@@ -29,13 +34,28 @@ final class ScreenController
         $data = $request->json();
         $service = new ScreenService();
         $shareCode = (string) ($data['share_code'] ?? '');
+        $identity = $shareCode !== '' ? 'code:' . $shareCode : 'user:' . (string) ($data['username'] ?? '');
+        if (($limited = $this->throttled($service, $request, $identity)) !== null) {
+            return $limited;
+        }
         $result = $shareCode === ''
             ? $service->loginByCredentials((string) ($data['username'] ?? ''), (string) ($data['password'] ?? ''), $request->clientIp(), $request->header('user-agent', '') ?? '')
             : $service->login($shareCode, (string) ($data['username'] ?? ''), (string) ($data['password'] ?? ''), $request->clientIp(), $request->header('user-agent', '') ?? '');
         if (($result['ok'] ?? false) !== true) {
             return Response::error((string) ($result['code'] ?? 'SCREEN_UNAUTHENTICATED'), (string) ($result['message'] ?? 'Invalid screen credentials'), (int) ($result['status'] ?? 401));
         }
-        return $this->withSessionCookie(Response::ok(['share' => $result['share']]), $result['session'], time() + 315360000);
+        return $this->withSessionCookie(Response::ok(['share' => $result['share']]), $result['session'], time() + $service->sessionIdleSeconds());
+    }
+
+    private function throttled(ScreenService $service, Request $request, string $identity): ?Response
+    {
+        $limited = $service->loginThrottle($request->clientIp(), $identity);
+        if ($limited === null) {
+            return null;
+        }
+
+        return Response::error('RATE_LIMITED', 'Too many screen login attempts', 429)
+            ->withHeader('Retry-After', (string) max(1, (int) $limited['retry_after']));
     }
 
     public function logout(Request $request): Response
@@ -81,6 +101,21 @@ final class ScreenController
         }
 
         return Response::ok($service->createScreenDownloadUrl($asset, $screenSession));
+    }
+
+    /** Sliding session: every authenticated screen request pushes the cookie expiry forward. */
+    public static function slideSessionCookie(Response $response, string $session): Response
+    {
+        if ($session === '' || isset($response->headers['Set-Cookie'])) {
+            return $response;
+        }
+
+        return $response->withCookie(
+            'screen_session',
+            $session,
+            time() + (new ScreenService())->sessionIdleSeconds(),
+            secure: (bool) App::config()->get('app.session_secure', true)
+        );
     }
 
     private function withSessionCookie(Response $response, string $value, int $expires): Response

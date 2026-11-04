@@ -49,7 +49,7 @@ const pages = {
   "permission-config": ["permissionConfig", (m, content) => m.renderPermissionConfigPage(content)],
   "system-settings": ["systemSettings", (m, content) => m.renderSystemSettingsPage(content)],
   "api-keys": ["apiKeys", (m, content, ctx) => m.renderApiKeyPage(content, ctx.filters, ctx)],
-  "admin-chat-sessions": ["chat", (m, content) => m.renderAdminChatSessionPage(content)]
+  "admin-chat-sessions": ["chat", (m, content, ctx) => m.renderAdminChatSessionPage(content, ctx.filters)]
 };
 
 export function pageDefinition(key) {

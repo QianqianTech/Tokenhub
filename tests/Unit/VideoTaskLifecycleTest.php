@@ -30,6 +30,7 @@ if (!in_array('sqlite', PDO::getAvailableDrivers(), true) || !function_exists('p
 }
 $queue = 'tokenhub:videolifecycle:' . bin2hex(random_bytes(4));
 $_ENV['QUEUE_NAME'] = $queue;
+$_ENV['QUEUE_ROUTING'] = 'false'; // these assertions read the main queue (PERF-015 routes usage.write to <name>:usage)
 $_ENV['OUTBOUND_PRIVATE_ALLOWLIST'] = '127.0.0.1/32';
 $_ENV['PROVIDER_RETRY_MAX_BACKOFF_MS'] = '1';
 $_ENV['APP_KEY'] = 'video-lifecycle-test-key-0123456789abcdef';

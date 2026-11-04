@@ -14,3 +14,16 @@ dist
 *.log
 .DS_Store
 .composer-install.lock
+
+# REL-106: never part of an image
+Claude outputs
+native
+deploy/docker/verify-report-*.txt
+**/*.pptx
+**/*.docx
+**/*.inspect.ndjson
+dump.rdb
+**/node_modules
+**/__pycache__
+**/.pytest_cache
+python-rag-worker/tests

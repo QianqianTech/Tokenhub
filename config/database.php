@@ -10,5 +10,7 @@ return [
     'username' => env('DB_USERNAME', 'tokenhub'),
     'password' => env('DB_PASSWORD', ''),
     'charset' => env('DB_CHARSET', 'utf8mb4'),
+    // PERF-011b: persistent PDO connections (rolled back / locks released on reuse).
+    'persistent' => env('DB_PERSISTENT', true),
 ];
 

@@ -8,17 +8,28 @@ use TokenHub\Support\App;
 
 final class WorkerService
 {
-    /** @param null|callable(array<string, mixed>): void $queuePublisher */
+    /**
+     * @param null|callable(array<string, mixed>): void $queuePublisher
+     * @param array<string, callable(array<string, mixed>): void> $handlers extra/overriding job handlers by type (tests, plugins)
+     */
     public function __construct(
         private readonly mixed $queuePublisher = null,
         private readonly ?RagEmbeddingJobService $ragEmbeddingJobs = null,
+        private readonly array $handlers = [],
     )
     {
     }
 
     public function handle(array $job): void
     {
+        $type = (string) ($job['type'] ?? '');
+        if (isset($this->handlers[$type])) {
+            ($this->handlers[$type])($job);
+            return;
+        }
         match ($job['type'] ?? '') {
+            'admin.password-reset.email' => (new AdminPasswordResetService())->deliver($job),
+            'cleanup.admin-password-resets' => (new AdminPasswordResetService())->cleanup(),
             'test.log' => App::logger()->info('worker', 'Test queue job', ['payload' => $job['payload'] ?? []]),
             'usage.write' => (new UsageService())->write($job['record'] ?? []),
             'export' => $this->runExport((string) ($job['export_id'] ?? '')),
@@ -27,6 +38,7 @@ final class WorkerService
             'cleanup.media' => $this->cleanupMedia(),
             'cleanup.external-events' => $this->cleanupExternalEvents(),
             'cleanup.mcp-oauth' => \TokenHub\Support\SchemaInspector::hasColumn('oauth_grants', 'grant_id') ? (new \TokenHub\Services\Mcp\OAuth\OAuthServer(''))->cleanup() : null,
+            'cleanup.app-devices' => \TokenHub\Support\SchemaInspector::hasColumn('admin_app_devices', 'refresh_hash') ? (new AppDeviceAuthService())->cleanup() : null,
             'logs.rotate' => $this->rotateLogs($job),
             'logs.archive' => $this->archiveLogs(),
             'logs.cleanup' => $this->cleanupLogs(),
@@ -47,6 +59,15 @@ final class WorkerService
             'usage.reconcile' => (new UsageReconciliationService())->reconcileRecent((int) ($job['minutes'] ?? 60)),
             'openrouter.reconcile' => (new OpenRouterGenerationService())->reconcilePending((int) ($job['limit'] ?? 50)),
             'catalog.sync' => (new ProviderModelSyncService())->syncProvider((int) ($job['provider_id'] ?? 0), (bool) ($job['apply'] ?? false)),
+            // BIZ-018: daily dry-run of every provider's catalog / prices; alerts on drift.
+            'catalog.dry-run' => (new ProviderModelSyncService())->dryRunAll(),
+            // BIZ-009: batched purges / optional archive of high-volume tables.
+            'retention.purge' => (new DataRetentionService())->purge(),
+            'retention.archive' => (new DataRetentionService())->archive(),
+            // BIZ-010: cost/token drift between usage_records and aggregates.
+            'usage.drift-check' => (new UsageReconciliationService())->checkDriftAndAlert((int) ($job['hours'] ?? 24)),
+            // BIZ-020: ask the vendor to cancel an expired task.
+            'tasks.cancel' => (new MultimodalTaskService())->cancelUpstream((string) ($job['task_id'] ?? '')),
             // Unknown jobs are dead-lettered instead of silently acknowledged.
             default => throw new \RuntimeException('Unsupported job type: ' . (string) ($job['type'] ?? '')),
         };
@@ -110,7 +131,7 @@ final class WorkerService
             'UPDATE rag_embedding_jobs SET status = "retrying", locked_at = NULL, lock_token = NULL, dispatched_at = NULL, next_run_at = NULL
              WHERE execution_backend = "php_provider"
                AND status = "running"
-               AND (locked_at IS NULL OR TIMESTAMPDIFF(SECOND, locked_at, NOW()) > ?)',
+               AND (locked_at IS NULL OR TIMESTAMPDIFF(SECOND, locked_at, UTC_TIMESTAMP()) > ?)',
             [$leaseSeconds]
         );
         $rows = App::db()->select(
@@ -119,8 +140,8 @@ final class WorkerService
              JOIN rag_uploads u ON u.id = j.upload_id
              WHERE j.execution_backend = "php_provider"
                AND j.status IN ("queued","retrying")
-               AND (j.next_run_at IS NULL OR j.next_run_at <= NOW())
-               AND (j.dispatched_at IS NULL OR TIMESTAMPDIFF(SECOND, j.dispatched_at, NOW()) > ?)
+               AND (j.next_run_at IS NULL OR j.next_run_at <= UTC_TIMESTAMP())
+               AND (j.dispatched_at IS NULL OR TIMESTAMPDIFF(SECOND, j.dispatched_at, UTC_TIMESTAMP()) > ?)
              GROUP BY u.upload_id
              ORDER BY upload_pk
              LIMIT ' . max(1, min(1000, $limit)),
@@ -134,7 +155,7 @@ final class WorkerService
                 App::redis()->push((string) App::config()->get('queue.name', 'tokenhub:jobs'), $message);
             }
             App::db()->execute(
-                'UPDATE rag_embedding_jobs SET dispatched_at = NOW() WHERE upload_id = ? AND execution_backend = "php_provider" AND status IN ("queued","retrying") AND (next_run_at IS NULL OR next_run_at <= NOW())',
+                'UPDATE rag_embedding_jobs SET dispatched_at = UTC_TIMESTAMP() WHERE upload_id = ? AND execution_backend = "php_provider" AND status IN ("queued","retrying") AND (next_run_at IS NULL OR next_run_at <= UTC_TIMESTAMP())',
                 [$row['upload_pk']]
             );
         }
@@ -142,35 +163,24 @@ final class WorkerService
         return count($rows);
     }
 
-    private function exportCsv(array $task): string
-    {
-        $type = $task['export_type'];
-        $rows = match ($type) {
-            'logs' => App::db()->select('SELECT id, actor_type, action, target_type, target_id, request_id, client_ip, created_at FROM audit_logs ORDER BY id DESC LIMIT 10000'),
-            'session_archive' => App::db()->select('SELECT r.id, r.request_id, r.user_id, r.department_id, r.model_name, r.status, c.retention_mode, c.cleaned_at, r.created_at FROM usage_records r LEFT JOIN usage_contents c ON c.usage_record_id = r.id ORDER BY r.id DESC LIMIT 10000'),
-            default => App::db()->select('SELECT id, request_id, user_id, department_id, api_key_id, model_name, status, input_tokens, output_tokens, total_tokens, cost_amount, created_at FROM usage_records ORDER BY id DESC LIMIT 10000'),
-        };
-        if ($rows === []) {
-            return "empty\n";
-        }
-        $out = fopen('php://temp', 'r+');
-        fputcsv($out, array_keys($rows[0]));
-        foreach ($rows as $row) {
-            fputcsv($out, array_map(fn ($value) => is_scalar($value) || $value === null ? $value : json_encode($value), $row));
-        }
-        rewind($out);
-        return stream_get_contents($out) ?: '';
-    }
-
     private function cleanupRetention(): void
     {
-        App::db()->execute($this->expiredContentCleanupSql());
-        App::logger()->info('worker', 'content retention cleanup completed');
+        // Batched (BIZ-025): a large backlog is cleared over several runs
+        // instead of one long UPDATE that locks usage_contents.
+        $cleaned = 0;
+        for ($i = 0; $i < 20; $i++) {
+            $changed = App::db()->execute($this->expiredContentCleanupSql());
+            $cleaned += $changed;
+            if ($changed < 2000) {
+                break;
+            }
+        }
+        App::logger()->info('worker', 'content retention cleanup completed', ['cleaned' => $cleaned]);
     }
 
     public function expiredContentCleanupSql(): string
     {
-        return 'UPDATE usage_contents SET encrypted_input = NULL, encrypted_output = NULL, redacted_input = NULL, redacted_output = NULL, cleaned_at = NOW() WHERE cleaned_at IS NULL AND expires_at IS NOT NULL AND expires_at < NOW()';
+        return 'UPDATE usage_contents SET encrypted_input = NULL, encrypted_output = NULL, redacted_input = NULL, redacted_output = NULL, cleaned_at = UTC_TIMESTAMP() WHERE cleaned_at IS NULL AND expires_at IS NOT NULL AND expires_at < UTC_TIMESTAMP() LIMIT 2000';
     }
 
     public function exportDirectory(): string
@@ -180,7 +190,7 @@ final class WorkerService
 
     private function cleanupExports(): void
     {
-        $expired = App::db()->select('SELECT id, file_path FROM export_tasks WHERE status = "succeeded" AND expires_at IS NOT NULL AND expires_at < NOW()');
+        $expired = App::db()->select('SELECT id, file_path FROM export_tasks WHERE status = "succeeded" AND expires_at IS NOT NULL AND expires_at < UTC_TIMESTAMP()');
         foreach ($expired as $task) {
             if (!empty($task['file_path']) && is_file($task['file_path'])) {
                 unlink($task['file_path']);
@@ -190,39 +200,75 @@ final class WorkerService
         App::logger()->info('worker', 'export cleanup completed', ['count' => count($expired)]);
     }
 
+    /**
+     * BIZ-006: only rows that still point at a file are selected (the
+     * storage_path <> '' filter), in batches, and an audit row is written
+     * only when a file was really removed. Previously every run re-processed
+     * every expired asset ever and audited each one again.
+     */
     private function cleanupMedia(): void
     {
-        $expired = App::db()->select('SELECT id, storage_path FROM media_assets WHERE expires_at IS NOT NULL AND expires_at < NOW()');
-        $count = $this->cleanupExpiredMediaFilesForRows(
-            $expired,
-            static function (string $file): void {
-                if (is_file($file)) {
-                    unlink($file);
-                }
-            },
-            static function (int $id): void {
-                App::db()->execute('UPDATE media_assets SET storage_path = "" WHERE id = ?', [$id]);
-                (new AuditService())->write('asset.cleanup', 'media_assets', $id);
-            },
-        );
+        $batch = max(1, (int) App::config()->get('app.media_cleanup_batch', 500));
+        $maxBatches = 20;
+        $count = 0;
+        for ($i = 0; $i < $maxBatches; $i++) {
+            $expired = App::db()->select(
+                "SELECT id, storage_path FROM media_assets WHERE expires_at IS NOT NULL AND expires_at < UTC_TIMESTAMP() AND storage_path <> '' ORDER BY id LIMIT " . $batch
+            );
+            if ($expired === []) {
+                break;
+            }
+            $count += $this->cleanupExpiredMediaFilesForRows(
+                $expired,
+                static function (string $file): bool {
+                    $storage = null;
+                    try {
+                        $storage = \TokenHub\Services\Media\MediaStorageManager::forPath($file);
+                    } catch (\Throwable) {
+                    }
+                    if ($storage !== null) {
+                        return $storage->delete($file);
+                    }
+                    if (is_file($file)) {
+                        return @unlink($file);
+                    }
+                    return false;
+                },
+                static function (int $id, bool $fileDeleted): void {
+                    App::db()->execute("UPDATE media_assets SET storage_path = '' WHERE id = ?", [$id]);
+                    if ($fileDeleted) {
+                        (new AuditService())->write('asset.cleanup', 'media_assets', $id);
+                    }
+                },
+            );
+            if (count($expired) < $batch) {
+                break;
+            }
+        }
         App::logger()->info('worker', 'media cleanup completed', ['count' => $count]);
     }
 
     private function cleanupExternalEvents(): void
     {
         $days = max(1, (int) App::config()->get('app.external_event_retention_days', 90));
-        $deleted = App::db()->execute('DELETE FROM external_api_events WHERE created_at < DATE_SUB(NOW(), INTERVAL ' . $days . ' DAY)');
+        // BIZ-025: batched, index-backed delete instead of one huge DELETE.
+        $deleted = (new DataRetentionService())->deleteInBatches('external_api_events', 'created_at < ?', [gmdate('Y-m-d H:i:s', time() - $days * 86400)]);
         App::logger()->info('worker', 'external event cleanup completed', ['deleted' => $deleted, 'retention_days' => $days]);
     }
 
+    /**
+     * @param callable(string): (bool|null|void) $deleteFile returns false when nothing was deleted
+     * @param callable(int, bool): void $clearStoragePath receives the id and whether a file was deleted
+     */
     public function cleanupExpiredMediaFilesForRows(array $rows, callable $deleteFile, callable $clearStoragePath): int
     {
         $count = 0;
         foreach ($rows as $asset) {
+            $fileDeleted = false;
             if (!empty($asset['storage_path'])) {
-                $deleteFile((string) $asset['storage_path']);
+                $fileDeleted = $deleteFile((string) $asset['storage_path']) !== false;
             }
-            $clearStoragePath((int) $asset['id']);
+            $clearStoragePath((int) $asset['id'], $fileDeleted);
             $count++;
         }
         return $count;
@@ -278,7 +324,7 @@ final class WorkerService
             }
         });
         foreach (array_unique($deletedIds) as $id) {
-            App::db()->execute('UPDATE log_archive_files SET deleted_at = NOW() WHERE id = ?', [$id]);
+            App::db()->execute('UPDATE log_archive_files SET deleted_at = UTC_TIMESTAMP() WHERE id = ?', [$id]);
         }
         App::logger()->info('worker', 'log cleanup completed', ['count' => $count]);
     }

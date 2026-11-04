@@ -72,8 +72,13 @@ final class RagIndexMaintenanceService
             ];
         }
         $unbound = (int) (App::db()->first('SELECT COUNT(*) AS c FROM rag_vector_configs WHERE enabled = 1 AND (provider_id IS NULL OR model_id IS NULL)')['c'] ?? 0);
+        // V-04: retrievals in the last 24 h that ran without (some) vector results.
+        $degraded = 0;
+        if (\TokenHub\Support\SchemaInspector::hasColumn('rag_retrieval_logs', 'vector_status')) {
+            $degraded = (int) (App::db()->first('SELECT COUNT(*) AS c FROM rag_retrieval_logs WHERE vector_status IN ("degraded","error") AND created_at >= ?', [gmdate('Y-m-d H:i:s', time() - 86400)])['c'] ?? 0);
+        }
 
-        return ['datasets' => $rows, 'totals' => $this->totals($rows), 'unbound_vector_configs' => $unbound, 'last_reconcile' => $this->lastReconcile()];
+        return ['datasets' => $rows, 'totals' => $this->totals($rows), 'unbound_vector_configs' => $unbound, 'vector_degraded_24h' => $degraded, 'last_reconcile' => $this->lastReconcile()];
     }
 
     /**
@@ -210,6 +215,13 @@ final class RagIndexMaintenanceService
             throw new RuntimeException('RAG_VECTOR_STORE_UNAVAILABLE');
         }
         $alias = (string) ($target['collection_name'] ?? '') ?: $configService->collection((string) $dataset['dataset_id'], 'text');
+        // V-01: a vector config's collection is normally shared by every dataset bound to it.
+        // Swapping the alias to a collection holding only this dataset would drop all the
+        // others, so shared collections are rebuilt in place (by dataset_id) instead.
+        $shared = $this->sharedWith($alias, $datasetId);
+        if ($shared !== [] && $this->sharedByOtherModel($alias, $datasetId, (int) ($target['id'] ?? 0))) {
+            throw new RuntimeException('RAG_VECTOR_COLLECTION_IN_USE: collection ' . $alias . ' also holds vectors of another model; give the new vector config its own collection name');
+        }
         $physical = $alias . '_v' . gmdate('YmdHis') . '_' . bin2hex(random_bytes(2));
         $jobs = $this->jobs ?? new RagEmbeddingJobService();
         $spool = storage_path('rag' . DIRECTORY_SEPARATOR . 'maintenance');
@@ -218,18 +230,27 @@ final class RagIndexMaintenanceService
         }
         $spoolFile = $spool . DIRECTORY_SEPARATOR . 'reindex-' . $dataset['dataset_id'] . '-' . bin2hex(random_bytes(4)) . '.jsonl';
         $handle = fopen($spoolFile, 'wb');
-        $report = ['dataset_id' => (string) $dataset['dataset_id'], 'alias' => $alias, 'collection' => $physical, 'target_config_id' => (int) $target['id'], 'chunks' => 0, 'vectors' => 0, 'reused' => 0, 'gate' => null, 'switched' => false];
+        $report = ['dataset_id' => (string) $dataset['dataset_id'], 'alias' => $alias, 'collection' => $physical, 'target_config_id' => (int) ($target['id'] ?? 0), 'mode' => $shared === [] ? 'alias_swap' : 'in_place', 'shared_with' => $shared, 'chunks' => 0, 'vectors' => 0, 'reused' => 0, 'stale_deleted' => 0, 'gate' => null, 'switched' => false];
+        $dropCandidate = static function () use ($store, $physical): void {
+            $store->deleteCollection($physical);
+            $store->deleteCollection($physical . QdrantVectorStore::LEXICAL_SUFFIX);
+        };
         try {
+            $buffer = [];
             foreach ($this->activeChunks($datasetId) as $chunk) {
                 $report['chunks']++;
                 foreach ($jobs->prepareChunkVectors($target, $dataset, $chunk, 'text') as $prepared) {
-                    $store->upsert($physical, $prepared['vector_id'], $prepared['vector'], $prepared['payload']);
-                    $store->upsertLexical($physical, $prepared['vector_id'], $prepared['lexical_text'], RagEmbeddingJobService::lexicalPayload($prepared['payload']));
-                    fwrite($handle, json_encode(['vector_id' => $prepared['vector_id'], 'chunk_id' => (int) $chunk['id'], 'image_id' => $chunk['image_asset_id'] ?: null, 'vector' => $prepared['vector'], 'input_hash' => $prepared['input_hash']], JSON_UNESCAPED_SLASHES) . "\n");
+                    $buffer[] = $prepared;
+                    fwrite($handle, json_encode(['vector_id' => $prepared['vector_id'], 'chunk_id' => (int) $chunk['id'], 'image_id' => $chunk['image_asset_id'] ?: null, 'vector' => $prepared['vector'], 'input_hash' => $prepared['input_hash'], 'payload' => $prepared['payload'], 'lexical_text' => $prepared['lexical_text']], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) . "\n");
                     $report['vectors']++;
                     $report['reused'] += $prepared['reused'] ? 1 : 0;
                 }
+                if (count($buffer) >= 128) {
+                    $this->writePrepared($store, $physical, $buffer);
+                    $buffer = [];
+                }
             }
+            $this->writePrepared($store, $physical, $buffer);
             fclose($handle);
             $handle = null;
 
@@ -239,19 +260,23 @@ final class RagIndexMaintenanceService
             if (!$skipGate) {
                 $report['gate'] = $this->gate($dataset, $current, $target, $physical, $maxRecallDrop, $maxMrrDrop);
                 if (($report['gate']['passed'] ?? false) !== true) {
-                    $store->deleteCollection($physical);
-                    $store->deleteCollection($physical . QdrantVectorStore::LEXICAL_SUFFIX);
+                    $dropCandidate();
                     return $report;
                 }
             }
             if ($dryRun) {
-                $store->deleteCollection($physical);
-                $store->deleteCollection($physical . QdrantVectorStore::LEXICAL_SUFFIX);
+                $dropCandidate();
                 return $report;
             }
 
-            $previous = $store->aliases()[$alias] ?? null;
-            $store->swapAlias($alias, $physical);
+            if ($shared === []) {
+                $previous = $store->aliases()[$alias] ?? null;
+                $store->swapAlias($alias, $physical);
+            } else {
+                $previous = null;
+                $report['stale_deleted'] = $this->copyIntoShared($store, $alias, $spoolFile, (string) $dataset['dataset_id']);
+                $dropCandidate();
+            }
             App::db()->transaction(function () use ($spoolFile, $dataset, $target, $alias, $datasetId, $targetConfigId): void {
                 $read = fopen($spoolFile, 'rb');
                 while (($line = fgets($read)) !== false) {
@@ -261,8 +286,8 @@ final class RagIndexMaintenanceService
                     }
                     App::db()->execute(
                         'INSERT INTO rag_vector_records (vector_id, collection_name, kb_id, dataset_id, chunk_id, image_id, vector_config_id, modality, dimension, vector_json, content_hash, index_status, status, indexed_at)
-                         VALUES (?, ?, ?, ?, ?, ?, ?, "text", ?, ?, ?, "indexed", "indexed", NOW())
-                         ON DUPLICATE KEY UPDATE collection_name = VALUES(collection_name), vector_config_id = VALUES(vector_config_id), dimension = VALUES(dimension), vector_json = VALUES(vector_json), content_hash = VALUES(content_hash), index_status = "indexed", status = "indexed", indexed_at = NOW(), deleted_at = NULL',
+                         VALUES (?, ?, ?, ?, ?, ?, ?, "text", ?, ?, ?, "indexed", "indexed", UTC_TIMESTAMP())
+                         ON DUPLICATE KEY UPDATE collection_name = VALUES(collection_name), vector_config_id = VALUES(vector_config_id), dimension = VALUES(dimension), vector_json = VALUES(vector_json), content_hash = VALUES(content_hash), index_status = "indexed", status = "indexed", indexed_at = UTC_TIMESTAMP(), deleted_at = NULL',
                         [$row['vector_id'], $alias, $dataset['kb_id'], $datasetId, $row['chunk_id'], $row['image_id'], $target['id'], count($row['vector']), json_encode($row['vector'], JSON_UNESCAPED_SLASHES), $row['input_hash']]
                     );
                 }
@@ -270,7 +295,7 @@ final class RagIndexMaintenanceService
                 if ($targetConfigId !== null) {
                     App::db()->execute('UPDATE rag_vector_datasets SET text_vector_config_id = ? WHERE id = ?', [$targetConfigId, $datasetId]);
                 }
-                App::db()->execute('UPDATE rag_vector_datasets SET lexical_index_status = "ready", last_indexed_at = NOW() WHERE id = ?', [$datasetId]);
+                App::db()->execute('UPDATE rag_vector_datasets SET lexical_index_status = "ready", last_indexed_at = UTC_TIMESTAMP() WHERE id = ?', [$datasetId]);
             });
             if ($previous !== null && $previous !== $physical) {
                 $store->deleteCollection($previous);
@@ -290,6 +315,97 @@ final class RagIndexMaintenanceService
             }
             @unlink($spoolFile);
         }
+    }
+
+    /** @param list<array<string, mixed>> $prepared */
+    private function writePrepared(QdrantVectorStore $store, string $collection, array $prepared): void
+    {
+        if ($prepared === []) {
+            return;
+        }
+        $store->upsertMany($collection, array_map(static fn (array $p): array => ['vector_id' => $p['vector_id'], 'vector' => $p['vector'], 'payload' => $p['payload']], $prepared));
+        $store->upsertLexicalMany($collection, array_map(static fn (array $p): array => ['vector_id' => $p['vector_id'], 'text' => $p['lexical_text'], 'payload' => RagEmbeddingJobService::lexicalPayload($p['payload'])], $prepared));
+    }
+
+    /**
+     * Writes the rebuilt vectors of one dataset into a shared live collection, then removes
+     * that dataset's points that the rebuild no longer produced. Other datasets are untouched.
+     */
+    private function copyIntoShared(QdrantVectorStore $store, string $collection, string $spoolFile, string $datasetId): int
+    {
+        $contract = new RagVectorContractService();
+        $keep = [];
+        $buffer = [];
+        $read = fopen($spoolFile, 'rb');
+        while (($line = fgets($read)) !== false) {
+            $row = json_decode($line, true);
+            if (!is_array($row)) {
+                continue;
+            }
+            $keep[$contract->pointId((string) $row['vector_id'])] = true;
+            $buffer[] = ['vector_id' => (string) $row['vector_id'], 'vector' => $row['vector'], 'payload' => (array) ($row['payload'] ?? []), 'lexical_text' => (string) ($row['lexical_text'] ?? '')];
+            if (count($buffer) >= 128) {
+                $this->writePrepared($store, $collection, $buffer);
+                $buffer = [];
+            }
+        }
+        fclose($read);
+        $this->writePrepared($store, $collection, $buffer);
+
+        $stale = [];
+        foreach ($store->scroll($collection, 256, ['dataset_id' => $datasetId]) as $point) {
+            if (!isset($keep[(string) $point['id']])) {
+                $stale[] = (string) $point['id'];
+            }
+        }
+        foreach (array_chunk($stale, 256) as $batch) {
+            $store->deletePoints($collection, $batch);
+        }
+
+        return count($stale);
+    }
+
+    /**
+     * Other datasets whose vectors live in this collection, or whose text config writes there.
+     *
+     * @return list<string> external dataset ids
+     */
+    private function sharedWith(string $collection, int $datasetId): array
+    {
+        $rows = App::db()->select(
+            'SELECT DISTINCT d.dataset_id FROM rag_vector_records r JOIN rag_vector_datasets d ON d.id = r.dataset_id
+             WHERE r.collection_name = ? AND r.dataset_id <> ? AND r.status IN ("indexed","stale")',
+            [$collection, $datasetId]
+        );
+        $shared = array_map(static fn (array $row): string => (string) $row['dataset_id'], $rows);
+        $configService = $this->configs ?? new RagVectorConfigService();
+        foreach (App::db()->select('SELECT d.*, k.kb_id AS external_kb_id FROM rag_vector_datasets d JOIN rag_knowledge_bases k ON k.id = d.kb_id WHERE d.id <> ? AND d.deleted_at IS NULL', [$datasetId]) as $other) {
+            if ((string) ($configService->textConfig($other)['collection_name'] ?? '') === $collection) {
+                $shared[] = (string) $other['dataset_id'];
+            }
+        }
+
+        return array_values(array_unique($shared));
+    }
+
+    private function sharedByOtherModel(string $collection, int $datasetId, int $targetConfigId): bool
+    {
+        if ($targetConfigId <= 0) {
+            return false;
+        }
+        $target = App::db()->first('SELECT model_id, dimension FROM rag_vector_configs WHERE id = ?', [$targetConfigId]);
+        $others = App::db()->select(
+            'SELECT DISTINCT r.vector_config_id, c.model_id, c.dimension FROM rag_vector_records r LEFT JOIN rag_vector_configs c ON c.id = r.vector_config_id
+             WHERE r.collection_name = ? AND r.dataset_id <> ? AND r.status = "indexed" AND r.vector_config_id IS NOT NULL AND r.vector_config_id <> ?',
+            [$collection, $datasetId, $targetConfigId]
+        );
+        foreach ($others as $other) {
+            if ($other['model_id'] === null || (int) $other['model_id'] !== (int) ($target['model_id'] ?? 0) || (int) $other['dimension'] !== (int) ($target['dimension'] ?? 0)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

@@ -152,6 +152,9 @@ export async function renderRagRetrievalLabPage(content) {
           el("span", { text: `${data.latency_ms || 0} ms · ${data.fallback_used ? "已降级" : "未降级"}` })
         ]),
         el("p", { className: "notice", text: `数据集：${data.dataset?.name || data.dataset?.dataset_id || values.dataset_id}` }),
+        ...(data.vector_status === "error" || data.vector_status === "degraded"
+          ? [statusMessage(`向量检索失败，本次结果只来自关键词检索：${(data.vector_errors || []).join("；") || "请检查向量模型和向量库"}`, "error")]
+          : data.vector_status === "none" ? [statusMessage("该数据集没有可用的向量配置，本次结果只来自关键词检索。", "error")] : []),
         ...(sources.length > 0 ? sources.map((source, index) => renderRagTrialSource(source, index, values)) : [statusMessage("没有命中内容。可调整问题或回到构建知识检查导入。", "error")])
       );
     } catch (error) {

@@ -16,7 +16,7 @@ final class RagVectorizationMetricsService
         $windowHours = max(1, min(720, $windowHours));
         $threshold = max(1.0, min(100.0, $threshold));
         $rows = App::db()->select(
-            'SELECT job_type, status, error_code, COUNT(*) AS c FROM rag_embedding_jobs WHERE created_at >= DATE_SUB(NOW(), INTERVAL ' . $windowHours . ' HOUR) GROUP BY job_type, status, error_code'
+            'SELECT job_type, status, error_code, COUNT(*) AS c FROM rag_embedding_jobs WHERE created_at >= DATE_SUB(UTC_TIMESTAMP(), INTERVAL ' . $windowHours . ' HOUR) GROUP BY job_type, status, error_code'
         );
 
         $total = 0;

@@ -62,7 +62,7 @@ final class AgentManagementRagService
     public function deleteKnowledgeBase(int $id, array $apiKey): array
     {
         $this->knowledgeBase($id, $apiKey);
-        App::db()->execute('UPDATE rag_knowledge_bases SET status = "disabled", deleted_at = NOW() WHERE id = ?', [$id]);
+        App::db()->execute('UPDATE rag_knowledge_bases SET status = "disabled", deleted_at = UTC_TIMESTAMP() WHERE id = ?', [$id]);
         (new AuditService())->write('agent_management.rag_kb.delete', 'rag_knowledge_bases', $id);
         return ['id' => $id, 'deleted' => true];
     }
@@ -111,7 +111,7 @@ final class AgentManagementRagService
     public function deleteDataset(int $id, array $apiKey): array
     {
         $this->dataset($id, $apiKey);
-        App::db()->execute('UPDATE rag_vector_datasets SET status = "disabled", deleted_at = NOW() WHERE id = ?', [$id]);
+        App::db()->execute('UPDATE rag_vector_datasets SET status = "disabled", deleted_at = UTC_TIMESTAMP() WHERE id = ?', [$id]);
         (new AuditService())->write('agent_management.rag_dataset.delete', 'rag_vector_datasets', $id);
         return ['id' => $id, 'deleted' => true];
     }

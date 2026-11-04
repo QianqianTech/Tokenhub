@@ -230,6 +230,12 @@ rsync -a --delete --filter='P vendor/' \
   --exclude '.git' --exclude '.env' --exclude 'storage/' --exclude 'deploy/docker/.env' --exclude 'deploy/docker/backups/' \
   --exclude 'node_modules/' --exclude '.composer-install.lock' \
   "$SOURCE_DIR/" "$APP_DIR/"
+# APP service worker cache name: <VERSION>-<git sha of the source, else content hash>.
+app_build=""
+if rev="$(git -C "$SOURCE_DIR" rev-parse --short=12 HEAD 2>/dev/null)"; then
+  app_build="$(tr -d '[:space:]' <"$SOURCE_DIR/VERSION" 2>/dev/null || echo 0)-$rev"
+fi
+sh "$APP_DIR/scripts/release/stamp-app-version.sh" "$APP_DIR" "$app_build" || warn "Could not stamp the APP service worker version."
 install -d -m 0750 -o "$APP_USER" -g "$APP_USER" "$APP_DIR/storage" "$APP_DIR/storage/logs" "$APP_DIR/storage/cache" "$APP_DIR/storage/exports" "$APP_DIR/storage/media"
 ln -sfn /var/lib/tokenhub/caddy "$APP_DIR/storage/caddy"
 
@@ -343,6 +349,11 @@ if [ "${#realtime_token}" -lt 24 ] || [ "$realtime_token" = change-me ]; then
   sed -i '/^REALTIME_INTERNAL_TOKEN=/d' "$ENV_FILE"
   printf 'REALTIME_INTERNAL_TOKEN=%s\n' "$(random_alnum 48)" >>"$ENV_FILE"
   info "Generated REALTIME_INTERNAL_TOKEN in $ENV_FILE"
+fi
+# bin/doctor.php checks the gateway (tokenhub-realtime.service listens on 127.0.0.1:8090).
+if { command -v go >/dev/null 2>&1 || [ -x "$APP_DIR/bin/realtime-gateway" ]; } && [ -z "$(sed -n 's/^REALTIME_GATEWAY_HEALTH_URL=//p' "$ENV_FILE" | tail -n1)" ]; then
+  sed -i '/^REALTIME_GATEWAY_HEALTH_URL=/d' "$ENV_FILE"
+  printf 'REALTIME_GATEWAY_HEALTH_URL=%s\n' "http://127.0.0.1:8090/healthz" >>"$ENV_FILE"
 fi
 chown root:"$APP_USER" "$ENV_FILE"
 chmod 0640 "$ENV_FILE"

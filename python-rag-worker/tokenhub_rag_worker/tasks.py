@@ -17,11 +17,14 @@ from .db import Database
 from .documents import OcrUnavailable, image_ocr_engine, pdf_to_markdown
 from .redaction import normalize_types, redact
 
-RAG_MODEL_NOT_CONFIGURED = "RAG_MODEL_NOT_CONFIGURED"
-RAG_IMAGE_EMBEDDING_FAILED = "RAG_IMAGE_EMBEDDING_FAILED"
-RAG_MULTIMODAL_EMBEDDING_FAILED = "RAG_MULTIMODAL_EMBEDDING_FAILED"
-RAG_OCR_UNAVAILABLE = "RAG_OCR_UNAVAILABLE"
-RAG_DOCUMENT_EMPTY = "RAG_DOCUMENT_EMPTY"
+from .errors import (
+    RAG_DOCUMENT_EMPTY,
+    RAG_IMAGE_EMBEDDING_FAILED,
+    RAG_MODEL_NOT_CONFIGURED,
+    RAG_MULTIMODAL_EMBEDDING_FAILED,
+    RAG_OCR_UNAVAILABLE,
+    VectorStoreError,
+)
 CHUNKER_VERSION = "p2-v1"
 
 
@@ -229,7 +232,7 @@ class TaskProcessor:
             timeout=10,
         )
         if response.status_code >= 400:
-            raise RuntimeError(response.text[:500])
+            raise VectorStoreError(response.text[:500])
 
     def ensure_qdrant_collection(self, collection: str, dimension: int) -> None:
         encoded_collection = quote(collection, safe="")
@@ -241,7 +244,7 @@ class TaskProcessor:
         if exists.status_code >= 200 and exists.status_code < 300:
             return
         if exists.status_code != 404:
-            raise RuntimeError(exists.text[:500])
+            raise VectorStoreError(exists.text[:500])
         created = requests.put(
             f"{self.config.qdrant_url}/collections/{encoded_collection}",
             headers=self.config.qdrant_headers,
@@ -249,7 +252,7 @@ class TaskProcessor:
             timeout=10,
         )
         if created.status_code >= 400:
-            raise RuntimeError(created.text[:500])
+            raise VectorStoreError(created.text[:500])
 
 
 def deterministic_embedding(text: str, dimension: int = 3) -> list[float]:

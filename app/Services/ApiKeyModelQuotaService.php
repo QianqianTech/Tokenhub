@@ -131,17 +131,14 @@ final class ApiKeyModelQuotaService
     }
 
     /**
-     * @return array{bucket: string, ttl: int}
+     * Same windows as QuotaService: day/week/month in the business time zone
+     * (BIZ-012), minute/hour in UTC.
+     *
+     * @return array{bucket: string, ttl: int, reset_at: int}
      */
     public function periodWindow(string $period, ?int $time = null): array
     {
-        $time ??= time();
-        return match ($period) {
-            'minute' => ['bucket' => gmdate('YmdHi', $time), 'ttl' => 60],
-            'hour' => ['bucket' => gmdate('YmdH', $time), 'ttl' => 3600],
-            'month' => ['bucket' => gmdate('Ym', $time), 'ttl' => 2678400],
-            default => ['bucket' => gmdate('Ymd', $time), 'ttl' => 86400],
-        };
+        return QuotaService::window($period, $time);
     }
 
     /**
@@ -305,14 +302,4 @@ final class ApiKeyModelQuotaService
         return App::redis()->incrementByFloat($key, $amount, $window['ttl']);
     }
 
-    /**
-     * @param array<string, mixed> $quota
-     * @param array{api_key_id: int, model_id: int} $scope
-     * @param array{bucket: string, ttl: int} $window
-     */
-    private function currentPlus(array $quota, array $scope, array $window, string $metric, int|float $amount): int|float
-    {
-        $key = $this->counterKey($quota, $scope, $window, $metric);
-        return (float) (App::redis()->get($key) ?? 0) + $amount;
-    }
 }

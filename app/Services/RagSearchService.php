@@ -115,6 +115,7 @@ final class RagSearchService
             'retrieval_id' => isset($result['retrieval_id']) ? (string) $result['retrieval_id'] : null,
             'searched_datasets' => (int) ($result['dataset_count'] ?? 0),
             'hit_count' => count($sources),
+            'vector_status' => (string) ($result['vector_status'] ?? 'none'),
             'sources' => $sources,
         ];
     }

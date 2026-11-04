@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace TokenHub\Middleware;
 
+use TokenHub\Http\Controllers\ScreenController;
 use TokenHub\Services\ScreenService;
 use TokenHub\Support\App;
 use TokenHub\Support\Request;
@@ -20,6 +21,6 @@ final class ScreenAuthMiddleware
         }
 
         App::context()->setScreenSession($screenSession);
-        return $next($request);
+        return ScreenController::slideSessionCookie($next($request), (string) $session);
     }
 }

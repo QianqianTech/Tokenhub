@@ -11,14 +11,14 @@ final class MysqlFallbackVectorStore implements RagVectorStoreInterface
     public function upsert(string $collection, string $vectorId, array $vector, array $payload): void
     {
         App::db()->execute(
-            'UPDATE rag_vector_records SET vector_json = ?, index_status = "indexed", status = "indexed", indexed_at = NOW(), deleted_at = NULL WHERE vector_id = ?',
+            'UPDATE rag_vector_records SET vector_json = ?, index_status = "indexed", status = "indexed", indexed_at = UTC_TIMESTAMP(), deleted_at = NULL WHERE vector_id = ?',
             [json_encode(array_values($vector), JSON_UNESCAPED_SLASHES), $vectorId]
         );
     }
 
     public function search(string $collection, array $vector, int $topK, array $filter = []): array
     {
-        $where = ['v.index_status = "indexed"', 'v.status = "indexed"', 'c.enabled = 1', 'c.lifecycle_status = "active"', '(c.expires_at IS NULL OR c.expires_at > NOW())'];
+        $where = ['v.index_status = "indexed"', 'v.status = "indexed"', 'c.enabled = 1', 'c.lifecycle_status = "active"', '(c.expires_at IS NULL OR c.expires_at > UTC_TIMESTAMP())'];
         $params = [];
         if (isset($filter['dataset_id'])) {
             $where[] = 'd.dataset_id = ?';
@@ -86,7 +86,7 @@ final class MysqlFallbackVectorStore implements RagVectorStoreInterface
     public function delete(string $collection, array $vectorIds): void
     {
         foreach ($vectorIds as $vectorId) {
-            App::db()->execute('UPDATE rag_vector_records SET index_status = "deleted", status = "deleted", deleted_at = NOW() WHERE vector_id = ?', [$vectorId]);
+            App::db()->execute('UPDATE rag_vector_records SET index_status = "deleted", status = "deleted", deleted_at = UTC_TIMESTAMP() WHERE vector_id = ?', [$vectorId]);
         }
     }
 

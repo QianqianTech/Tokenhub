@@ -111,7 +111,7 @@ final class RagAdminSummaryService
     {
         $row = App::db()->first(
             'SELECT COUNT(*) AS total, COALESCE(SUM(fallback_used), 0) AS fallback_count, COALESCE(SUM(hit_count), 0) AS hit_count, COALESCE(ROUND(AVG(latency_ms), 2), 0) AS avg_latency_ms
-             FROM rag_retrieval_logs WHERE created_at >= DATE_SUB(NOW(), INTERVAL ' . $windowHours . ' HOUR)'
+             FROM rag_retrieval_logs WHERE created_at >= DATE_SUB(UTC_TIMESTAMP(), INTERVAL ' . $windowHours . ' HOUR)'
         ) ?: [];
 
         return [
@@ -202,7 +202,7 @@ final class RagAdminSummaryService
      */
     private function bucket(string $table, string $column, ?int $windowHours = null): array
     {
-        $where = $windowHours === null ? '' : ' WHERE created_at >= DATE_SUB(NOW(), INTERVAL ' . max(1, min(720, $windowHours)) . ' HOUR)';
+        $where = $windowHours === null ? '' : ' WHERE created_at >= DATE_SUB(UTC_TIMESTAMP(), INTERVAL ' . max(1, min(720, $windowHours)) . ' HOUR)';
         $rows = App::db()->select("SELECT {$column} AS bucket_key, COUNT(*) AS c FROM {$table}{$where} GROUP BY {$column} ORDER BY c DESC");
         $result = [];
         foreach ($rows as $row) {
@@ -240,7 +240,7 @@ final class RagAdminSummaryService
              JOIN rag_knowledge_bases k ON k.id = j.kb_id AND k.deleted_at IS NULL
              LEFT JOIN rag_vector_datasets d ON d.id = j.dataset_id
              WHERE (j.dataset_id IS NULL OR d.id IS NOT NULL)
-               AND j.created_at >= DATE_SUB(NOW(), INTERVAL " . max(1, min(720, $windowHours)) . " HOUR)
+               AND j.created_at >= DATE_SUB(UTC_TIMESTAMP(), INTERVAL " . max(1, min(720, $windowHours)) . " HOUR)
              GROUP BY {$column}
              ORDER BY c DESC"
         );

@@ -63,7 +63,7 @@ $service->search($key, ['query' => 'x']);
 assert_same(RagSearchService::DEFAULT_TOP_K, $calls[1][2]['top_k'], 'top_k defaults to 5.');
 
 $empty = $service->search($key, ['query' => 'no-binding']);
-assert_same(['query' => 'no-binding', 'retrieval_id' => null, 'searched_datasets' => 0, 'hit_count' => 0, 'sources' => []], $empty, 'Keys without bindings get an empty, well-formed result.');
+assert_same(['query' => 'no-binding', 'retrieval_id' => null, 'searched_datasets' => 0, 'hit_count' => 0, 'vector_status' => 'none', 'sources' => []], $empty, 'Keys without bindings get an empty, well-formed result.');
 
 $before = count($calls);
 $expectError(static fn () => $service->search($key, []), 'RAG_QUERY_REQUIRED', 'Missing query is rejected.');

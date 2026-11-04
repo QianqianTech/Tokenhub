@@ -88,17 +88,16 @@ final class ExternalQuotaService
     }
 
     /**
+     * Same windows as the gateway's counters (QuotaService::window: business
+     * time zone for day/week/month).
+     *
      * @return array{bucket: string, reset_at: string}
      */
     private function periodWindow(string $period): array
     {
-        $time = time();
-        return match ($period) {
-            'minute' => ['bucket' => gmdate('YmdHi', $time), 'reset_at' => gmdate('c', ((int) floor($time / 60) + 1) * 60)],
-            'hour' => ['bucket' => gmdate('YmdH', $time), 'reset_at' => gmdate('c', ((int) floor($time / 3600) + 1) * 3600)],
-            'month' => ['bucket' => gmdate('Ym', $time), 'reset_at' => gmdate('c', strtotime('first day of next month 00:00:00 UTC') ?: $time)],
-            default => ['bucket' => gmdate('Ymd', $time), 'reset_at' => gmdate('c', strtotime('tomorrow 00:00:00 UTC') ?: $time)],
-        };
+        $window = QuotaService::window($period);
+
+        return ['bucket' => $window['bucket'], 'reset_at' => gmdate('c', $window['reset_at'])];
     }
 
     /**
@@ -112,12 +111,19 @@ final class ExternalQuotaService
         $reserved = [];
         foreach ($metrics as $metric) {
             $keyMetric = $metric === 'request_count' ? 'requests' : $metric;
-            $key = $prefix . ':' . $keyMetric . ':' . $window['bucket'];
+            // Cost is an integer micro-unit counter (BIZ-014); a period that
+            // started before the upgrade may still only have the float key.
+            $scale = $keyMetric === 'cost_amount' ? QuotaService::COST_SCALE : 1;
+            $key = $prefix . ':' . ($scale > 1 ? QuotaService::COST_METRIC : $keyMetric) . ':' . $window['bucket'];
             $value = App::redis()->get($key);
+            if ($scale > 1 && !is_numeric($value)) {
+                $legacy = App::redis()->get($prefix . ':' . $keyMetric . ':' . $window['bucket']);
+                $value = is_numeric($legacy) ? (float) $legacy * $scale : null;
+            }
             $name = $metric === 'requests' ? 'request_count' : $metric;
-            $usage[$name] = is_numeric($value) ? (float) $value : 0;
+            $usage[$name] = is_numeric($value) ? (float) $value / $scale : 0;
             if ($keyMetric !== 'requests' && isset($this->inFlight[$key])) {
-                $reserved[$name] = $this->inFlight[$key];
+                $reserved[$name] = $this->inFlight[$key] / $scale;
             }
         }
         // Counters include reservations of in-flight requests; "reserved" is
@@ -148,10 +154,17 @@ final class ExternalQuotaService
         if ($policy === null) {
             abort_json('QUOTA_POLICY_NOT_FOUND', 'Quota policy is not bound to this target', 404);
         }
-        $window = (new QuotaService())->periodWindow((string) $policy['period']);
-        $key = 'quota:' . $policyId . ':' . $targetType . ':' . $targetId . ':' . $metric . ':' . $window['bucket'];
-        $before = (float) (App::redis()->get($key) ?? 0);
-        $after = $amount > 0 ? App::redis()->incrementByFloat($key, $amount, $window['ttl']) : (float) App::redis()->decrementBy($key, abs($amount));
+        $counter = (new QuotaService())->usageCounter($policyId, $targetType, $targetId, (string) $policy['period'], $metric);
+        $window = ['bucket' => $counter['bucket'], 'ttl' => $counter['ttl']];
+        $key = $counter['key'];
+        $scale = $counter['scale'];
+        $before = (new QuotaService())->readUsageCounter($policyId, $targetType, $targetId, (string) $policy['period'], $metric);
+        if ($scale > 1 && !is_numeric(App::redis()->get($key)) && $before > 0) {
+            App::redis()->set($key, (string) QuotaService::toMicro($before), $window['ttl']);
+        }
+        $after = $scale > 1
+            ? ($amount > 0 ? App::redis()->incrementByFloat($key, QuotaService::toMicro($amount), $window['ttl']) : App::redis()->decrementBy($key, QuotaService::toMicro(abs($amount)))) / $scale
+            : ($amount > 0 ? App::redis()->incrementByFloat($key, $amount, $window['ttl']) : (float) App::redis()->decrementBy($key, abs($amount)));
         (new AuditService())->write('quota.adjust', 'quota_policies', $policyId, [
             'target_type' => $targetType,
             'target_id' => $targetId,

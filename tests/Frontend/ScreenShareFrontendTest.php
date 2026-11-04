@@ -40,8 +40,10 @@ assert_true(str_contains($screenJs, 'enterByCredentials'), 'Screen JS should sup
 assert_true(str_contains($screenJs, 'username: $("username").value'), 'Screen JS should submit username credentials on the root screen page.');
 assert_true(str_contains($screenJs, 'password: $("password").value'), 'Screen JS should submit password credentials on the root screen page.');
 assert_true(str_contains($screenHtml, 'class="screen-shell"'), 'Screen page should expose a polished shell class.');
-assert_true(str_contains($screenHtml, '<title>白云区智慧政务 运营大屏</title>'), 'Screen page title should be localized Chinese.');
-assert_true(str_contains($screenHtml, '白云区智慧政务 运营大屏'), 'Screen top-line title should expose the district government screen name.');
+assert_true(str_contains($screenHtml, '<title>TokenHub 运营大屏</title>'), 'Screen page title should default to the TokenHub brand (SCR-008).');
+assert_true(str_contains($screenHtml, '<h1 class="screen-title">TokenHub 运营大屏</h1>'), 'Screen top-line title should default to the TokenHub brand.');
+assert_true(!str_contains($screenHtml . $screenJs, '白云区'), 'Screen frontend must not hard-code a customer name; the brand comes from brand-identity settings.');
+assert_true(str_contains($screenJs, 'product_name: "TokenHub"'), 'Screen brand defaults should be TokenHub.');
 assert_true(!str_contains($screenHtml . $screenJs, '运营中枢'), 'Screen frontend should not duplicate the operating-center title.');
 assert_true(str_contains($screenHtml, 'Token 消耗、调用、生成任务与性能状态一屏掌握'), 'Screen subtitle should describe the optimized token dashboard.');
 assert_true(str_contains($screenHtml, 'class="screen-topline"'), 'Screen page should expose a top-line layout class.');
@@ -94,8 +96,8 @@ assert_true(str_contains($screenJs, 'SCREEN_REFRESH_INTERVAL_MS = 10000'), 'Scre
 assert_true(str_contains($screenJs, 'toggleFullscreen'), 'Screen JS should support fullscreen toggle.');
 assert_true(str_contains($screenJs, 'document.exitFullscreen'), 'Screen JS should support exiting fullscreen.');
 assert_true(str_contains($screenJs, 'requestFullscreen'), 'Screen JS should support entering fullscreen.');
-assert_true(str_contains($screenJs, '/screen-api/dashboard/overview'), 'Screen JS should request the overview dashboard metric.');
-assert_true(str_contains($screenJs, '/screen-api/dashboard/rankings'), 'Screen JS should request rankings for the operations screen.');
+assert_true(str_contains($screenJs, 'const SCREEN_METRICS = ["overview", "trends", "rankings", "security", "performance", "live"]'), 'Screen JS should request the overview, rankings and live metrics.');
+assert_true(str_contains($screenJs, '/screen-api/dashboard/${metric}'), 'Screen JS should request dashboard metrics from the screen API.');
 assert_true(!str_contains($screenJs, 'SCREEN_VIEW_ROTATE_INTERVAL_MS'), 'Independent screen pages should not auto-rotate between views.');
 assert_true(str_contains($screenJs, 'screenViewFromPath'), 'Screen JS should derive the active screen view from the path.');
 assert_true(!str_contains($screenJs, 'screenPathForView'), 'Independent screen pages should not rewrite URLs for in-screen view switching.');
@@ -159,8 +161,26 @@ assert_true(!str_contains($resourcesJs, '"dashboard-screen-3"'), 'Admin resource
 assert_true(str_contains($resourcesJs, 'type: "cidr-list"'), 'Admin resources should expose CIDR lists as operator-friendly fields.');
 assert_true(str_contains($caddyfile, '@screen path /screen /screen/*'), 'Caddy should route /screen/* to the static screen app.');
 assert_true(str_contains($caddyfile, '@php path /health /ready /admin-api/* /screen-api/* /v1/* /download/*'), 'Caddy should forward /screen-api/* to PHP.');
-assert_true(!str_contains($screenJs, '/screen-api/dashboard/multimodal'), '09 screen frontend should only request required dashboard metrics.');
+assert_true(!str_contains($screenJs, '/screen-api/dashboard/multimodal') && !str_contains($screenJs, '"multimodal"'), '09 screen frontend should only request required dashboard metrics.');
 assert_true(!str_contains($screenHtml, 'id="multimodal"'), '09 screen page should not expose a multimodal panel.');
 assert_true(str_contains($kernel, '/screen-api/system/brand-identity'), 'Screen API should expose public brand identity settings for the screen shell.');
-assert_true(str_contains($kernel, "['overview', 'realtime', 'trends', 'rankings', 'security', 'performance', 'multimodal']"), 'Screen dashboard routes should expose overview and multimodal metrics for authorized shares.');
+assert_true(str_contains($kernel, "['overview', 'realtime', 'trends', 'rankings', 'security', 'performance', 'multimodal', 'live']"), 'Screen dashboard routes should expose overview, multimodal and live metrics for authorized shares.');
+
+// SCR-001 / SCR-006: polling discipline.
+$screenPoller = file_get_contents(__DIR__ . '/../../public/screen/assets/poller.js') ?: '';
+assert_true(str_contains($screenJs, 'import { createPoller } from "./poller.js";'), 'Screen JS should poll through the shared visibility-aware poller (copied from the APP).');
+assert_true(str_contains($screenPoller, 'export function createPoller') && str_contains($screenPoller, 'visibilitychange') && str_contains($screenPoller, '"online"'), 'Screen poller should pause in the background and resume when visible or back online.');
+assert_true(!str_contains($screenJs, 'setInterval(refreshScreen'), 'Screen refresh must not use a bare setInterval that can stack requests.');
+assert_true(str_contains($screenJs, 'new AbortController()') && str_contains($screenJs, 'SCREEN_REQUEST_TIMEOUT_MS'), 'Screen API calls should time out with an AbortController.');
+assert_true(str_contains($screenJs, 'if (refreshing) {'), 'Screen refresh should have an in-flight guard.');
+assert_true(str_contains($screenJs, 'reloginTried'), 'A 401 on a share-code screen should re-login once before showing the login page.');
+assert_true(str_contains($screenJs, 'RATE_LIMITED'), 'Screen login should explain rate limiting.');
+// SCR-003 / SCR-005: business time zone, updated-at and health light.
+assert_true(str_contains($screenJs, 'setBusinessTimeZone') && str_contains($screenJs, 'timeZone: businessTimeZone'), 'Screen should use the backend business time zone for day boundaries.');
+assert_true(!str_contains($screenJs, 'setHours(0, 0, 0, 0)'), 'Screen trend must not use the browser-local midnight.');
+assert_true(str_contains($screenHtml, 'id="screen-updated"') && str_contains($screenJs, '数据更新于'), 'Screen should show when data was last updated.');
+assert_true(str_contains($screenHtml, 'id="screen-health"') && str_contains($screenJs, 'renderHealth'), 'Screen should show a health light from queue backlog and worker heartbeat.');
+// SCR-004: live panel.
+assert_true(str_contains($screenHtml, 'id="live-metrics"') && str_contains($screenHtml, 'id="provider-health"'), 'Operations screen should expose the live (last minutes) panels.');
+assert_true(str_contains($screenJs, 'renderLivePanel'), 'Screen JS should render the live metrics.');
 assert_true(str_contains($kernel, '/screen-api/assets/{id}/download-url'), 'Screen API should expose scoped media asset download URLs.');

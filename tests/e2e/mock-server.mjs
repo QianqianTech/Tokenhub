@@ -2,6 +2,7 @@
 // Serves public/admin as the real Caddy config does and implements the
 // /admin-api endpoints the admin SPA calls, using an in-memory store.
 // Usage: node tests/e2e/mock-server.mjs [port]
+import { appBearerSession, expireAccessTokens, handleAppAuth, issueLinkCode, liveStreamCount, pushLiveAlert, resetApp, setApproval, stepUpChallenge, appState } from "./app-mock.mjs";
 import { createServer } from "node:http";
 import { readFile, stat } from "node:fs/promises";
 import { extname, join, normalize } from "node:path";
@@ -39,7 +40,8 @@ const MIME = {
   ".css": "text/css; charset=utf-8",
   ".json": "application/json",
   ".svg": "image/svg+xml",
-  ".png": "image/png"
+  ".png": "image/png",
+  ".webmanifest": "application/manifest+json"
 };
 
 let sessionTtlMs = 120 * 60 * 1000;
@@ -98,7 +100,15 @@ function rowsFor(resourceKey) {
         error_code: index === 4 ? "upstream_timeout" : null, http_status: index === 4 ? 504 : 200,
         attempts: index === 4 ? [{ model: "glm-4-plus", outcome: "timeout" }, { model: "deepseek-chat", outcome: "success" }] : null
       });
-      if (resourceKey === "providers") Object.assign(row, { name: `厂商${index}`, protocol: "openai", base_url: "https://api.example.com/v1" });
+      if (resourceKey === "admin-users") Object.assign(row, [
+        { username: "admin", role: "super_admin", admin_type: "super_admin", admin_scope: "global", admin_permission_mode: "preset", department_id: 1, managed_department_ids: [], permissions: ALL_CAPABILITIES },
+        { username: "ops-lead", role: "admin", admin_type: "full_admin", admin_scope: "global", admin_permission_mode: "preset", department_id: 3, managed_department_ids: [], permissions: ALL_CAPABILITIES.filter((code) => code !== "admins.manage") },
+        { username: "hr-admin", role: "admin", admin_type: "user_admin", admin_scope: "departments", admin_permission_mode: "preset", department_id: 1, managed_department_ids: [2, 3], permissions: ["dashboard.read", "departments.read", "departments.manage", "users.read", "users.manage", "api_keys.read", "api_keys.manage", "quotas.read", "quotas.manage", "usage.read", "content.read", "content.export"] },
+        { username: "rag", role: "admin", admin_type: "rag_admin", admin_scope: "departments", admin_permission_mode: "preset", department_id: 2, managed_department_ids: [2], permissions: ["dashboard.read", "rag.read", "rag.manage", "usage.read"] },
+        { username: "api-owner", role: "admin", admin_type: "api_admin", admin_scope: "global", admin_permission_mode: "preset", department_id: 2, managed_department_ids: [], permissions: ["dashboard.read", "api_catalog.read", "api_catalog.manage", "api_keys.read", "api_keys.manage", "quotas.read", "quotas.manage", "usage.read"] },
+        { username: "auditor", role: "admin", admin_type: "custom", admin_scope: "global", admin_permission_mode: "custom", department_id: 5, managed_department_ids: [], permissions: ["dashboard.read", "logs.read", "logs.export", "security.read", "usage.read"] }
+      ][index - 1] || {});
+      if (resourceKey === "providers") Object.assign(row, { name: `厂商${index}`, protocol: "openai", base_url: "https://api.example.com/v1", secret_status: index === 6 ? "empty" : "configured", timeout_ms: 30000, retry_count: 1, default_headers: null });
       if (resourceKey === "api-keys") Object.assign(row, { name: `密钥${index}`, key_prefix: "sk-th", key_suffix: `k${index}`, model_ids: [1, 6], management_scopes: index === 2 ? ["users:read"] : [], ...(index === 5 ? { status: "disabled", disabled_by: "management" } : { disabled_by: null }) });
       rows.push(row);
     }
@@ -261,6 +271,9 @@ async function handleApi(req, res, url) {
   }
 
   if (path === "/admin-api/system/brand-identity") return ok(res, specialGet[path]());
+  // Public login-page options (AdminRecoveryController::options); tests that
+  // need SMTP "not configured" override it with page.route().
+  if (path === "/admin-api/auth/options" && method === "GET") return ok(res, { recovery_enabled: true });
   if (path === "/admin-api/login" && method === "POST") {
     const body = await readBody(req);
     const account = ACCOUNTS[body.username];
@@ -270,9 +283,15 @@ async function handleApi(req, res, url) {
     return ok(res, { user: account.user, csrf_token: "csrf-token", session_expires_at: serverStamp(Date.now() + sessionTtlMs), server_time: serverStamp() }, 200, { "Set-Cookie": `tokenhub_admin_session=${token}; Path=/; HttpOnly; SameSite=Strict` });
   }
 
-  const user = sessionUser(req);
+  // TokenHub APP: link sign-in, refresh, PIN, device list (app-mock.mjs).
+  if (await handleAppAuth({ req, res, path, method, readBody, ok, fail, json, consoleUser: sessionUser(req) })) return;
+  const appSession = appBearerSession(req);
+  if (appSession?.invalid) return fail(res, 401, "ADMIN_UNAUTHENTICATED", "Admin login required");
+  const user = appSession?.user || sessionUser(req);
   if (!user) return fail(res, 401, "ADMIN_UNAUTHENTICATED", "Admin login required");
-  if (method !== "GET" && req.headers["x-csrf-token"] !== "csrf-token") return fail(res, 419, "ADMIN_CSRF_INVALID", "CSRF token invalid");
+  if (!appSession && method !== "GET" && req.headers["x-csrf-token"] !== "csrf-token") return fail(res, 419, "ADMIN_CSRF_INVALID", "CSRF token invalid");
+  const challenge = stepUpChallenge(appSession, method, path);
+  if (challenge) return json(res, 403, { ok: false, error: challenge });
 
   if (path === "/admin-api/me") return ok(res, { user, session_expires_at: serverStamp(Date.now() + sessionTtlMs), server_time: serverStamp() });
   if (path === "/admin-api/csrf") return ok(res, { csrf_token: "csrf-token" });
@@ -411,7 +430,18 @@ async function handleApi(req, res, url) {
   if (path === "/admin-api/chat-session/stream" && method === "POST") {
     const requestId = `req_${randomUUID().slice(0, 8)}`;
     res.writeHead(200, { "Content-Type": "text/event-stream", "X-Request-Id": requestId });
-    res.end(`data: ${JSON.stringify({ choices: [{ delta: { content: "你好" } }] })}\n\ndata: [DONE]\n\n`);
+    const chatBody = await readBody(req);
+    const last = String(chatBody.messages?.at(-1)?.content || "");
+    // "markdown" asks for a formatted reply (UX-105); the gateway trial mode
+    // ends with an include_usage chunk like the real gateway.
+    const content = last.includes("markdown")
+      ? ["你好，**加粗** 与 `code`\n\n", "- 第一项\n- 第二项\n\n", "```js\nconsole.log(1)\n```\n", "[链接](https://example.com) <img src=x onerror=alert(1)>"]
+      : ["你好"];
+    const chunks = content.map((piece) => `data: ${JSON.stringify({ choices: [{ delta: { content: piece } }] })}\n\n`);
+    if (chatBody.api_key_id) {
+      chunks.push(`data: ${JSON.stringify({ choices: [], usage: { prompt_tokens: 12, completion_tokens: 7, total_tokens: 19 } })}\n\n`);
+    }
+    res.end(`${chunks.join("")}data: [DONE]\n\n`);
     return undefined;
   }
 
@@ -429,7 +459,17 @@ async function handleApi(req, res, url) {
       const body = await readBody(req);
       if (resourceKey === "departments" && !body.name) return fail(res, 422, "ADMIN_INVALID_PAYLOAD", "name required");
       const row = { id: nextId(rows), status: "active", created_at: timestamp(), ...body };
+      if (resourceKey === "providers") {
+        row.secret_status = typeof row.secret === "string" && row.secret.trim() ? "configured" : "empty";
+        delete row.secret;
+      }
       rows.unshift(row);
+      if (resourceKey === "dashboard-share-links") {
+        // ScreenService::createShareLink reveals the password and link once.
+        const shareCode = row.share_code || `scr_${row.id}`;
+        Object.assign(row, { share_code: shareCode, username: `screen_${row.id}` });
+        return ok(res, { ...row, password: "scr_pwd_once_only", share_url: `/screen/${shareCode}` }, 201);
+      }
       return ok(res, row, 201);
     }
     if ((method === "PUT" || method === "PATCH") && id) {
@@ -437,6 +477,10 @@ async function handleApi(req, res, url) {
       const row = rows.find((item) => String(item.id) === id);
       if (!row) return fail(res, 404, "ADMIN_NOT_FOUND", "not found");
       Object.assign(row, body);
+      if (resourceKey === "providers") {
+        if (typeof body.secret === "string" && body.secret.trim()) row.secret_status = "configured";
+        delete row.secret;
+      }
       return ok(res, row);
     }
     if (method === "DELETE" && id && resourceKey === "departments") {
@@ -472,7 +516,7 @@ async function serveStatic(req, res, url) {
     const info = await stat(file);
     if (info.isDirectory()) file = join(file, "index.html");
   } catch {
-    file = join(root, "admin/index.html");
+    file = join(root, pathname.startsWith("/app") ? "app/index.html" : "admin/index.html");
   }
   try {
     const body = await readFile(file);
@@ -504,7 +548,13 @@ export function startMockServer(port = 0) {
         clearFaults: () => { faults.length = 0; },
         expireSessions: () => sessions.clear(),
         rows: (resourceKey) => rowsFor(resourceKey),
-        reset: () => { stores.clear(); sessions.clear(); requestLog.length = 0; faults.length = 0; }
+        reset: () => { stores.clear(); sessions.clear(); requestLog.length = 0; faults.length = 0; resetApp(); },
+        issueLinkCode: (username = "admin") => issueLinkCode(ACCOUNTS[username].user),
+        expireAppAccessTokens: () => expireAccessTokens(),
+        pushLiveAlert: (alert) => pushLiveAlert(alert),
+        liveStreamCount: () => liveStreamCount(),
+        setAppApproval: (on) => setApproval(on),
+        appState
       });
     });
   });

@@ -209,9 +209,8 @@ final class RagChunkingService
             if (in_array((string) $chunk['chunk_id'], $expectedChunkIds, true)) {
                 continue;
             }
-            if ((string) $chunk['lifecycle_status'] === 'superseded' && (int) $chunk['enabled'] === 0) {
-                continue;
-            }
+            // A previous attempt may have persisted the retired chunk before
+            // cancelling its jobs or deleting vectors. Retry those steps too.
             $retired[] = (int) $chunk['id'];
         }
         // Removes the vectors from the store as well, not only the DB records (RAG-004).

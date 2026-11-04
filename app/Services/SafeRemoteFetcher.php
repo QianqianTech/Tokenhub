@@ -7,9 +7,10 @@ namespace TokenHub\Services;
 /**
  * Bounded HTTP GET for URLs that came from an upstream response.
  *
- * Every redirect hop is re-validated against OutboundUrlPolicy, the body is
- * read in chunks and abandoned once it exceeds the byte limit, and the socket
- * timeout applies to each read.
+ * Every redirect hop is re-validated against OutboundUrlPolicy and the
+ * connection is pinned to the address that check resolved (no second DNS
+ * lookup), the body is abandoned once it exceeds the byte limit, and the
+ * whole transfer is time bounded.
  */
 final class SafeRemoteFetcher
 {
@@ -41,7 +42,9 @@ final class SafeRemoteFetcher
                 return ['ok' => false, 'error' => 'OUTBOUND_BLOCKED:' . ($check['reason'] ?? 'denied')];
             }
 
-            $result = ($this->transport ?? [$this, 'transport'])($url, ['max_bytes' => $maxBytes, 'timeout' => $timeout]);
+            // Connect to the address that was just checked, not a fresh DNS answer (SEC-108).
+            $address = (string) (($check['addresses'] ?? [])[0] ?? '');
+            $result = ($this->transport ?? [$this, 'transport'])($url, ['max_bytes' => $maxBytes, 'timeout' => $timeout, 'address' => $address]);
             if ($result['truncated']) {
                 return ['ok' => false, 'error' => 'OUTBOUND_TOO_LARGE'];
             }
@@ -68,52 +71,74 @@ final class SafeRemoteFetcher
     }
 
     /**
-     * @param array{max_bytes: int, timeout: float} $options
+     * GET over cURL, connected to the address OutboundUrlPolicy just checked
+     * (CURLOPT_RESOLVE), so a DNS answer that changes between the check and
+     * the connect (DNS rebinding) cannot reach an internal service such as
+     * Qdrant (SEC-108). TLS still verifies the certificate against the real
+     * host name; redirects are never followed here (get() re-checks each hop);
+     * proxies from the environment are ignored, as the pin would not apply.
+     *
+     * @param array{max_bytes: int, timeout: float, address?: string|null} $options
      * @return array{status: int, headers: list<string>, body: string|false, truncated: bool}
      */
     private function transport(string $url, array $options): array
     {
-        $context = stream_context_create([
-            'http' => [
-                'method' => 'GET',
-                'timeout' => $options['timeout'],
-                'follow_location' => 0,
-                'max_redirects' => 0,
-                'ignore_errors' => true,
-            ],
-        ]);
-        $stream = @fopen($url, 'rb', false, $context);
-        $headers = $http_response_header ?? [];
-        $status = 0;
-        foreach ($headers as $line) {
-            if (preg_match('/^HTTP\/\S+\s+(\d{3})/', $line, $matches) === 1) {
-                $status = (int) $matches[1];
-            }
+        $failed = ['status' => 0, 'headers' => [], 'body' => false, 'truncated' => false];
+        $parts = parse_url($url);
+        $address = (string) ($options['address'] ?? '');
+        if (!is_array($parts) || empty($parts['host']) || $address === '' || !function_exists('curl_init')) {
+            // Without cURL or a checked address the connection cannot be pinned; refuse rather than re-resolve.
+            return $failed;
         }
-        if (!is_resource($stream)) {
-            return ['status' => $status, 'headers' => $headers, 'body' => false, 'truncated' => false];
-        }
+        $scheme = strtolower((string) ($parts['scheme'] ?? 'https'));
+        $host = trim((string) $parts['host'], '[]');
+        $port = (int) ($parts['port'] ?? ($scheme === 'http' ? 80 : 443));
+        $resolve = filter_var($host, FILTER_VALIDATE_IP) !== false
+            ? []
+            : [$host . ':' . $port . ':' . (str_contains($address, ':') ? '[' . $address . ']' : $address)];
+
+        $headers = [];
         $body = '';
         $truncated = false;
-        while (!feof($stream)) {
-            $chunk = fread($stream, 65536);
-            if ($chunk === false) {
-                break;
-            }
-            $body .= $chunk;
-            if (strlen($body) > $options['max_bytes']) {
-                $truncated = true;
-                break;
-            }
-            $meta = stream_get_meta_data($stream);
-            if (($meta['timed_out'] ?? false) === true) {
-                fclose($stream);
-                return ['status' => 0, 'headers' => $headers, 'body' => false, 'truncated' => false];
-            }
+        $maxBytes = $options['max_bytes'];
+        $timeout = max(1, (int) ceil($options['timeout']));
+        $handle = curl_init($url);
+        curl_setopt_array($handle, [
+            CURLOPT_HTTPGET => true,
+            CURLOPT_RESOLVE => $resolve,
+            CURLOPT_PROTOCOLS => CURLPROTO_HTTP | CURLPROTO_HTTPS,
+            CURLOPT_FOLLOWLOCATION => false,
+            CURLOPT_PROXY => '',
+            CURLOPT_NOPROXY => '*',
+            CURLOPT_CONNECTTIMEOUT => min(10, $timeout),
+            CURLOPT_TIMEOUT => $timeout,
+            CURLOPT_HEADERFUNCTION => static function ($curl, string $line) use (&$headers): int {
+                $trimmed = rtrim($line, "\r\n");
+                if ($trimmed !== '') {
+                    $headers[] = $trimmed;
+                }
+                return strlen($line);
+            },
+            CURLOPT_WRITEFUNCTION => static function ($curl, string $chunk) use (&$body, &$truncated, $maxBytes): int {
+                $body .= $chunk;
+                if (strlen($body) > $maxBytes) {
+                    $truncated = true;
+                    return 0; // aborts the transfer
+                }
+                return strlen($chunk);
+            },
+        ]);
+        $ok = curl_exec($handle);
+        $status = (int) curl_getinfo($handle, CURLINFO_RESPONSE_CODE);
+        curl_close($handle);
+        if ($truncated) {
+            return ['status' => $status, 'headers' => $headers, 'body' => false, 'truncated' => true];
         }
-        fclose($stream);
+        if ($ok === false) {
+            return ['status' => 0, 'headers' => $headers, 'body' => false, 'truncated' => false];
+        }
 
-        return ['status' => $status, 'headers' => $headers, 'body' => $body, 'truncated' => $truncated];
+        return ['status' => $status, 'headers' => $headers, 'body' => $body, 'truncated' => false];
     }
 
     /**

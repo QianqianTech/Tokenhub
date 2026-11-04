@@ -135,7 +135,9 @@ if ($canReplace) {
     assert_true(!isset($streamed['headers']['X-Accel-Buffering']), 'Stream-only headers are dropped.');
     assert_same('context_length_exceeded', $streamed['json']['error']['upstream_code'] ?? null, 'Streamed rejections carry the same details.');
 } else {
-    assert_true(str_contains($streamed['body'], 'event: error') && str_contains($streamed['body'], 'maximum context length is 8192'), 'Once output started the rejection is reported in-band with the upstream message.');
+    // QUAL-007: OpenAI-protocol streams report in-band errors as a bare
+    // data: {"error": ...} event followed by [DONE], which the SDKs raise.
+    assert_true(str_contains($streamed['body'], 'data: {"error":') && str_contains($streamed['body'], 'data: [DONE]') && str_contains($streamed['body'], 'maximum context length is 8192'), 'Once output started the rejection is reported in-band with the upstream message.');
 }
 
 // 3. Anthropic protocol (Claude Code): Anthropic error shape and the exact

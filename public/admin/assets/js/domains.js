@@ -10,9 +10,25 @@ export const adminDomains = [
   { key: "access", label: "API 接入", tabs: ["api-keys", "api-key-model-quotas", "quota-policies", "quota-bindings"] },
   { key: "usage", label: "用量中心", tabs: ["usage-records", "multimodal-tasks", "media-assets", "usage-contents", "content-archive", "export-tasks"] },
   { key: "rag", label: "RAG 知识库", tabs: ["rag-build", "rag-retrieval-lab", "rag-quality", "rag-operations"] },
-  { key: "security", label: "安全审计", tabs: ["desensitization-policies", "desensitization-events", "alert-events", "logs", "audit-logs"] },
-  { key: "system", label: "系统运维", tabs: ["operations-status", "settings-tls-certificates", "settings-brand-identity", "content-retention-policy", "log-retention-policies", "log-archive-files", "settings-alert-thresholds", "system-settings"] }
+  { key: "security", label: "安全审计", tabs: ["desensitization-policies", "desensitization-events", "alert-events", "logs", "audit-logs", "log-retention-policies", "log-archive-files"] },
+  { key: "system", label: "系统设置", tabs: ["operations-status", "settings-brand-identity", "settings-tls-certificates", "settings-smtp", "settings-alert-thresholds", "content-retention-policy", "system-settings"], groups: [
+    { label: "运维", tabs: ["operations-status"] },
+    { label: "平台与入口", tabs: ["settings-brand-identity", "settings-tls-certificates"] },
+    { label: "通知与告警", tabs: ["settings-smtp", "settings-alert-thresholds"] },
+    { label: "数据与高级", tabs: ["content-retention-policy", "system-settings"] }
+  ] }
 ];
+
+// Sub-group label shown in the sidebar before `tab`, when the domain is grouped.
+export function groupLabelBefore(domain, tab) {
+  const groups = adminDomains.find((item) => item.key === domain.key)?.groups;
+  if (!groups) {
+    return "";
+  }
+  const visible = new Set(domain.tabs);
+  const group = groups.find((item) => item.tabs.filter((key) => visible.has(key))[0] === tab);
+  return group?.label || "";
+}
 
 export function pageAllowed(user, page) {
   const capability = pageCapability(page);
@@ -34,10 +50,22 @@ export function domainForPage(user, page) {
 export function parseAdminHash(user) {
   const domains = domainsForUser(user);
   const route = parseHash();
-  const domain = domains.find((item) => item.key === route.domainKey) || domains[0];
+  let domain = domains.find((item) => item.key === route.domainKey);
+  let moved = false;
+  if (!domain?.tabs.includes(route.tabKey)) {
+    // A page that moved to another domain (e.g. #/system/log-archive-files,
+    // now under 安全审计) keeps working from old links and bookmarks.
+    const home = domains.find((item) => item.tabs.includes(route.tabKey));
+    if (home) {
+      domain = home;
+      moved = true;
+    }
+  }
+  domain ||= domains[0];
   const tabKey = domain?.tabs.includes(route.tabKey) ? route.tabKey : domain?.tabs[0] || "dashboard";
-  const exact = domain?.key === route.domainKey && tabKey === route.tabKey;
-  return { domainKey: domain?.key || "operations", tabKey, filters: exact ? route.filters : {}, exact };
+  const sameTab = tabKey === route.tabKey;
+  const exact = domain?.key === route.domainKey && sameTab;
+  return { domainKey: domain?.key || "operations", tabKey, filters: exact || (moved && sameTab) ? route.filters : {}, exact };
 }
 
 export function adminHash(user, page, filters = {}) {

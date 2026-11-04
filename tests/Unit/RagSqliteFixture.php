@@ -22,8 +22,8 @@ final class RagSqlitePdo extends PDO
             $set = preg_replace('/VALUES\((\w+)\)/', 'excluded.$1', $m[1]) ?? $m[1];
             $query = substr($query, 0, -strlen($m[0])) . 'ON CONFLICT DO UPDATE SET ' . $set;
         }
-        $query = preg_replace('/TIMESTAMPDIFF\(SECOND, (\w+(?:\.\w+)?), NOW\(\)\)/', "(strftime('%s','now') - strftime('%s', \$1))", $query) ?? $query;
-        $query = preg_replace('/TIMESTAMPADD\(SECOND, \?, NOW\(\)\)/', "datetime('now', '+' || ? || ' seconds')", $query) ?? $query;
+        $query = preg_replace('/TIMESTAMPDIFF\(SECOND, (\w+(?:\.\w+)?), (?:NOW|UTC_TIMESTAMP)\(\)\)/', "(strftime('%s','now') - strftime('%s', \$1))", $query) ?? $query;
+        $query = preg_replace('/TIMESTAMPADD\(SECOND, \?, (?:NOW|UTC_TIMESTAMP)\(\)\)/', "datetime('now', '+' || ? || ' seconds')", $query) ?? $query;
         if (preg_match('/^SHOW COLUMNS FROM (\w+)$/', trim($query), $m) === 1) {
             $query = "SELECT name AS Field FROM pragma_table_info('{$m[1]}')";
         }
@@ -41,6 +41,7 @@ function rag_sqlite_fixture(): RagSqlitePdo
     (new ReflectionProperty(App::class, 'config'))->setValue(null, \TokenHub\Support\Config::default());
     $pdo = new RagSqlitePdo('sqlite::memory:', null, null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC, PDO::ATTR_EMULATE_PREPARES => false]);
     $pdo->sqliteCreateFunction('NOW', static fn (): string => gmdate('Y-m-d H:i:s'));
+    $pdo->sqliteCreateFunction('UTC_TIMESTAMP', static fn (): string => gmdate('Y-m-d H:i:s'));
     $pdo->sqliteCreateFunction('GREATEST', static fn (...$values) => max($values));
     $pdo->sqliteCreateFunction('IF', static fn ($condition, $then, $else) => $condition ? $then : $else);
     $pdo->sqliteCreateFunction('GET_LOCK', static fn ($name, $timeout) => 1);

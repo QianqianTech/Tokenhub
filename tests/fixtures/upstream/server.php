@@ -139,6 +139,46 @@ switch ($path) {
             usleep(250000);
         }
         return;
+    case '/ok/v1/systemone':
+        header('Content-Type: application/json');
+        echo json_encode(['answers' => ['check' => ['type' => 'choice', 'choice' => 'yes']], 'usage' => ['input_tokens' => 10]]);
+        return;
+    case '/echoheaders/v1/messages':
+    case '/echoheaders/v1/chat/completions':
+        // Gateway resilience test: the request headers the upstream received.
+        $received = [];
+        foreach ($_SERVER as $key => $value) {
+            if (is_string($key) && str_starts_with($key, 'HTTP_')) {
+                $received[strtolower(str_replace('_', '-', substr($key, 5)))] = $value;
+            }
+        }
+        header('Content-Type: application/json');
+        echo json_encode(['id' => 'echo-1', 'headers' => $received, 'usage' => ['input_tokens' => 1, 'output_tokens' => 1]]);
+        return;
+    case '/busy/v1/chat/completions':
+        http_response_code(503);
+        header('Retry-After: 30');
+        echo '{"error":{"message":"busy"}}';
+        return;
+    case '/slow/v1/chat/completions':
+        sleep(2);
+        header('Content-Type: application/json');
+        echo '{"id":"slow","choices":[{"message":{"content":"late"}}]}';
+        return;
+    case '/sleepy/v1/chat/completions':
+        header('Content-Type: text/event-stream');
+        echo "data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"a\"}}]}\n\n";
+        @ob_flush();
+        flush();
+        usleep(2600000);
+        echo "data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"b\"},\"finish_reason\":\"stop\"}]}\n\n";
+        echo "data: [DONE]\n\n";
+        return;
+    case '/v1beta/models/g:streamGenerateContent':
+        header('Content-Type: text/event-stream');
+        echo "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"Hel\"}]}}]}\r\n\r\n";
+        echo "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"lo\"}]},\"finishReason\":\"STOP\"}],\"usageMetadata\":{\"promptTokenCount\":3,\"candidatesTokenCount\":2,\"totalTokenCount\":5}}\r\n\r\n";
+        return;
     default:
         http_response_code(404);
         echo '{"error":"not found"}';

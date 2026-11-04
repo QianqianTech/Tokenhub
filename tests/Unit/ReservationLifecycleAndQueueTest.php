@@ -121,14 +121,45 @@ assert_same(0, $redis->requeueExpired($processing, $queue, 30, time() + 110), 'A
 $worker = new QueueWorker(App::config(), $redis, App::logger());
 $job['__reserved_payload'] = $renewed;
 $worker->process($job, $queue, $failed, 2, 30);
-assert_same(1, $redis->length($queue), 'A failing job is moved back atomically for retry.');
-assert_same(0, $redis->length($processing), 'The retried job is no longer in processing.');
-$retry = $redis->reserve($queue, $processing, 0, 'unit-worker');
-$worker->process($retry, $queue, $failed, 2, 30);
-assert_same(1, $redis->length($failed), 'After max attempts the job is dead-lettered.');
+assert_same(1, $redis->length($failed), 'An unknown job type is a permanent failure: dead-lettered at once.');
 assert_same(0, $redis->length($queue) + $redis->length($processing), 'No copy of the dead job stays behind.');
 $dead = json_decode((string) $redis->connection()->lIndex($failed, 0), true);
 assert_true(str_contains((string) ($dead['error'] ?? ''), 'Unsupported job type'), 'Unknown job types are dead-lettered for diagnosis, not silently acked.');
+$redis->delete($failed);
+
+// BIZ-005: a transient failure waits in the delayed set (exponential back-off).
+$failing = new TokenHub\Services\WorkerService(null, null, ['unit.transient' => static function (): void {
+    throw new RuntimeException('transient upstream failure');
+}]);
+$backoffWorker = new QueueWorker(App::config(), $redis, App::logger(), $failing);
+assert_same(30, $backoffWorker->backoffSeconds(1), 'First retry waits the base back-off.');
+assert_same(120, $backoffWorker->backoffSeconds(3), 'Back-off doubles per attempt.');
+$redis->push($queue, ['type' => 'unit.transient']);
+$job = $redis->reserve($queue, $processing, 0, 'unit-worker');
+$backoffWorker->process($job, $queue, $failed, 2, 30);
+assert_same(0, $redis->length($queue), 'A failed job is not retried immediately.');
+assert_same(0, $redis->length($processing), 'The retried job is no longer in processing.');
+assert_same(1, $redis->delayedLength($queue), 'A failed job waits in the delayed set.');
+assert_same(0, $redis->promoteDelayed($queue), 'Nothing is promoted before the back-off elapsed.');
+assert_same(1, $redis->promoteDelayed($queue, time() + 31), 'The job is promoted once the back-off elapsed.');
+assert_same(1, $redis->length($queue), 'A promoted job is ready again.');
+$retry = $redis->reserve($queue, $processing, 0, 'unit-worker');
+assert_same(1, (int) ($retry['attempts'] ?? 0), 'The attempt counter survives the delayed set.');
+$backoffWorker->process($retry, $queue, $failed, 2, 30);
+assert_same(1, $redis->length($failed), 'After max attempts the job is dead-lettered.');
+assert_same(0, $redis->length($queue) + $redis->length($processing) + $redis->delayedLength($queue), 'No copy of the dead job stays behind.');
+
+// PERF-022: an idle reserve blocks and wakes up as soon as a job is pushed.
+$started = microtime(true);
+assert_same(null, $redis->reserve($queue, $processing, 1, 'unit-worker'), 'An empty queue returns null after the timeout.');
+assert_true(microtime(true) - $started >= 0.9, 'reserve() waits for the timeout when the queue is empty.');
+$redis->push($queue, ['type' => 'unit.wake']);
+$started = microtime(true);
+$woken = $redis->reserve($queue, $processing, 3, 'unit-worker');
+assert_same('unit.wake', $woken['type'] ?? null, 'A pushed job is reserved.');
+assert_true(microtime(true) - $started < 1.0, 'A ready job is reserved without waiting.');
+$redis->ackReserved($processing, (string) $woken['__reserved_payload']);
+$redis->delete($queue . ':notify');
 assert_same(false, $redis->moveReserved($processing, '{"not":"reserved"}', $failed, ['x' => 1]), 'A job that is not reserved by this worker is not moved.');
 
 foreach ([$queue, $processing, $failed] as $list) {

@@ -62,6 +62,8 @@ Return one authorized model, including provider, protocol, multimodal IO, and ro
 
 Return API-key scoped model health summary and per-model route status for client fallback decisions.
 
+`summary.active` counts enabled routes. The `healthy`, `degraded`, `unhealthy`, `unknown`, and `disabled` counters describe observed health separately. Routes with no recent calls are `unknown`; they are not assumed healthy or degraded. Each model exposes configuration in `health.route_status` and observed health in `health.status`.
+
 ### POST /v1/tasks/{id}:refresh
 
 Refresh a long-running multimodal task from the upstream provider when the task has a provider task id and a supported provider adapter. Terminal local tasks return the current task with `refreshed=false`.
@@ -76,7 +78,7 @@ List recent delivery attempts for one webhook. The response includes delivery id
 
 ### POST /v1/webhooks/{id}:test
 
-Create a `webhook.test` diagnostic delivery and enqueue it for normal delivery processing. Webhook target secrets are encrypted at rest; rotation keeps the prior signature valid for 24 hours through `X-TokenHub-Signature-Previous`.
+Create a `webhook.test` diagnostic delivery and enqueue it for normal delivery processing. Webhook target secrets are encrypted at rest; rotation keeps the prior signature valid for 24 hours through `X-TokenHub-Signature-Previous` / `X-TokenHub-Signature-V2-Previous`. Deliveries carry `X-TokenHub-Timestamp` and the replay-safe `X-TokenHub-Signature-V2` (HMAC of `timestamp.body`).
 
 ### POST /v1/webhook-deliveries/{delivery_id}:retry
 
@@ -894,12 +896,14 @@ JSON base64 小文件上传，最大 10 MB，写入 `media_assets`，当前版�
 创建响应只返回一次 `secret`。投递请求带签名头：
 
 ```http
-X-TokenHub-Signature: sha256=<hmac>
 X-TokenHub-Event: request.failed
 X-TokenHub-Delivery: whd_xxx
+X-TokenHub-Timestamp: 1730419200
+X-TokenHub-Signature-V2: sha256=<hmac>
+X-TokenHub-Signature: sha256=<hmac>
 ```
 
-签名内容为原始 JSON body，算法为 `HMAC-SHA256(secret, body)`。最多重试 5 次，投递记录写入 `external_webhook_deliveries`。
+推荐校验 `X-TokenHub-Signature-V2`：`HMAC-SHA256(secret, timestamp + "." + body)`，并拒绝时间戳偏差超过 300 秒的请求（防重放）。`X-TokenHub-Signature`（`HMAC-SHA256(secret, body)`）为兼容保留。失败后按 1m/5m/30m/2h/12h 重试（共 6 次尝试），之后为 `dead`；删除 Webhook 后未完成的投递为 `cancelled`。投递记录写入 `external_webhook_deliveries`。
 
 ### GET /v1/webhooks
 
@@ -1326,12 +1330,14 @@ GET /v1/assets/{id}/download-url
 投递请求带签名头：
 
 ```http
-X-TokenHub-Signature: sha256=<hmac>
 X-TokenHub-Event: request.completed
 X-TokenHub-Delivery: whd_xxx
+X-TokenHub-Timestamp: 1730419200
+X-TokenHub-Signature-V2: sha256=<hmac>
+X-TokenHub-Signature: sha256=<hmac>
 ```
 
-签名算法：`HMAC-SHA256(secret, raw_json_body)`。
+签名算法：V2 为 `HMAC-SHA256(secret, timestamp + "." + raw_json_body)`，接收方应拒绝时间戳偏差超过 300 秒的请求；旧的 `X-TokenHub-Signature` 为 `HMAC-SHA256(secret, raw_json_body)`，仅为兼容保留。
 
 ### GET /v1/webhooks
 

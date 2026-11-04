@@ -37,6 +37,12 @@ $embedding = $openai->parse(new Request(
 ));
 assert_same('embedding', $embedding->capability, 'Embeddings parser should map to embedding capability.');
 
+$decisionPayload = ['model' => 'decision-model-preview', 'state' => ['value' => 2], 'questions' => ['check' => ['type' => 'choice', 'criteria' => ['yes' => 'is two', 'no' => 'is not two']]]];
+$decision = $openai->parse(new Request('POST', '/v1/systemone', [], [], $decisionPayload, json_encode($decisionPayload), new RequestContext('req_decision', 'trc_decision')));
+assert_same('moderation', $decision->capability, 'Structured decisions route through classification authorization and quotas.');
+assert_same($decisionPayload, $decision->payload, 'Decision state and questions are preserved.');
+assert_true(in_array('/v1/systemone', \TokenHub\Http\Controllers\GatewayController::ENDPOINTS, true), 'The decision endpoint must use model authentication and rate limits.');
+
 $asr = $openai->parse(new Request(
     'POST',
     '/v1/audio/transcriptions',

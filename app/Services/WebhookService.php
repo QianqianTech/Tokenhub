@@ -9,7 +9,14 @@ use TokenHub\Support\Crypto;
 
 final class WebhookService
 {
-    private const MAX_ATTEMPTS = 5;
+    /** First attempt + 5 retries (BIZ-007). */
+    private const MAX_ATTEMPTS = 6;
+
+    /** Wait before retry n (after failed attempt n): 1m, 5m, 30m, 2h, 12h. */
+    public const RETRY_DELAYS = [60, 300, 1800, 7200, 43200];
+
+    /** Receivers should reject X-TokenHub-Timestamp values older than this. */
+    public const SIGNATURE_TOLERANCE_SECONDS = 300;
 
     /** @param null|callable(string, array<string, mixed>): void $queuePublisher */
     public function __construct(private readonly mixed $queuePublisher = null)
@@ -85,14 +92,44 @@ final class WebhookService
     public function delete(array $apiKey, string $id): array
     {
         $count = App::db()->execute(
-            'UPDATE external_webhooks SET status = "disabled", deleted_at = NOW() WHERE webhook_id = ? AND api_key_id = ? AND deleted_at IS NULL',
+            'UPDATE external_webhooks SET status = "disabled", deleted_at = UTC_TIMESTAMP() WHERE webhook_id = ? AND api_key_id = ? AND deleted_at IS NULL',
             [$id, $apiKey['id'] ?? 0]
         );
         if ($count <= 0) {
             abort_json('WEBHOOK_NOT_FOUND', 'Webhook not found', 404);
         }
+        $webhook = App::db()->first('SELECT id FROM external_webhooks WHERE webhook_id = ? AND api_key_id = ?', [$id, $apiKey['id'] ?? 0]);
+        if ($webhook !== null) {
+            $this->cancelPendingDeliveries((int) $webhook['id'], 'webhook_deleted');
+        }
 
         return ['id' => $id, 'deleted' => true, 'deleted_at' => gmdate('Y-m-d H:i:s')];
+    }
+
+    /**
+     * BIZ-019: deliveries that were still waiting when their webhook was
+     * deleted or disabled are cancelled instead of being retried.
+     */
+    public function cancelPendingDeliveries(int $webhookPk, string $reason = 'webhook_disabled'): int
+    {
+        return App::db()->execute(
+            'UPDATE external_webhook_deliveries SET status = "cancelled", next_attempt_at = NULL, error_summary = ? WHERE webhook_id = ? AND status IN ("pending", "failed")',
+            [$reason, $webhookPk]
+        );
+    }
+
+    /**
+     * Cancels the waiting deliveries of every webhook owned by an API key
+     * (key revoked / deleted) or of webhooks that are no longer active.
+     */
+    public function cancelDeliveriesForApiKey(int $apiKeyId, string $reason = 'api_key_disabled'): int
+    {
+        return App::db()->execute(
+            'UPDATE external_webhook_deliveries d JOIN external_webhooks w ON w.id = d.webhook_id
+             SET d.status = "cancelled", d.next_attempt_at = NULL, d.error_summary = ?
+             WHERE w.api_key_id = ? AND d.status IN ("pending", "failed")',
+            [$reason, $apiKeyId]
+        );
     }
 
     /**
@@ -158,7 +195,7 @@ final class WebhookService
         }
 
         App::db()->execute(
-            'UPDATE external_webhook_deliveries SET status = "pending", next_attempt_at = NOW(), error_summary = NULL WHERE delivery_id = ?',
+            'UPDATE external_webhook_deliveries SET status = "pending", next_attempt_at = UTC_TIMESTAMP(), error_summary = NULL WHERE delivery_id = ?',
             [$deliveryId]
         );
         $this->enqueueDelivery($deliveryId);
@@ -171,7 +208,7 @@ final class WebhookService
     {
         $webhook = $this->webhook($apiKey, $webhookId);
         $secret = Crypto::token('whsec_');
-        App::db()->execute('UPDATE external_webhooks SET previous_secret = ?, previous_secret_expires_at = DATE_ADD(NOW(), INTERVAL 24 HOUR), secret = ? WHERE id = ?', [$webhook['secret'], Crypto::encrypt($secret), $webhook['id']]);
+        App::db()->execute('UPDATE external_webhooks SET previous_secret = ?, previous_secret_expires_at = DATE_ADD(UTC_TIMESTAMP(), INTERVAL 24 HOUR), secret = ? WHERE id = ?', [$webhook['secret'], Crypto::encrypt($secret), $webhook['id']]);
         return ['id' => $webhookId, 'secret' => $secret, 'previous_secret_expires_at' => gmdate('Y-m-d H:i:s', time() + 86400)];
     }
 
@@ -199,7 +236,7 @@ final class WebhookService
     public function processDelivery(string $deliveryId): void
     {
         $delivery = App::db()->first(
-            'SELECT d.*, w.url, w.secret, w.previous_secret, w.previous_secret_expires_at, w.api_key_id
+            'SELECT d.*, w.url, w.secret, w.previous_secret, w.previous_secret_expires_at, w.api_key_id, w.status AS webhook_status, w.deleted_at AS webhook_deleted_at
              FROM external_webhook_deliveries d
              JOIN external_webhooks w ON w.id = d.webhook_id
              WHERE d.delivery_id = ?',
@@ -208,9 +245,14 @@ final class WebhookService
         if ($delivery === null || (int) $delivery['attempt_count'] >= self::MAX_ATTEMPTS || !$this->isDeliveryDue($delivery)) {
             return;
         }
+        if (!empty($delivery['webhook_deleted_at']) || (isset($delivery['webhook_status']) && (string) $delivery['webhook_status'] !== 'active')) {
+            // BIZ-019: never call an endpoint whose webhook was removed.
+            $this->cancelPendingDeliveries((int) $delivery['webhook_id'], !empty($delivery['webhook_deleted_at']) ? 'webhook_deleted' : 'webhook_disabled');
+            return;
+        }
 
         $claimed = App::db()->execute(
-            'UPDATE external_webhook_deliveries SET next_attempt_at = DATE_ADD(NOW(), INTERVAL 5 MINUTE) WHERE id = ? AND status IN ("pending", "failed") AND (next_attempt_at IS NULL OR next_attempt_at <= NOW())',
+            'UPDATE external_webhook_deliveries SET next_attempt_at = DATE_ADD(UTC_TIMESTAMP(), INTERVAL 5 MINUTE) WHERE id = ? AND status IN ("pending", "failed") AND (next_attempt_at IS NULL OR next_attempt_at <= UTC_TIMESTAMP())',
             [$delivery['id']]
         );
         if ($claimed <= 0) {
@@ -218,16 +260,7 @@ final class WebhookService
         }
 
         $payload = (string) $delivery['payload_json'];
-        $signature = $this->signature($this->decryptSecret((string) $delivery['secret']), $payload);
-        $headers = [
-            'Content-Type: application/json',
-            'X-TokenHub-Event: ' . (string) $delivery['event_type'],
-            'X-TokenHub-Delivery: ' . (string) $delivery['delivery_id'],
-            'X-TokenHub-Signature: ' . $signature,
-        ];
-        if (!empty($delivery['previous_secret']) && !empty($delivery['previous_secret_expires_at']) && strtotime((string) $delivery['previous_secret_expires_at']) > time()) {
-            $headers[] = 'X-TokenHub-Signature-Previous: ' . $this->signature($this->decryptSecret((string) $delivery['previous_secret']), $payload);
-        }
+        $headers = $this->signedHeaders($delivery, $payload, time());
         $response = $this->post((string) $delivery['url'], $payload, $headers);
         $status = $response['status'] >= 200 && $response['status'] < 300 ? 'succeeded' : 'failed';
         $attempts = (int) $delivery['attempt_count'] + 1;
@@ -241,12 +274,77 @@ final class WebhookService
                 $response['status'] > 0 ? $response['status'] : null,
                 substr($response['error'] ?? '', 0, 500) ?: null,
                 $status === 'succeeded' ? gmdate('Y-m-d H:i:s') : null,
-                $status === 'succeeded' || $attempts >= self::MAX_ATTEMPTS ? null : gmdate('Y-m-d H:i:s', time() + min(3600, 2 ** $attempts)),
+                $status === 'succeeded' || $attempts >= self::MAX_ATTEMPTS ? null : gmdate('Y-m-d H:i:s', time() + self::retryDelaySeconds($attempts)),
                 $deliveryId,
             ]
         );
-        App::db()->execute('UPDATE external_webhooks SET last_delivery_at = NOW() WHERE id = ?', [$delivery['webhook_id']]);
+        App::db()->execute('UPDATE external_webhooks SET last_delivery_at = UTC_TIMESTAMP() WHERE id = ?', [$delivery['webhook_id']]);
         (new ExternalEventOutboxService())->append((int) ($delivery['api_key_id'] ?? 0), 'webhook.' . $finalStatus, 'webhook', $deliveryId, $finalStatus, ['event_type' => $delivery['event_type'] ?? null, 'response_status' => $response['status'] ?? null]);
+    }
+
+    /** Delay before the next attempt after $attempts failed attempts. */
+    public static function retryDelaySeconds(int $attempts): int
+    {
+        $index = max(0, min(count(self::RETRY_DELAYS) - 1, $attempts - 1));
+
+        return self::RETRY_DELAYS[$index];
+    }
+
+    public static function maxAttempts(): int
+    {
+        return self::MAX_ATTEMPTS;
+    }
+
+    /**
+     * Delivery headers. X-TokenHub-Signature (HMAC of the body) is kept for
+     * existing receivers; X-TokenHub-Signature-V2 signs "<timestamp>.<body>"
+     * so a captured request cannot be replayed later (BIZ-007).
+     *
+     * @param array<string, mixed> $delivery
+     * @return list<string>
+     */
+    public function signedHeaders(array $delivery, string $payload, int $timestamp): array
+    {
+        $secret = $this->decryptSecret((string) $delivery['secret']);
+        $headers = [
+            'Content-Type: application/json',
+            'X-TokenHub-Event: ' . (string) $delivery['event_type'],
+            'X-TokenHub-Delivery: ' . (string) $delivery['delivery_id'],
+            'X-TokenHub-Timestamp: ' . $timestamp,
+            'X-TokenHub-Signature: ' . $this->signature($secret, $payload),
+            'X-TokenHub-Signature-V2: ' . $this->signatureV2($secret, $payload, $timestamp),
+        ];
+        if (!empty($delivery['previous_secret']) && !empty($delivery['previous_secret_expires_at']) && strtotime((string) $delivery['previous_secret_expires_at']) > time()) {
+            $previous = $this->decryptSecret((string) $delivery['previous_secret']);
+            $headers[] = 'X-TokenHub-Signature-Previous: ' . $this->signature($previous, $payload);
+            $headers[] = 'X-TokenHub-Signature-V2-Previous: ' . $this->signatureV2($previous, $payload, $timestamp);
+        }
+        $context = App::context()->propagation();
+        $headers[] = 'X-Request-Id: ' . $context['request_id'];
+
+        return $headers;
+    }
+
+    public function signatureV2(string $secret, string $payload, int $timestamp): string
+    {
+        return 'sha256=' . hash_hmac('sha256', $timestamp . '.' . $payload, $secret);
+    }
+
+    /**
+     * Receiver-side check (also used by tests and the docs example):
+     * constant-time compare plus a freshness window against replay.
+     */
+    public static function verifySignatureV2(string $secret, string $payload, string $timestampHeader, string $signatureHeader, ?int $now = null, int $tolerance = self::SIGNATURE_TOLERANCE_SECONDS): bool
+    {
+        if (preg_match('/^\d{9,12}$/', trim($timestampHeader)) !== 1) {
+            return false;
+        }
+        $timestamp = (int) trim($timestampHeader);
+        if (abs(($now ?? time()) - $timestamp) > $tolerance) {
+            return false;
+        }
+
+        return hash_equals('sha256=' . hash_hmac('sha256', $timestamp . '.' . $payload, $secret), trim($signatureHeader));
     }
 
     /** @param array<string, mixed> $delivery */
@@ -266,7 +364,7 @@ final class WebhookService
     public function enqueueDue(int $limit = 100): int
     {
         $rows = App::db()->select(
-            'SELECT delivery_id FROM external_webhook_deliveries WHERE status IN ("pending", "failed") AND next_attempt_at IS NOT NULL AND next_attempt_at <= NOW() ORDER BY id ASC LIMIT ' . max(1, min(100, $limit))
+            'SELECT delivery_id FROM external_webhook_deliveries WHERE status IN ("pending", "failed") AND next_attempt_at IS NOT NULL AND next_attempt_at <= UTC_TIMESTAMP() ORDER BY id ASC LIMIT ' . max(1, min(100, $limit))
         );
         foreach ($rows as $row) {
             $this->enqueueDelivery((string) $row['delivery_id']);
@@ -283,7 +381,7 @@ final class WebhookService
         $deliveryId = Crypto::token('whd_');
         App::db()->execute(
             'INSERT INTO external_webhook_deliveries (delivery_id, webhook_id, event_type, payload_json, status, next_attempt_at)
-             VALUES (?, ?, ?, ?, "pending", NOW())',
+             VALUES (?, ?, ?, ?, "pending", UTC_TIMESTAMP())',
             [$deliveryId, $webhook['id'], $eventType, json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)]
         );
         return $deliveryId;

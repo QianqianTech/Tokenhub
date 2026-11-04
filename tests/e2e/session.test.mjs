@@ -14,7 +14,7 @@ test("login form submits with Enter and reports missing fields", async () => {
   assert.match(await page.locator("#login-error").innerText(), /请输入用户名和密码/);
   await page.locator("#password").fill("wrong");
   await page.locator("#password").press("Enter");
-  await page.locator("#login-error", { hasText: "登录" }).waitFor();
+  await page.locator("#login-error", { hasText: "用户名或密码错误" }).waitFor();
   assert.equal(await page.locator("#password").inputValue(), "", "a rejected password is cleared");
   await page.locator("#password").fill("admin-pass");
   await page.locator("#password").press("Enter");

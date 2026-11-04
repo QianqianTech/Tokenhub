@@ -3,6 +3,7 @@ import { adminErrorMessage, api, isAbortError } from "../api.js";
 import { button, clear, el, field, readFields, setText, showModal, statusMessage } from "../dom.js";
 import { SETTINGS_SECTION_PAGES } from "./settings-config.js";
 import { errorState } from "../components/feedback.js";
+import { guardForm, markClean } from "../lib/dirty-guard.js";
 
 const SYSTEM_SETTING_PRESENTATIONS = {
   rag_ai_image_processing: {
@@ -198,7 +199,7 @@ function systemSettingDisplayValue(value) {
 function createSystemSettingEditor(row, onSaved) {
   const storedValue = systemSettingStoredValue(row);
   const descriptors = systemSettingEditableFields(storedValue);
-  const form = el("form", { className: "edit-form system-setting-editor", onSubmit: (event) => event.preventDefault() });
+  const form = guardForm(el("form", { className: "edit-form system-setting-editor", onSubmit: (event) => event.preventDefault() }));
   const baseFields = [
     { name: "setting_key", label: "配置标识" },
     { name: "description", label: "说明", optional: true }
@@ -229,6 +230,7 @@ function createSystemSettingEditor(row, onSaved) {
           setting_value: JSON.stringify(settingValue)
         })
       });
+      markClean(form);
       setText(output, "保存成功");
       output.hidden = false;
       await onSaved();

@@ -90,6 +90,8 @@ Compatibility response:
 
 返回当前 API Key 可用模型的健康摘要，用于客户端自动降级和 fallback。
 
+`summary.active` 统计已启用的路由；`healthy`、`degraded`、`unhealthy`、`unknown`、`disabled` 分别统计实际健康状态。没有近期调用观测时状态为 `unknown`，不计入 `healthy` 或 `degraded`。每个模型的 `health.route_status` 表示配置状态，`health.status` 表示观测状态。
+
 ### GET /v1/quota
 
 返回当前 API Key 命中的配额策略、已用量、剩余额度、周期和重置时间。`0` 或空额度表示不限制。
@@ -106,6 +108,7 @@ TokenHub 对外暴露 OpenAI-compatible 和 Anthropic-compatible 网关接口：
 - `POST /v1/embeddings`
 - `POST /v1/rerank`（检索重排，路由到能力为 `rerank` 的模型）
 - `POST /v1/moderations`（内容审核，路由到能力为 `moderation` 的模型）
+- `POST /v1/systemone`（结构化决策，`decision-model-preview` 使用 `state`、`questions`，保留上游 `answers` 和真实 Token 用量）
 - `POST /v1/audio/transcriptions`
 - `POST /v1/audio/translations`
 - `POST /v1/audio/speech`
@@ -381,18 +384,38 @@ GET /v1/assets/{id}/download-url
 TokenHub 投递请求会带：
 
 ```http
-X-TokenHub-Signature: sha256=<hmac>
 X-TokenHub-Event: request.completed
 X-TokenHub-Delivery: whd_xxx
+X-TokenHub-Timestamp: 1730419200
+X-TokenHub-Signature-V2: sha256=<hmac>
+X-TokenHub-Signature: sha256=<hmac>
+X-Request-Id: req_xxx
 ```
 
-签名算法：
+推荐用 V2 签名验签（防重放）：
 
 ```text
-HMAC-SHA256(secret, raw_json_body)
+X-TokenHub-Signature-V2 = "sha256=" + HEX(HMAC-SHA256(secret, X-TokenHub-Timestamp + "." + raw_json_body))
 ```
 
-`POST /v1/webhooks/{id}:rotate-secret` 会返回一次新的 secret。旧 secret 保留 24 小时；重叠期内请求同时携带 `X-TokenHub-Signature`（新 secret）和 `X-TokenHub-Signature-Previous`（旧 secret）。
+接收方应当：
+
+1. 用原始请求体（不要重新序列化 JSON）拼出 `<timestamp>.<body>` 计算 HMAC，并用常量时间比较；
+2. 拒绝 `X-TokenHub-Timestamp` 与本机时间相差超过 300 秒的请求；
+3. 以 `X-TokenHub-Delivery` 去重（重试时同一投递的 delivery id 不变，时间戳和签名会重新生成）。
+
+```php
+$ok = abs(time() - (int) $timestamp) <= 300
+    && hash_equals('sha256=' . hash_hmac('sha256', $timestamp . '.' . $rawBody, $secret), $signatureV2);
+```
+
+`X-TokenHub-Signature`（`HMAC-SHA256(secret, raw_json_body)`，不含时间戳）为兼容旧接收方继续发送，但它可以被重放，新接入请不要只校验它。
+
+`POST /v1/webhooks/{id}:rotate-secret` 会返回一次新的 secret。旧 secret 保留 24 小时；重叠期内请求同时携带新 secret 的签名，以及旧 secret 的 `X-TokenHub-Signature-Previous` 和 `X-TokenHub-Signature-V2-Previous`。
+
+### 投递重试
+
+非 2xx 响应或网络错误会按 1 分钟、5 分钟、30 分钟、2 小时、12 小时的间隔重试（共 6 次尝试），之后投递状态变为 `dead` 并产生 `webhook_delivery_dead` 告警。删除 Webhook 或删除其 API Key 后，尚未完成的投递变为 `cancelled`，不会再调用接收地址。
 
 ### GET /v1/webhooks
 
@@ -572,10 +595,13 @@ Chat 请求示例：
   "rag": {
     "retrieval_id": "rtr_xxx",
     "sources": [],
-    "fallback_used": false
+    "fallback_used": false,
+    "vector_status": "ok"
   }
 }
 ```
+
+`vector_status`：`ok` 向量检索正常；`degraded` 部分向量检索失败（嵌入模型或向量库异常），这部分只用了关键词结果；`error` 全部向量检索失败，结果只来自关键词检索；`none` 数据集没有可用的向量配置。后台“索引健康”页和告警会统计 degraded / error。
 
 ## 13. 示例代码
 

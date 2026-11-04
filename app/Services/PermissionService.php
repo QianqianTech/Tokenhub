@@ -84,12 +84,20 @@ final class PermissionService
         if (in_array($path, ['/admin-api/me', '/admin-api/csrf', '/admin-api/logout', '/admin-api/session/renew'], true)) {
             return null;
         }
+        // APP sign-in endpoints and an administrator's own APP devices: every
+        // administrator may use them; ownership is enforced by the handlers.
+        if (str_starts_with($path, '/admin-api/app-auth/') || str_starts_with($path, '/admin-api/my/')) {
+            return null;
+        }
 
         if (str_starts_with($path, '/admin-api/lookups/')) {
             return LookupService::capabilityFor(substr($path, strlen('/admin-api/lookups/'))) ?? 'unknown';
         }
 
         if (str_starts_with($path, '/admin-api/admin-users')) {
+            return 'admins.manage';
+        }
+        if (in_array($path, ['/admin-api/system/settings-center/smtp', '/admin-api/system/settings-center/smtp/test'], true)) {
             return 'admins.manage';
         }
 
@@ -152,6 +160,25 @@ final class PermissionService
         }
         $department = App::db()->first('SELECT path FROM departments WHERE id = ?', [$departmentId]);
         return $department !== null && $this->canAccessDepartmentPath($actor, (string) $department['path']);
+    }
+
+    /**
+     * Whether a quota binding target (department, user or API key) lies in the
+     * administrator's department scope (SEC-104).
+     */
+    public function canManageQuotaTarget(array $actor, string $targetType, int $targetId): bool
+    {
+        if ($this->usesGlobalScope($actor)) {
+            return true;
+        }
+        $departmentId = match ($targetType) {
+            'department' => $targetId,
+            'user' => App::db()->first('SELECT department_id FROM users WHERE id = ?', [$targetId])['department_id'] ?? null,
+            'api_key' => App::db()->first('SELECT department_id FROM api_keys WHERE id = ?', [$targetId])['department_id'] ?? null,
+            default => null,
+        };
+
+        return $departmentId !== null && $this->canManage($actor, (int) $departmentId);
     }
 
     public function requireAdmin(array $actor): ?array

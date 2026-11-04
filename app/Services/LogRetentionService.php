@@ -18,7 +18,9 @@ final class LogRetentionService
     public function rotate(?string $logType = null, int $maxSizeBytes = 104857600, ?int $now = null): array
     {
         $now ??= time();
-        $types = $logType === null ? LogService::LOG_TYPES : [(new LogService($this->basePath()))->normalizeType($logType)];
+        // "app" collects every channel that is not a known log type (Logger
+        // info/warning/error): rotate it too, or it grows without bound.
+        $types = $logType === null ? [...LogService::LOG_TYPES, 'app'] : [(new LogService($this->basePath()))->normalizeType($logType)];
         $rotated = [];
         foreach ($types as $type) {
             $active = $this->basePath() . DIRECTORY_SEPARATOR . $type . '.jsonl';
@@ -111,6 +113,13 @@ final class LogRetentionService
 
     public function basePath(): string
     {
+        if ($this->logPath === null) {
+            try {
+                return rtrim((string) \TokenHub\Support\App::config()->get('logging.path', storage_path('logs')), DIRECTORY_SEPARATOR);
+            } catch (\Throwable) {
+            }
+        }
+
         return rtrim($this->logPath ?? storage_path('logs'), DIRECTORY_SEPARATOR);
     }
 

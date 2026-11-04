@@ -47,6 +47,38 @@ final class VendorProfiles
             'failed' => 'failed', 'fail' => 'failed', 'error' => 'failed', 'cancelled' => 'failed', 'canceled' => 'failed', 'expired' => 'failed', 'unknown' => 'failed'];
 
         return [
+            'qianwen_token_plan' => [
+                'label' => '千问 Token Plan',
+                'hosts' => ['token-plan.maas.qianwenaiapi.com'],
+                'video_generation' => [
+                    'mode' => 'async', 'mapper' => 'wanVideo', 'default_duration' => 5,
+                    'models' => '~^wan[0-9.]+-video~i',
+                    'task_id' => 'output.task_id',
+                    'poll' => ['method' => 'GET', 'path' => '/api/v1/tasks/{id}', 'root' => true],
+                    'status' => 'output.task_status', 'status_map' => $taskStatus,
+                    'results' => ['output.video_url'], 'mime' => self::VIDEO,
+                    'error' => ['output.message', 'message'],
+                    'usage' => ['video_seconds' => 'usage.output_video_duration|usage.duration'],
+                ],
+                'image_generation' => [
+                    'mode' => 'sync', 'mapper' => 'qianwenImage',
+                    'results' => ['output.choices.*.message.content.*.image'], 'mime' => 'image/png',
+                    'error' => ['output.message', 'message'],
+                    'usage' => ['image_count' => 'usage.image_count|usage.output_image_count'],
+                ],
+                'tts' => [
+                    'mode' => 'sync', 'mapper' => 'qianwenTts', 'result_kind' => 'url',
+                    'models' => '~^qwen-audio-[0-9.]+-tts~i',
+                    'results' => ['output.audio.url'], 'error' => ['message'],
+                    'usage' => ['tts_chars' => 'usage.characters'],
+                ],
+                'asr' => [
+                    'mode' => 'sync', 'mapper' => 'qianwenAudioAsr', 'result_kind' => 'text',
+                    'models' => '~^qwen-audio-[0-9.]+-asr~i',
+                    'results' => ['output.sentence.text', 'output.text', 'sentence.text', 'text'],
+                    'error' => ['message'], 'usage' => ['audio_seconds' => 'usage.duration'],
+                ],
+            ],
             'volcengine_ark' => [
                 'label' => '火山方舟（Seedance / Seedream）',
                 'hosts' => ['volces.com', 'byteplusapi.com'],

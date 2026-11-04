@@ -1,4 +1,6 @@
-FROM docker:27-cli
+# Pinned by digest through scripts/release/pin-base-images.sh (docker/release/base-images.env).
+ARG DOCKER_CLI_BASE_IMAGE=docker:27-cli
+FROM ${DOCKER_CLI_BASE_IMAGE}
 
 RUN apk add --no-cache redis
 

@@ -10,7 +10,8 @@ use TokenHub\Support\SchemaInspector;
 
 /**
  * Delivers alert lifecycle notifications (triggered / escalated / resolved)
- * to operator webhooks with retry and an auditable delivery log.
+ * to operator webhooks and to TokenHub APP devices (Web Push, channel
+ * "web_push") with retry and an auditable delivery log.
  *
  * Targets: ALERT_WEBHOOK_URLS (comma separated). Payload is JSON with the
  * alert row; receivers such as Alertmanager adapters, Feishu/DingTalk/Slack
@@ -45,10 +46,10 @@ final class AlertNotifier
 
     public function queue(int $alertEventId, string $kind): int
     {
+        $queued = $this->queuePush($alertEventId, $kind);
         if (!$this->enabled()) {
-            return 0;
+            return $queued;
         }
-        $queued = 0;
         foreach ($this->targets() as $target) {
             App::db()->execute(
                 'INSERT INTO alert_notifications (alert_event_id, channel, target, kind, status, next_attempt_at) VALUES (?, "webhook", ?, ?, "pending", UTC_TIMESTAMP())',
@@ -62,7 +63,7 @@ final class AlertNotifier
 
     public function deliverDue(int $limit = 50): int
     {
-        if (!$this->enabled()) {
+        if (!$this->enabled() && !$this->pushEnabled()) {
             return 0;
         }
         $maxAttempts = max(1, (int) env_value('ALERT_NOTIFY_MAX_ATTEMPTS', 5));
@@ -90,7 +91,14 @@ final class AlertNotifier
                 ],
                 'sent_at' => gmdate('c'),
             ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
-            $result = $this->send((string) $row['target'], (string) $payload);
+            $result = ($row['channel'] ?? 'webhook') === 'web_push'
+                ? (new AppPushService())->deliver($row, $this->pushTransport)
+                : $this->send((string) $row['target'], (string) $payload);
+            if (!empty($result['gone'])) {
+                // The APP device unsubscribed (or was signed out): nothing to retry.
+                App::db()->execute('UPDATE alert_notifications SET status = "dead", attempts = ?, last_error = ? WHERE id = ?', [(int) $row['attempts'] + 1, 'subscription_gone', (int) $row['id']]);
+                continue;
+            }
             $attempts = (int) $row['attempts'] + 1;
             if ($result['status'] >= 200 && $result['status'] < 300) {
                 App::db()->execute('UPDATE alert_notifications SET status = "delivered", attempts = ?, delivered_at = UTC_TIMESTAMP(), last_error = NULL WHERE id = ?', [$attempts, (int) $row['id']]);
@@ -131,6 +139,44 @@ final class AlertNotifier
         } catch (Throwable $throwable) {
             return ['status' => 0, 'error' => $throwable->getMessage()];
         }
+    }
+
+    /** @var null|callable(string, string, list<string>): array{status: int, error?: string} */
+    private $pushTransport = null;
+
+    /** Test hook for web_push deliveries. */
+    public function withPushTransport(callable $transport): self
+    {
+        $this->pushTransport = $transport;
+
+        return $this;
+    }
+
+    private function queuePush(int $alertEventId, string $kind): int
+    {
+        if (!$this->pushEnabled()) {
+            return 0;
+        }
+        try {
+            $queued = (new AppPushService())->queueAlert($alertEventId, $kind);
+            if ($queued > 0) {
+                // Deliver now instead of at the next alert evaluation (up to a minute later).
+                try {
+                    App::redis()->push((string) App::config()->get('queue.name', 'tokenhub:jobs'), ['type' => 'alerts.notify']);
+                } catch (Throwable) {
+                    // the next evaluation delivers it
+                }
+            }
+            return $queued;
+        } catch (Throwable $throwable) {
+            App::logger()->warning('security', 'APP push queueing failed', ['error' => $throwable->getMessage()]);
+            return 0;
+        }
+    }
+
+    private function pushEnabled(): bool
+    {
+        return SchemaInspector::hasColumn('alert_notifications', 'target') && (new AppPushService())->ready();
     }
 
     private function enabled(): bool

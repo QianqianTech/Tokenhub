@@ -231,6 +231,44 @@ input:focus {
 .screen-status.error::before {
   background: var(--danger);
 }
+.screen-health {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  border: 1px solid var(--panel-line);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 14px;
+}
+.screen-health::before {
+  content: "";
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+.screen-health.is-ok::before {
+  background: var(--brand);
+  box-shadow: 0 0 0 4px rgba(52, 211, 153, 0.18);
+}
+.screen-health.is-warn {
+  color: var(--warn);
+}
+.screen-health.is-warn::before {
+  background: var(--warn);
+}
+.screen-health.is-critical {
+  color: var(--danger);
+}
+.screen-health.is-critical::before {
+  background: var(--danger);
+}
+.screen-updated {
+  color: var(--muted);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
 .screen-clock {
   color: var(--text-strong);
   font-family: var(--font-family-mono);
@@ -762,6 +800,27 @@ input:focus {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 14px;
+}
+.live-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+}
+.live-metric-card {
+  display: grid;
+  gap: 4px;
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: #0e1318;
+}
+.live-metric-card strong {
+  color: var(--text-strong);
+  font-family: var(--font-family-mono);
+  font-size: 24px;
+  font-variant-numeric: tabular-nums;
+}
+.rank-row.is-warn .rank-meta {
+  color: var(--warn);
 }
 .performance-card {
   display: grid;

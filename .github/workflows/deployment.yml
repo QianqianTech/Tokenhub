@@ -56,8 +56,9 @@ jobs:
         run: deploy/docker/install.sh --build -y
       - name: Backup, restore and upgrade
         run: |
+          export BACKUP_DIR="$RUNNER_TEMP/tokenhub-backups"
           deploy/docker/backup.sh
-          CONFIRM_RESTORE=1 deploy/docker/restore.sh "$(ls -1d deploy/docker/backups/20* | tail -n1)"
+          CONFIRM_RESTORE=1 deploy/docker/restore.sh "$(ls -1d "$BACKUP_DIR"/20* | tail -n1)"
           deploy/docker/upgrade.sh --build --skip-backup
           deploy/docker/verify.sh
       - name: Logs on failure

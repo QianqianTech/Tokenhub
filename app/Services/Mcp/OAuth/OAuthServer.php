@@ -144,11 +144,15 @@ final class OAuthServer
      * @param array<string, mixed> $metadata
      * @return array<string, mixed>
      */
-    public function register(array $metadata): array
+    public function register(array $metadata, ?string $clientIp = null): array
     {
         if (!self::flag('dynamic_registration', true)) {
             throw new OAuthException('access_denied', 'Dynamic client registration is disabled on this TokenHub', 403);
         }
+        // SEC-109: registration is unauthenticated, so it is throttled per address
+        // and idle clients that never completed an authorization are pruned.
+        $this->throttle('oauth-register-ip', $clientIp ?? (\TokenHub\Services\AuditService::clientIp() ?? 'unknown'), (int) App::config()->get('app.mcp.oauth.register_per_minute', 10));
+        $this->pruneIdleClientsOccasionally();
         $redirects = $metadata['redirect_uris'] ?? null;
         if (!is_array($redirects) || $redirects === [] || count($redirects) > 10) {
             throw new OAuthException('invalid_redirect_uri', 'redirect_uris must list 1 to 10 URIs');
@@ -525,6 +529,7 @@ final class OAuthServer
      */
     public function token(array $params, ?string $basicUser, ?string $basicPassword, string $clientIp): array
     {
+        $this->throttle('oauth-token-ip', $clientIp !== '' ? $clientIp : 'unknown', (int) App::config()->get('app.mcp.oauth.token_per_minute', 60));
         $client = $this->authenticateClient($params, $basicUser, $basicPassword);
         $grantType = (string) ($params['grant_type'] ?? '');
         if ($grantType === 'authorization_code') {
@@ -822,7 +827,38 @@ final class OAuthServer
             'codes' => App::db()->execute('DELETE FROM oauth_authorization_codes WHERE expires_at < ?', [$dayAgo]),
             'tokens' => App::db()->execute('DELETE FROM oauth_tokens WHERE expires_at < ?', [$dayAgo]),
             'grants' => App::db()->execute("DELETE FROM oauth_grants WHERE status = 'revoked' AND revoked_at < ?", [$this->at(-30 * 86400)]),
+            'idle_clients' => $this->pruneIdleClients(),
         ];
+    }
+
+    /**
+     * Dynamically registered clients that never obtained a grant and have no
+     * pending authorization are removed once older than
+     * app.mcp.oauth.idle_client_ttl_seconds (default one day), SEC-109.
+     */
+    public function pruneIdleClients(): int
+    {
+        $ttl = max(300, (int) App::config()->get('app.mcp.oauth.idle_client_ttl_seconds', 86400));
+
+        return App::db()->execute(
+            "DELETE FROM oauth_clients WHERE client_type = 'dynamic' AND created_at < ?
+             AND NOT EXISTS (SELECT 1 FROM oauth_grants g WHERE g.client_id = oauth_clients.client_id)
+             AND NOT EXISTS (SELECT 1 FROM oauth_authorization_requests r WHERE r.client_id = oauth_clients.client_id)",
+            [$this->at(-$ttl)]
+        );
+    }
+
+    /** Lazy pruning on roughly one registration in fifty (no scheduler needed). */
+    private function pruneIdleClientsOccasionally(): void
+    {
+        if (random_int(1, 50) !== 1) {
+            return;
+        }
+        try {
+            $this->pruneIdleClients();
+        } catch (\Throwable) {
+            // Best effort: never fail a registration because of housekeeping.
+        }
     }
 
     // ------------------------------------------------------------------ helpers

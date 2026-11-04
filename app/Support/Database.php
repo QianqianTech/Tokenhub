@@ -30,22 +30,82 @@ final class Database
         $username = (string) $this->config->get('database.mysql.username', $this->config->get('database.username', 'tokenhub'));
         $password = (string) $this->config->get('database.mysql.password', $this->config->get('database.password', ''));
 
+        $persistent = $this->persistentEnabled();
+        $options = [
+            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+            PDO::ATTR_EMULATE_PREPARES => false,
+        ];
+        if ($persistent) {
+            // PERF-011b: reuse the TCP + auth handshake across FPM requests.
+            $options[PDO::ATTR_PERSISTENT] = true;
+        }
+        $initCommand = self::sessionInitSql();
+        if (defined('PDO::MYSQL_ATTR_INIT_COMMAND')) {
+            $options[PDO::MYSQL_ATTR_INIT_COMMAND] = $initCommand;
+        }
+
         try {
-            $this->pdo = new PDO(
+            $pdo = new PDO(
                 "mysql:host={$host};port={$port};dbname={$database};charset={$charset}",
                 $username,
                 $password,
-                [
-                    PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-                    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-                    PDO::ATTR_EMULATE_PREPARES => false,
-                ],
+                $options,
             );
+            if ($persistent) {
+                self::resetReusedConnection($pdo);
+            }
+            // BIZ-001: every session runs in UTC so NOW()/CURRENT_TIMESTAMP
+            // match the gmdate() values PHP writes. The init command only runs
+            // on a fresh connect; re-asserting it is cheap and also covers a
+            // reused persistent connection.
+            if ($persistent || !defined('PDO::MYSQL_ATTR_INIT_COMMAND')) {
+                $pdo->exec($initCommand);
+            }
+            $this->pdo = $pdo;
         } catch (PDOException $exception) {
             throw new RuntimeException('Database connection failed', 0, $exception);
         }
 
         return $this->pdo;
+    }
+
+    /** SQL run at the start of every session (BIZ-001: UTC session time zone). */
+    public static function sessionInitSql(): string
+    {
+        return "SET time_zone = '+00:00'";
+    }
+
+    private function persistentEnabled(): bool
+    {
+        $value = $this->config->get('database.persistent', true);
+        if (is_bool($value)) {
+            return $value;
+        }
+
+        return !in_array(strtolower(trim((string) $value)), ['0', 'false', 'off', 'no', ''], true);
+    }
+
+    /**
+     * A persistent connection may come back from a request that died inside a
+     * transaction or while holding a named lock. Roll back and release before
+     * the new request uses it, so no state leaks between requests.
+     */
+    public static function resetReusedConnection(PDO $pdo): void
+    {
+        try {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+        } catch (Throwable) {
+        }
+        try {
+            $pdo->exec('ROLLBACK');
+            $pdo->exec('DO RELEASE_ALL_LOCKS()');
+        } catch (Throwable) {
+            // Older servers without RELEASE_ALL_LOCKS(): the rollback above is
+            // the part that matters.
+        }
     }
 
     /**

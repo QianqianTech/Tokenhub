@@ -55,7 +55,9 @@ foreach ($entries as $raw) {
     $job['attempts'] = 0;
     $job['replayed_at'] = gmdate('c');
     $script = "local removed = redis.call('LREM', KEYS[1], 1, ARGV[1]) if removed == 1 then redis.call('LPUSH', KEYS[2], ARGV[2]) end return removed";
-    if ((int) $redis->eval($script, [$failedQueue, $queue, (string) $raw, (string) json_encode($job, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)], 2) === 1) {
+    // PERF-015: back to the queue of its type (a dedicated worker may consume it).
+    $target = (new \TokenHub\Support\QueueRouter(App::config()))->route($queue, $job);
+    if ((int) $redis->eval($script, [$failedQueue, $target, (string) $raw, (string) json_encode($job, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)], 2) === 1) {
         $replayed++;
     }
 }

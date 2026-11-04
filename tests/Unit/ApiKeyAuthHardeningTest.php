@@ -49,6 +49,7 @@ assert_same('203.0.113.1', $ip('203.0.113.1', '6.6.6.6'), 'Untrusted peers can n
 // 2. SQLite stand-in for the key tables.
 $pdo = new PDO('sqlite::memory:', null, null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC]);
 $pdo->sqliteCreateFunction('NOW', static fn (): string => gmdate('Y-m-d H:i:s'));
+$pdo->sqliteCreateFunction('UTC_TIMESTAMP', static fn (): string => gmdate('Y-m-d H:i:s'));
 $pdo->exec('CREATE TABLE departments (id INTEGER PRIMARY KEY, status TEXT)');
 $pdo->exec('CREATE TABLE users (id INTEGER PRIMARY KEY, department_id INT, status TEXT)');
 $pdo->exec('CREATE TABLE api_keys (id INTEGER PRIMARY KEY, user_id INT, department_id INT, name TEXT, key_hash TEXT, allowed_ip_cidrs TEXT, status TEXT, expires_at TEXT, last_used_at TEXT)');

@@ -46,8 +46,12 @@ test("dashboard drill-down keeps its filter in the URL and in the request", asyn
 
 test("unknown or forbidden routes fall back to a permitted page", async () => {
   const { page, context } = await openPage(env);
-  await login(page, env.mock.baseUrl, { username: "rag", password: "rag-pass", hash: "#/waf/waf-rules" });
-  assert.doesNotMatch(page.url(), /waf/);
+  await login(page, env.mock.baseUrl, { username: "rag", password: "rag-pass", hash: "#/no-such-domain/no-such-page" });
+  assert.doesNotMatch(page.url(), /no-such/);
+  // A real page the user may not open (rag admin, system settings) also falls back.
+  await page.goto(`${env.mock.baseUrl}/admin/#/system/system-settings`);
+  await settle(page);
+  assert.doesNotMatch(page.url(), /system-settings/);
   await context.close();
 });
 

@@ -1,0 +1,18 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "tokenhub-remote",
+  "description": "TokenHub server pages (/app/) may use the secure store (each page only reaches the entry of its own origin, enforced in Rust) and show system notifications.",
+  "windows": [
+    "main"
+  ],
+  "remote": {
+    "urls": [
+      "https://*/app/*",
+      "https://*:*/app/*"
+    ]
+  },
+  "permissions": [
+    "core:default",
+    "notification:default"
+  ]
+}

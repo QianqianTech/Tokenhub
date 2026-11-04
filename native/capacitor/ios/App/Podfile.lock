@@ -1,0 +1,34 @@
+PODS:
+  - Capacitor (6.2.3):
+    - CapacitorCordova
+  - CapacitorApp (6.0.3):
+    - Capacitor
+  - CapacitorCordova (6.2.3)
+  - CapacitorPushNotifications (6.0.5):
+    - Capacitor
+
+DEPENDENCIES:
+  - "Capacitor (from `../../node_modules/@capacitor/ios`)"
+  - "CapacitorApp (from `../../node_modules/@capacitor/app`)"
+  - "CapacitorCordova (from `../../node_modules/@capacitor/ios`)"
+  - "CapacitorPushNotifications (from `../../node_modules/@capacitor/push-notifications`)"
+
+EXTERNAL SOURCES:
+  Capacitor:
+    :path: "../../node_modules/@capacitor/ios"
+  CapacitorApp:
+    :path: "../../node_modules/@capacitor/app"
+  CapacitorCordova:
+    :path: "../../node_modules/@capacitor/ios"
+  CapacitorPushNotifications:
+    :path: "../../node_modules/@capacitor/push-notifications"
+
+SPEC CHECKSUMS:
+  Capacitor: eecf746047e3ffe34fbb4cd6c23857ad4019b242
+  CapacitorApp: a19ccb4f5f32d2534be5c6f524d5a9b614a1e8a7
+  CapacitorCordova: 80f92d91cf553071baa7b16c7b558578e8a84291
+  CapacitorPushNotifications: 35abece14371c57172e8321c9ccc8b6fa35fabfe
+
+PODFILE CHECKSUM: 924e3c6784c81a511ccc8d553b4c13382541ceae
+
+COCOAPODS: 1.17.0

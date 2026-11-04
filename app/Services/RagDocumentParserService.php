@@ -8,6 +8,10 @@ use DOMDocument;
 use DOMElement;
 use DOMNode;
 use DOMXPath;
+use TokenHub\Services\Media\PathConfinement;
+use TokenHub\Services\Media\ZipLimits;
+use TokenHub\Support\HttpAbortException;
+use TokenHub\Support\OleCompoundFile;
 use ZipArchive;
 
 /**
@@ -18,17 +22,61 @@ use ZipArchive;
  * shown in the upload preview and consumed by RagStructuredChunkerService.
  *
  * Supported here without extra dependencies: TXT, Markdown, HTML, DOCX, PPTX,
- * XLSX/XLS/CSV (all sheets, via PhpSpreadsheet), and PDF when the poppler
- * `pdftotext` binary is installed. Other PDFs (or scanned ones) are handed to
- * the Python RAG worker (job_type "parse"), which also runs OCR.
+ * XLSX/XLS/ET/ODS/CSV (all sheets, via PhpSpreadsheet), OpenDocument ODT/ODP,
+ * legacy Word .doc/.wps, PowerPoint .ppt/.dps and RTF (RagLegacyDocumentReader),
+ * and PDF when the poppler `pdftotext` binary is installed. Other PDFs (or
+ * scanned ones) are handed to the Python RAG worker (job_type "parse"), which
+ * also runs OCR.
  */
 final class RagDocumentParserService
 {
-    public const FORMATS = ['txt', 'text', 'md', 'markdown', 'html', 'htm', 'docx', 'pptx', 'xlsx', 'xls', 'csv', 'pdf'];
+    public const FORMATS = [
+        'txt', 'text', 'md', 'markdown', 'html', 'htm', 'pdf',
+        'docx', 'doc', 'wps', 'rtf', 'odt',
+        'pptx', 'ppt', 'dps', 'odp',
+        'xlsx', 'xls', 'et', 'ods', 'csv',
+    ];
+
+    /** Formats imported through the table templates (text / QA / image list) unless "document" is chosen. */
+    public const SPREADSHEET_FORMATS = ['csv', 'xlsx', 'xls', 'et', 'ods'];
+
+    /** ZIP-based containers bounded by ZipLimits before anything is inflated. */
+    private const ZIP_FORMATS = ['docx', 'pptx', 'xlsx', 'odt', 'odp', 'ods'];
 
     /** @param null|callable(string): ?string $pdfTextExtractor returns form-feed separated pages, or null */
-    public function __construct(private readonly mixed $pdfTextExtractor = null)
+    /**
+     * @param list<string>|null $allowedRoots directories a parsed file must lie in; null = RAG upload storage
+     */
+    public function __construct(
+        private readonly mixed $pdfTextExtractor = null,
+        private readonly ?array $allowedRoots = null,
+        private readonly ?ZipLimits $limits = null,
+    ) {
+    }
+
+    /** @return list<string> */
+    private function allowedRoots(): array
     {
+        return $this->allowedRoots ?? PathConfinement::ragUploadRoots();
+    }
+
+    private function zipLimits(): ZipLimits
+    {
+        return $this->limits ?? new ZipLimits();
+    }
+
+    /** SEC-107: docx/pptx/xlsx are ZIP containers; bound them before inflating anything. */
+    private function assertZipWithinLimits(string $path): void
+    {
+        $zip = new ZipArchive();
+        if ($zip->open($path) !== true) {
+            return; // the format reader reports the unreadable file
+        }
+        $violation = $this->zipLimits()->violation($zip);
+        $zip->close();
+        if ($violation !== null) {
+            abort_json($violation, 'Document exceeds the allowed number of files or uncompressed size', 422);
+        }
     }
 
     public static function formatFor(string $filename, string $mime = ''): ?string
@@ -55,6 +103,15 @@ final class RagDocumentParserService
             'application/vnd.openxmlformats-officedocument.wordprocessingml.document' => 'docx',
             'application/vnd.openxmlformats-officedocument.presentationml.presentation' => 'pptx',
             'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' => 'xlsx',
+            'application/msword' => 'doc',
+            'application/vnd.ms-word', 'application/kswps', 'application/vnd.ms-works', 'application/wps-office.wps' => 'wps',
+            'application/rtf', 'text/rtf', 'application/x-rtf' => 'rtf',
+            'application/vnd.oasis.opendocument.text' => 'odt',
+            'application/vnd.ms-powerpoint', 'application/wps-office.dps' => 'ppt',
+            'application/vnd.oasis.opendocument.presentation' => 'odp',
+            'application/vnd.ms-excel', 'application/wps-office.et' => 'xls',
+            'application/vnd.oasis.opendocument.spreadsheet' => 'ods',
+            'text/csv' => 'csv',
             default => null,
         };
     }
@@ -68,20 +125,41 @@ final class RagDocumentParserService
         if ($format === null) {
             abort_json('RAG_DOCUMENT_UNSUPPORTED', 'Unsupported document format', 422);
         }
+        // SEC-102: only files stored by the upload service are parsed.
+        $resolved = PathConfinement::resolve($path, $this->allowedRoots());
+        if ($resolved === null) {
+            abort_json('RAG_DOCUMENT_UNREADABLE', 'Document file is not readable', 422);
+        }
+        $path = $resolved;
+        if (in_array($format, self::ZIP_FORMATS, true)) {
+            $this->assertZipWithinLimits($path);
+        }
         $title = trim((string) pathinfo($filename, PATHINFO_FILENAME)) ?: 'document';
         $warnings = [];
         $pages = 0;
         $needsWorker = false;
         $parser = 'php:' . $format;
-        $markdown = match ($format) {
-            'txt' => $this->plainText($this->readText($path)),
-            'md' => $this->normalizeMarkdown($this->readText($path)),
-            'html' => $this->html($this->readText($path), $title),
-            'docx' => $this->docx($path, $title, $warnings),
-            'pptx' => $this->pptx($path, $warnings),
-            'xlsx', 'xls', 'csv' => $this->spreadsheet($path, $format, $warnings),
-            'pdf' => $this->pdf($path, $pages, $needsWorker, $warnings),
-        };
+        $legacy = new RagLegacyDocumentReader();
+        try {
+            $markdown = match ($format) {
+                'txt' => $this->plainText($this->readText($path)),
+                'md' => $this->normalizeMarkdown($this->readText($path)),
+                'html' => $this->html($this->readText($path), $title),
+                'docx' => $this->docx($path, $title, $warnings),
+                'doc', 'wps' => $this->wordBinary($path, $legacy, $warnings),
+                'rtf' => $this->renderBlocks($legacy->rtf((string) @file_get_contents($path), $warnings)),
+                'odt' => $this->odt($path, $warnings),
+                'pptx' => $this->pptx($path, $warnings),
+                'ppt', 'dps' => $this->renderSlides($legacy->powerPoint($path, $warnings)),
+                'odp' => $this->odp($path, $warnings),
+                'xlsx', 'xls', 'et', 'ods', 'csv' => $this->spreadsheet($path, $format, $warnings),
+                'pdf' => $this->pdf($path, $pages, $needsWorker, $warnings),
+            };
+        } catch (\Throwable $exception) {
+            HttpAbortException::rethrowIfAbort($exception);
+            // Corrupt or mislabelled files (a renamed PDF, a damaged ZIP) are a client error, not a 500.
+            abort_json('RAG_DOCUMENT_UNREADABLE', 'The ' . strtoupper($format) . ' file could not be read; check that it opens in Office/WPS and is not damaged or password protected', 422);
+        }
         if ($format === 'pdf' && $needsWorker) {
             $parser = 'python:pdf';
         }
@@ -92,7 +170,7 @@ final class RagDocumentParserService
         if ($format === 'pdf' && !$needsWorker && $pages === 0) {
             $pages = max(1, substr_count($markdown, '<!-- page:'));
         }
-        if (preg_match('/^#\s+(.+)$/m', $markdown, $m) === 1 && in_array($format, ['md', 'html', 'docx'], true)) {
+        if (preg_match('/^#\s+(.+)$/m', $markdown, $m) === 1 && in_array($format, ['md', 'html', 'docx', 'doc', 'wps', 'rtf', 'odt'], true)) {
             $title = trim($m[1]);
         }
 
@@ -238,8 +316,8 @@ final class RagDocumentParserService
         if ($zip->open($path) !== true) {
             abort_json('RAG_DOCUMENT_UNREADABLE', 'DOCX file cannot be opened', 422);
         }
-        $xml = (string) $zip->getFromName('word/document.xml');
-        $styles = (string) $zip->getFromName('word/styles.xml');
+        $xml = (string) $this->zipLimits()->read($zip, 'word/document.xml');
+        $styles = (string) $this->zipLimits()->read($zip, 'word/styles.xml');
         $zip->close();
         if ($xml === '') {
             abort_json('RAG_DOCUMENT_UNREADABLE', 'DOCX has no document body', 422);
@@ -251,6 +329,8 @@ final class RagDocumentParserService
         $xpath->registerNamespace('w', 'http://schemas.openxmlformats.org/wordprocessingml/2006/main');
         $body = $xpath->query('//w:body')->item(0);
         $lines = [];
+        $plain = [];
+        $hasHeadings = false;
         if ($body === null) {
             return '';
         }
@@ -267,12 +347,14 @@ final class RagDocumentParserService
                 $outline = $xpath->query('./w:pPr/w:outlineLvl/@w:val', $node)->item(0)?->nodeValue;
                 $level = $headingStyles[$style] ?? ($outline !== null ? ((int) $outline) + 1 : null);
                 if ($level !== null && $level >= 1 && $level <= 6 && mb_strlen($text) <= 200) {
+                    $hasHeadings = true;
                     $lines[] = '';
                     $lines[] = str_repeat('#', $level) . ' ' . $text;
                     $lines[] = '';
                 } elseif ($xpath->query('./w:pPr/w:numPr', $node)->length > 0 || preg_match('/^List/i', $style) === 1) {
                     $lines[] = '- ' . $text;
                 } else {
+                    $plain[] = count($lines);
                     $lines[] = $text;
                     $lines[] = '';
                 }
@@ -299,6 +381,13 @@ final class RagDocumentParserService
         }
         if ($lines === []) {
             $warnings[] = 'DOCX contains no text paragraphs.';
+        }
+        if (!$hasHeadings) {
+            // Headings formatted by hand (bold, larger font) instead of a heading style:
+            // numbered titles such as "一、项目背景" or "1.2 范围" still delimit sections.
+            foreach ($plain as $index) {
+                $lines[$index] = trim($this->plainText($lines[$index]), "\n");
+            }
         }
 
         return implode("\n", $lines);
@@ -366,7 +455,7 @@ final class RagDocumentParserService
         $lines = [];
         foreach ($slides as $number => $name) {
             $document = new DOMDocument();
-            if (!@$document->loadXML((string) $zip->getFromName($name), LIBXML_NONET)) {
+            if (!@$document->loadXML((string) $this->zipLimits()->read($zip, $name), LIBXML_NONET)) {
                 $warnings[] = 'Slide ' . $number . ' could not be read.';
                 continue;
             }
@@ -404,7 +493,7 @@ final class RagDocumentParserService
                 $rows[] = $cells;
             }
             $notes = '';
-            $notesXml = $zip->getFromName('ppt/notesSlides/notesSlide' . $number . '.xml');
+            $notesXml = $this->zipLimits()->read($zip, 'ppt/notesSlides/notesSlide' . $number . '.xml');
             if (is_string($notesXml) && $notesXml !== '') {
                 $notesDocument = new DOMDocument();
                 if (@$notesDocument->loadXML($notesXml, LIBXML_NONET)) {
@@ -483,6 +572,320 @@ final class RagDocumentParserService
         }
         if ($lines === []) {
             $warnings[] = 'Spreadsheet has no data.';
+        }
+
+        return implode("\n", $lines);
+    }
+
+    /**
+     * .doc/.wps: Word 97-2003 binary. A file with the .doc extension that is
+     * really RTF, HTML or DOCX (common for exports and "Save as .doc") is
+     * routed to the matching reader instead.
+     *
+     * @param list<string> $warnings
+     */
+    private function wordBinary(string $path, RagLegacyDocumentReader $legacy, array &$warnings): string
+    {
+        if (!OleCompoundFile::isCompoundFile($path)) {
+            $head = (string) @file_get_contents($path, false, null, 0, 512);
+            if (str_starts_with(ltrim($head), '{\rtf')) {
+                return $this->renderBlocks($legacy->rtf((string) @file_get_contents($path), $warnings));
+            }
+            if (str_starts_with($head, "PK\x03\x04")) {
+                $this->assertZipWithinLimits($path);
+                return $this->docx($path, '', $warnings);
+            }
+            if (preg_match('/<html|<!doctype html|xmlns:w=/i', $head) === 1) {
+                return $this->html($this->readText($path), '');
+            }
+        }
+
+        return $this->renderBlocks($legacy->word($path, $warnings));
+    }
+
+    /**
+     * Renders RagLegacyDocumentReader blocks. Documents without heading styles
+     * fall back to the numbered-heading heuristic used for plain text.
+     *
+     * @param list<array<string, mixed>> $blocks
+     */
+    private function renderBlocks(array $blocks): string
+    {
+        $hasHeadings = false;
+        foreach ($blocks as $block) {
+            if ($block['type'] === 'heading') {
+                $hasHeadings = true;
+                break;
+            }
+        }
+        $lines = [];
+        foreach ($blocks as $block) {
+            if ($block['type'] === 'heading') {
+                array_push($lines, '', str_repeat('#', (int) $block['level']) . ' ' . $block['text'], '');
+            } elseif ($block['type'] === 'table') {
+                $lines[] = '';
+                array_push($lines, ...$this->markdownTable($this->squareRows($block['rows'])));
+                $lines[] = '';
+            } elseif (!empty($block['list'])) {
+                $lines[] = '- ' . $block['text'];
+            } else {
+                $lines[] = $hasHeadings ? (string) $block['text'] : $this->plainText((string) $block['text']);
+                $lines[] = '';
+            }
+        }
+
+        return implode("\n", $lines);
+    }
+
+    /**
+     * @param list<array{title: string, body: list<string>}> $slides
+     */
+    private function renderSlides(array $slides): string
+    {
+        $lines = [];
+        foreach ($slides as $index => $slide) {
+            $lines[] = '## 第 ' . ($index + 1) . ' 页' . ($slide['title'] !== '' ? '：' . $slide['title'] : '');
+            $lines[] = '';
+            foreach ($slide['body'] as $paragraph) {
+                $lines[] = '- ' . $paragraph;
+            }
+            $lines[] = '';
+        }
+
+        return implode("\n", $lines);
+    }
+
+    /**
+     * @param list<list<string>> $rows
+     * @return list<list<string>>
+     */
+    private function squareRows(array $rows): array
+    {
+        return array_values(array_map(fn (array $row): array => array_map(fn ($cell): string => $this->inline((string) $cell), array_values($row)), $rows));
+    }
+
+    private const ODF_NS = [
+        'office' => 'urn:oasis:names:tc:opendocument:xmlns:office:1.0',
+        'text' => 'urn:oasis:names:tc:opendocument:xmlns:text:1.0',
+        'table' => 'urn:oasis:names:tc:opendocument:xmlns:table:1.0',
+        'draw' => 'urn:oasis:names:tc:opendocument:xmlns:drawing:1.0',
+        'presentation' => 'urn:oasis:names:tc:opendocument:xmlns:presentation:1.0',
+        'style' => 'urn:oasis:names:tc:opendocument:xmlns:style:1.0',
+    ];
+
+    /** @return array{0: DOMDocument, 1: DOMXPath, 2: array<string, string>} content.xml + automatic style => parent style */
+    private function odfContent(string $path, string $label): array
+    {
+        $zip = new ZipArchive();
+        if ($zip->open($path) !== true) {
+            abort_json('RAG_DOCUMENT_UNREADABLE', $label . ' file cannot be opened', 422);
+        }
+        $xml = (string) $this->zipLimits()->read($zip, 'content.xml');
+        $zip->close();
+        $document = new DOMDocument();
+        if ($xml === '' || !@$document->loadXML($xml, LIBXML_NONET | LIBXML_NOERROR | LIBXML_NOWARNING | LIBXML_COMPACT | LIBXML_PARSEHUGE)) {
+            abort_json('RAG_DOCUMENT_UNREADABLE', $label . ' has no readable content', 422);
+        }
+        $xpath = new DOMXPath($document);
+        foreach (self::ODF_NS as $prefix => $uri) {
+            $xpath->registerNamespace($prefix, $uri);
+        }
+        $parents = [];
+        foreach ($xpath->query('//office:automatic-styles/style:style') ?: [] as $style) {
+            if ($style instanceof DOMElement) {
+                $parents[$style->getAttributeNS(self::ODF_NS['style'], 'name')] = $style->getAttributeNS(self::ODF_NS['style'], 'parent-style-name');
+            }
+        }
+
+        return [$document, $xpath, $parents];
+    }
+
+    /** @param list<string> $warnings */
+    private function odt(string $path, array &$warnings): string
+    {
+        [, $xpath, $parents] = $this->odfContent($path, 'ODT');
+        $body = $xpath->query('//office:body/office:text')->item(0);
+        $lines = [];
+        if ($body instanceof DOMElement) {
+            $this->odfBlocks($body, $xpath, $parents, $lines, false);
+        }
+        if ($lines === []) {
+            $warnings[] = 'ODT contains no text paragraphs.';
+        }
+        if (preg_grep('/^#{1,6} /', $lines) === []) {
+            foreach ($lines as $index => $line) {
+                if ($line !== '' && !str_starts_with($line, '|') && !str_starts_with($line, '- ')) {
+                    $lines[$index] = trim($this->plainText($line), "\n");
+                }
+            }
+        }
+
+        return implode("\n", $lines);
+    }
+
+    /**
+     * @param array<string, string> $parents
+     * @param list<string> $lines
+     */
+    private function odfBlocks(DOMElement $container, DOMXPath $xpath, array $parents, array &$lines, bool $inList): void
+    {
+        foreach ($container->childNodes as $node) {
+            if (!$node instanceof DOMElement) {
+                continue;
+            }
+            $name = $node->localName;
+            if ($node->namespaceURI === self::ODF_NS['text'] && $name === 'h') {
+                $text = $this->odfText($node);
+                if ($text !== '') {
+                    $level = min(6, max(1, (int) ($node->getAttributeNS(self::ODF_NS['text'], 'outline-level') ?: 1)) + 1);
+                    array_push($lines, '', str_repeat('#', $level) . ' ' . $text, '');
+                }
+            } elseif ($node->namespaceURI === self::ODF_NS['text'] && $name === 'p') {
+                $text = $this->odfText($node);
+                if ($text === '') {
+                    continue;
+                }
+                $style = $node->getAttributeNS(self::ODF_NS['text'], 'style-name');
+                $style = $parents[$style] ?? $style;
+                if (!$inList && in_array($style, ['Title', 'Heading'], true)) {
+                    array_push($lines, '', '# ' . $text, '');
+                } elseif ($inList) {
+                    $lines[] = '- ' . $text;
+                } else {
+                    array_push($lines, $text, '');
+                }
+            } elseif ($node->namespaceURI === self::ODF_NS['text'] && in_array($name, ['list', 'list-item', 'list-header'], true)) {
+                $this->odfBlocks($node, $xpath, $parents, $lines, true);
+                if ($name === 'list' && !$inList) {
+                    $lines[] = '';
+                }
+            } elseif ($node->namespaceURI === self::ODF_NS['table'] && $name === 'table') {
+                $lines[] = '';
+                array_push($lines, ...$this->markdownTable($this->odfTableRows($node, $xpath)));
+                $lines[] = '';
+            } elseif (in_array($name, ['section', 'index-body', 'table-of-content', 'illustration-index', 'alphabetical-index'], true)) {
+                if ($name === 'section') {
+                    $this->odfBlocks($node, $xpath, $parents, $lines, $inList);
+                }
+            }
+        }
+    }
+
+    /** @return list<list<string>> */
+    private function odfTableRows(DOMElement $table, DOMXPath $xpath): array
+    {
+        $rows = [];
+        foreach ($xpath->query('./table:table-header-rows/table:table-row|./table:table-row|./table:table-rows/table:table-row', $table) ?: [] as $tr) {
+            $cells = [];
+            foreach ($xpath->query('./table:table-cell|./table:covered-table-cell', $tr) ?: [] as $tc) {
+                if (!$tc instanceof DOMElement) {
+                    continue;
+                }
+                $texts = [];
+                foreach ($xpath->query('.//text:p|.//text:h', $tc) ?: [] as $p) {
+                    $t = $p instanceof DOMElement ? $this->odfText($p) : '';
+                    if ($t !== '') {
+                        $texts[] = $t;
+                    }
+                }
+                $repeat = min(64, max(1, (int) ($tc->getAttributeNS(self::ODF_NS['table'], 'number-columns-repeated') ?: 1)));
+                $value = implode(' ', $texts);
+                for ($i = 0; $i < ($value === '' ? min($repeat, 1) : $repeat); $i++) {
+                    $cells[] = $value;
+                }
+            }
+            while ($cells !== [] && end($cells) === '') {
+                array_pop($cells);
+            }
+            $rows[] = $cells;
+        }
+
+        return $rows;
+    }
+
+    /** Paragraph text with ODF spacing elements expanded and footnote bodies left out. */
+    private function odfText(DOMElement $element): string
+    {
+        $out = '';
+        foreach ($element->childNodes as $child) {
+            if ($child instanceof DOMElement) {
+                $out .= match ($child->localName) {
+                    's' => str_repeat(' ', max(1, (int) ($child->getAttributeNS(self::ODF_NS['text'], 'c') ?: 1))),
+                    'tab', 'line-break' => ' ',
+                    'note', 'annotation', 'tracked-changes' => '',
+                    default => $this->odfText($child),
+                };
+            } else {
+                $out .= $child->textContent;
+            }
+        }
+
+        return $this->inline($out);
+    }
+
+    /** @param list<string> $warnings */
+    private function odp(string $path, array &$warnings): string
+    {
+        [, $xpath] = $this->odfContent($path, 'ODP');
+        $lines = [];
+        $number = 0;
+        foreach ($xpath->query('//office:presentation/draw:page') ?: [] as $page) {
+            $number++;
+            $title = '';
+            $body = [];
+            $tables = [];
+            // Text lives in frames (placeholders, text boxes) and in custom shapes; tables in frames.
+            foreach ($xpath->query('.//draw:frame|.//draw:custom-shape|.//draw:rect|.//draw:ellipse|.//draw:polygon', $page) ?: [] as $shape) {
+                if (!$shape instanceof DOMElement || $xpath->query('ancestor::presentation:notes', $shape)->length > 0) {
+                    continue;
+                }
+                $class = $shape->getAttributeNS(self::ODF_NS['presentation'], 'class');
+                foreach ($xpath->query('./table:table', $shape) ?: [] as $table) {
+                    if ($table instanceof DOMElement) {
+                        $tables[] = $this->odfTableRows($table, $xpath);
+                    }
+                }
+                $query = $shape->localName === 'frame' ? './draw:text-box//text:p|./draw:text-box//text:h' : './text:p|./text:list//text:p|./text:h';
+                $paragraphs = [];
+                foreach ($xpath->query($query, $shape) ?: [] as $p) {
+                    $t = $p instanceof DOMElement ? $this->odfText($p) : '';
+                    if ($t !== '') {
+                        $paragraphs[] = $t;
+                    }
+                }
+                if ($paragraphs === []) {
+                    continue;
+                }
+                if ($title === '' && $class === 'title') {
+                    $title = implode(' ', $paragraphs);
+                } else {
+                    foreach ($paragraphs as $paragraph) {
+                        $body[] = '- ' . $paragraph;
+                    }
+                }
+            }
+            $notes = [];
+            foreach ($xpath->query('./presentation:notes//draw:text-box//text:p', $page) ?: [] as $p) {
+                $t = $p instanceof DOMElement ? $this->odfText($p) : '';
+                if ($t !== '') {
+                    $notes[] = $t;
+                }
+            }
+            $lines[] = '## 第 ' . $number . ' 页' . ($title !== '' ? '：' . $title : '');
+            $lines[] = '';
+            array_push($lines, ...$body);
+            foreach ($tables as $rows) {
+                $lines[] = '';
+                array_push($lines, ...$this->markdownTable($rows));
+            }
+            if ($notes !== []) {
+                $lines[] = '';
+                $lines[] = '备注：' . implode(' ', $notes);
+            }
+            $lines[] = '';
+        }
+        if ($number === 0) {
+            $warnings[] = 'ODP contains no slides.';
         }
 
         return implode("\n", $lines);

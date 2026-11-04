@@ -26,8 +26,9 @@ final class AdminOperationsService
             'health' => $health,
             // null means "could not be read", never "empty".
             'queues' => [
-                'pending' => $this->queueLength($queue),
-                'processing' => $this->queueLength($queue . ':processing'),
+                'pending' => $this->sumQueues(fn (string $q): string => $q),
+                'processing' => $this->sumQueues(fn (string $q): string => \TokenHub\Support\QueueRouter::processing($q)),
+                'delayed' => $this->sumZsets(fn (string $q): string => \TokenHub\Support\QueueRouter::delayed($q)),
                 'failed' => $this->queueLength($failed),
                 'readable' => $this->queueLength($queue) !== null,
             ],
@@ -36,6 +37,35 @@ final class AdminOperationsService
             'usage_pipeline' => $this->usagePipeline(),
             'recent_worker_logs' => (new LogService())->query(['log_type' => 'worker', 'limit' => 20]),
         ];
+    }
+
+    /** Main queue plus the per-type queues (PERF-015). */
+    private function sumQueues(callable $name): ?int
+    {
+        $total = 0;
+        foreach ((new \TokenHub\Support\QueueRouter(App::config()))->allQueues() as $queue) {
+            $length = $this->queueLength($name($queue));
+            if ($length === null) {
+                return null;
+            }
+            $total += $length;
+        }
+
+        return $total;
+    }
+
+    private function sumZsets(callable $name): ?int
+    {
+        try {
+            $total = 0;
+            foreach ((new \TokenHub\Support\QueueRouter(App::config()))->allQueues() as $queue) {
+                $total += (int) App::redis()->connection()->zCard($name($queue));
+            }
+
+            return $total;
+        } catch (\Throwable) {
+            return null;
+        }
     }
 
     private function queueLength(string $queue): ?int

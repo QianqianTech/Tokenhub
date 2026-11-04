@@ -4,10 +4,17 @@ declare(strict_types=1);
 
 namespace TokenHub\Services;
 
+use TokenHub\Services\Media\PathConfinement;
+use TokenHub\Services\Media\ZipLimits;
+
 final class RagPackageImportService
 {
     private const ALLOWED_IMAGE_EXTENSIONS = ['jpg', 'jpeg', 'png', 'webp'];
     private const ALLOWED_IMAGE_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+
+    public function __construct(private readonly ?ZipLimits $limits = null)
+    {
+    }
 
     /**
      * @return array{error_code: ?string, error_message: ?string, manifest_name: ?string, package_dir: string, items: list<array<string, mixed>>}
@@ -17,6 +24,18 @@ final class RagPackageImportService
         $packageDir = storage_path('rag' . DIRECTORY_SEPARATOR . 'uploads' . DIRECTORY_SEPARATOR . $this->safeDirectoryName($packageId) . '_package');
         if (!is_dir($packageDir)) {
             mkdir($packageDir, 0775, true);
+        }
+
+        // SEC-102: only a package stored by the upload service is opened.
+        $resolved = PathConfinement::resolve($zipPath, PathConfinement::ragUploadRoots());
+        if ($resolved === null) {
+            return $this->packageError('RAG_PACKAGE_INVALID', 'Image package is not a readable ZIP file.', $packageDir);
+        }
+        $zipPath = $resolved;
+        // SEC-107: bound entry count and uncompressed sizes before extracting anything.
+        $violation = $this->limitViolation($zipPath);
+        if ($violation !== null) {
+            return $this->packageError($violation, 'Image package exceeds the allowed number of files or uncompressed size.', $packageDir);
         }
 
         $entries = $this->entries($zipPath);
@@ -190,7 +209,7 @@ final class RagPackageImportService
             if ($zip->open($zipPath) !== true) {
                 return '';
             }
-            $content = $zip->getFromName($entry);
+            $content = $this->limits()->read($zip, $entry);
             $zip->close();
 
             return is_string($content) ? $content : '';
@@ -242,6 +261,49 @@ final class RagPackageImportService
         }
 
         return true;
+    }
+
+    private function limits(): ZipLimits
+    {
+        return $this->limits ?? new ZipLimits();
+    }
+
+    private function limitViolation(string $zipPath): ?string
+    {
+        if (class_exists(\ZipArchive::class)) {
+            $zip = new \ZipArchive();
+            if ($zip->open($zipPath) !== true) {
+                return null; // reported as unreadable by entries()
+            }
+            $violation = $this->limits()->violation($zip);
+            $zip->close();
+
+            return $violation;
+        }
+
+        // unzip fallback: "unzip -l" lists every entry's uncompressed size.
+        $listing = $this->runUnzip(['unzip', '-l', $zipPath]);
+        if ($listing === null) {
+            return null;
+        }
+        $count = 0;
+        $total = 0;
+        foreach (preg_split('/\r\n|\r|\n/', $listing) ?: [] as $line) {
+            if (preg_match('/^\s*(\d+)\s+\d{2,4}-\d{2}-\d{2,4}\s+\d{2}:\d{2}\s+(.+)$/', $line, $m) !== 1) {
+                continue;
+            }
+            $count++;
+            $size = (int) $m[1];
+            $total += $size;
+            if ($size > $this->limits()->maxEntryBytes()) {
+                return 'RAG_ZIP_ENTRY_TOO_LARGE';
+            }
+        }
+        if ($count > $this->limits()->maxEntries()) {
+            return 'RAG_ZIP_TOO_MANY_ENTRIES';
+        }
+
+        return $total > $this->limits()->maxTotalBytes() ? 'RAG_ZIP_TOO_LARGE' : null;
     }
 
     private function safeDirectoryName(string $name): string

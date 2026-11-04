@@ -34,7 +34,36 @@ IMAGES=(
   "tokenhub-realtime-gateway docker/release/realtime-gateway/Dockerfile"
 )
 
-build_args=(--build-arg "PHP_VERSION=$PHP_VERSION" --build-arg "TOKENHUB_VERSION=$TAG")
+# Build id of the APP service worker cache: tag + commit (the build context has no .git).
+APP_BUILD="$TAG"
+if rev="$(git -C "$ROOT" rev-parse --short=12 HEAD 2>/dev/null)"; then
+  APP_BUILD="$TAG-$rev"
+fi
+
+build_args=(--build-arg "PHP_VERSION=$PHP_VERSION" --build-arg "TOKENHUB_VERSION=$TAG" --build-arg "TOKENHUB_APP_BUILD=$APP_BUILD")
+
+# Base image digests (DEP-101): docker/release/base-images.lock, refreshed by
+# scripts/release/pin-base-images.sh. A missing digest builds from the tag.
+LOCK="$ROOT/docker/release/base-images.lock"
+pinned() {
+  local ref="$1" digest=""
+  [ -f "$LOCK" ] && digest="$(awk -v r="$ref" '$1 == r {print $2; exit}' "$LOCK")"
+  if [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+    printf '%s@%s' "$ref" "$digest"
+  else
+    echo "WARN: base image $ref is not pinned by digest (scripts/release/pin-base-images.sh)" >&2
+    printf '%s' "$ref"
+  fi
+}
+build_args+=(
+  --build-arg "PHP_BASE_IMAGE=$(pinned "php:$PHP_VERSION-fpm-bookworm")"
+  --build-arg "COMPOSER_IMAGE=$(pinned composer:2)"
+  --build-arg "CADDY_BASE_IMAGE=$(pinned caddy:2.10)"
+  --build-arg "PYTHON_BASE_IMAGE=$(pinned python:3.12-slim)"
+  --build-arg "DOCKER_CLI_BASE_IMAGE=$(pinned docker:27-cli)"
+  --build-arg "GO_IMAGE=$(pinned golang:1.24-alpine)"
+  --build-arg "RUNTIME_IMAGE=$(pinned alpine:3.20)"
+)
 
 if [ "$PUSH" = 1 ]; then
   [ -n "$PREFIX" ] || { echo "--push needs --image-prefix" >&2; exit 64; }

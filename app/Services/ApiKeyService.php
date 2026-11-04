@@ -73,6 +73,14 @@ final class ApiKeyService
             : null;
         $fields = $this->sanitizeForStorage($data);
         $allowed = ['name', 'status', 'allowed_ip_cidrs', 'expires_at'];
+        // BIZ-022: per-key rate-limit overrides (admin path; NULL = default).
+        foreach (['rate_limit_model_per_minute', 'rate_limit_other_per_minute', 'rate_limit_write_per_minute'] as $limitField) {
+            if (array_key_exists($limitField, $fields) && SchemaInspector::hasColumn('api_keys', $limitField)) {
+                $value = $fields[$limitField];
+                $fields[$limitField] = $value === null || $value === '' ? null : max(0, min(1000000, (int) $value));
+                $allowed[] = $limitField;
+            }
+        }
         $updates = [];
         foreach ($allowed as $field) {
             if (array_key_exists($field, $fields)) {
@@ -293,6 +301,7 @@ final class ApiKeyService
     {
         App::db()->execute('UPDATE api_keys SET status = "deleted" WHERE id = ?', [$id]);
         $this->invalidateById($id);
+        $this->releaseDeletedKeyResources([$id]);
         (new AuditService())->write('api_key.delete', 'api_keys', $id);
         return ['id' => $id, 'deleted' => true];
     }
@@ -337,6 +346,9 @@ final class ApiKeyService
             if (isset($row['key_hash'])) {
                 App::redis()->delete($this->cacheKey((string) $row['key_hash']));
             }
+        }
+        if ($status === 'deleted') {
+            $this->releaseDeletedKeyResources($foundIds);
         }
 
         (new AuditService())->write('api_key.batch', 'api_keys', null, [
@@ -710,7 +722,7 @@ final class ApiKeyService
             return;
         }
 
-        App::db()->execute('UPDATE api_keys SET last_used_at = NOW() WHERE id = ?', [$apiKeyId]);
+        App::db()->execute('UPDATE api_keys SET last_used_at = UTC_TIMESTAMP() WHERE id = ?', [$apiKeyId]);
         App::redis()->set($cacheKey, '1', self::LAST_USED_UPDATE_TTL_SECONDS);
     }
 
@@ -807,6 +819,58 @@ final class ApiKeyService
             if (isset($row['key_hash'])) {
                 App::redis()->delete($this->cacheKey((string) $row['key_hash']));
             }
+        }
+        $this->releaseRemovedUserBindings($userId);
+    }
+
+    /**
+     * BIZ-015: a deleted key keeps no quota bindings, and webhook deliveries
+     * still waiting for it are cancelled (BIZ-019). Best effort: the key is
+     * already deleted when this runs, so a failure here must not undo it.
+     *
+     * @param list<int> $ids
+     */
+    public function releaseDeletedKeyResources(array $ids): int
+    {
+        $ids = array_values(array_filter(array_map('intval', $ids), static fn (int $id): bool => $id > 0));
+        if ($ids === []) {
+            return 0;
+        }
+        $removed = 0;
+        $placeholders = implode(', ', array_fill(0, count($ids), '?'));
+        try {
+            $removed = App::db()->execute("DELETE FROM quota_bindings WHERE target_type = 'api_key' AND target_id IN ({$placeholders})", $ids);
+        } catch (\Throwable) {
+        }
+        foreach ($ids as $id) {
+            try {
+                (new WebhookService())->cancelDeliveriesForApiKey($id, 'api_key_deleted');
+            } catch (\Throwable) {
+            }
+        }
+
+        return $removed;
+    }
+
+    /**
+     * BIZ-015: a user who left (status deleted / departed) keeps no quota
+     * bindings, and neither do their deleted keys. A merely *disabled* user
+     * keeps them: dropping the limits there would make the user unlimited
+     * the moment an administrator re-enables the account.
+     */
+    public function releaseRemovedUserBindings(int $userId): int
+    {
+        try {
+            $user = App::db()->first('SELECT status FROM users WHERE id = ?', [$userId]);
+            if ($user === null || !in_array((string) ($user['status'] ?? ''), ['deleted', 'departed'], true)) {
+                return 0;
+            }
+            $removed = App::db()->execute("DELETE FROM quota_bindings WHERE target_type = 'user' AND target_id = ?", [$userId]);
+            $deletedKeys = array_map(static fn (array $row): int => (int) $row['id'], App::db()->select("SELECT id FROM api_keys WHERE user_id = ? AND status = 'deleted'", [$userId]));
+
+            return $removed + $this->releaseDeletedKeyResources($deletedKeys);
+        } catch (\Throwable) {
+            return 0;
         }
     }
 

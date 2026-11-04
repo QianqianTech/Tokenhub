@@ -1,35 +1,66 @@
-﻿async function api(path, options = {}) {
-  let response;
+﻿import { createPoller } from "./poller.js";
+
+const SCREEN_REQUEST_TIMEOUT_MS = 8000;
+const inflightControllers = new Set();
+
+// Every request has a deadline (AbortController) so a slow backend cannot pile up
+// requests from a screen that keeps polling.
+async function api(path, options = {}) {
+  const { timeoutMs = SCREEN_REQUEST_TIMEOUT_MS, ...fetchOptions } = options;
+  const controller = new AbortController();
+  inflightControllers.add(controller);
+  let timedOut = false;
+  const timer = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, timeoutMs);
   try {
-    response = await fetch(path, {
-      credentials: "same-origin",
-      ...options,
-      headers: {
-        "Accept": "application/json",
-        ...(options.body ? { "Content-Type": "application/json" } : {}),
-        ...(options.headers || {})
-      }
-    });
-  } catch {
-    const error = new Error("无法连接大屏服务，请检查网络后重试");
-    error.code = "SCREEN_NETWORK_ERROR";
-    error.status = 0;
-    throw error;
+    let response;
+    try {
+      response = await fetch(path, {
+        credentials: "same-origin",
+        ...fetchOptions,
+        signal: controller.signal,
+        headers: {
+          "Accept": "application/json",
+          ...(fetchOptions.body ? { "Content-Type": "application/json" } : {}),
+          ...(fetchOptions.headers || {})
+        }
+      });
+    } catch {
+      const error = new Error(timedOut ? "大屏服务响应超时，请稍后重试" : "无法连接大屏服务，请检查网络后重试");
+      error.code = timedOut ? "SCREEN_TIMEOUT" : (controller.signal.aborted ? "SCREEN_ABORTED" : "SCREEN_NETWORK_ERROR");
+      error.status = 0;
+      throw error;
+    }
+    const payload = await response.json().catch(() => ({ ok: false, error: { code: timedOut ? "SCREEN_TIMEOUT" : "BAD_RESPONSE", message: "服务返回格式异常" } }));
+    if (!response.ok || payload.ok === false) {
+      const error = new Error(payload.error?.message || "大屏请求失败");
+      error.code = payload.error?.code || payload.code || (response.ok ? "BAD_RESPONSE" : "SCREEN_REQUEST_FAILED");
+      error.status = response.status;
+      error.retryAfter = Number(response.headers.get("Retry-After") || 0);
+      throw error;
+    }
+    return payload.data;
+  } finally {
+    clearTimeout(timer);
+    inflightControllers.delete(controller);
   }
-  const payload = await response.json().catch(() => ({ ok: false, error: { code: "BAD_RESPONSE", message: "服务返回格式异常" } }));
-  if (!response.ok || payload.ok === false) {
-    const error = new Error(payload.error?.message || "大屏请求失败");
-    error.code = payload.error?.code || payload.code || (response.ok ? "BAD_RESPONSE" : "SCREEN_REQUEST_FAILED");
-    error.status = response.status;
-    throw error;
+}
+
+function abortInflightRequests() {
+  for (const controller of [...inflightControllers]) {
+    controller.abort();
   }
-  return payload.data;
+  inflightControllers.clear();
 }
 
 function screenErrorMessage(error, fallback = "大屏请求失败，请稍后重试") {
   const messages = {
     BAD_RESPONSE: "服务返回格式异常",
     SCREEN_NETWORK_ERROR: "无法连接大屏服务，请检查网络后重试",
+    SCREEN_TIMEOUT: "大屏服务响应超时，请稍后重试",
+    RATE_LIMITED: "尝试过于频繁，请稍后再试",
     SCREEN_REQUEST_FAILED: "大屏服务暂时不可用，请稍后重试",
     SCREEN_LINK_DISABLED: "大屏链接已停用",
     SCREEN_LINK_EXPIRED: "大屏链接已过期",
@@ -45,16 +76,22 @@ function screenErrorMessage(error, fallback = "大屏请求失败，请稍后重
 const $ = (id) => document.getElementById(id);
 const setText = (node, value) => { node.textContent = value == null ? "" : String(value); };
 const SCREEN_BRAND_DEFAULTS = {
-  product_name: "白云区智慧政务",
-  screen_title: "白云区智慧政务 运营大屏",
+  product_name: "TokenHub",
+  screen_title: "TokenHub 运营大屏",
   logo_url: "",
   favicon_url: "/screen/assets/brand/favicon.ico"
 };
 const SCREEN_REFRESH_INTERVAL_MS = 10000;
 const SCREEN_VIEW_ORDER = ["overview", "operations"];
 const SCREEN_VIEW_KEYS = new Set(SCREEN_VIEW_ORDER);
-let refreshTimer = null;
+let poller = null;
 let clockTimer = null;
+let refreshing = null;
+let reloginTried = false;
+// Business time zone reported by the backend (BUSINESS_TIMEZONE): "today", the trend
+// day boundaries, the clock and "updated at" all use it, not the browser's zone.
+let businessTimeZone = "";
+const zonedFormatters = new Map();
 let currentScreenView = "overview";
 const metricValueState = new Map();
 const metricAnimationFrames = new Map();
@@ -201,6 +238,49 @@ function formatTime(value) {
   return text.length > 16 ? text.slice(5, 16) : text;
 }
 
+function setBusinessTimeZone(zone) {
+  const name = String(zone || "").trim();
+  if (!name || name === businessTimeZone) return;
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: name });
+    businessTimeZone = name;
+  } catch {
+    businessTimeZone = "";
+  }
+}
+
+function zonedFormatter() {
+  const key = businessTimeZone || "local";
+  if (!zonedFormatters.has(key)) {
+    zonedFormatters.set(key, new Intl.DateTimeFormat("en-CA", {
+      ...(businessTimeZone ? { timeZone: businessTimeZone } : {}),
+      year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23"
+    }));
+  }
+  return zonedFormatters.get(key);
+}
+
+// Calendar parts of a moment in the business time zone.
+function zonedParts(date) {
+  const parts = {};
+  for (const part of zonedFormatter().formatToParts(date)) {
+    parts[part.type] = part.value;
+  }
+  const hour = Number(parts.hour) % 24;
+  return {
+    day: `${parts.year}-${parts.month}-${parts.day}`,
+    hour,
+    label: `${parts.month}-${parts.day} ${String(hour).padStart(2, "0")}:${parts.minute}`,
+    time: `${String(hour).padStart(2, "0")}:${parts.minute}:${parts.second}`
+  };
+}
+
+// Aggregate buckets are UTC ("Y-m-d H:i:s"); show them in the business time zone.
+function formatBucketTime(value) {
+  const date = bucketDate(value);
+  return date ? zonedParts(date).label : formatTime(value);
+}
+
 function animateMetricValue(node, key, nextValue, formatter) {
   const end = numericValue(nextValue);
   const previous = metricValueState.has(key) ? metricValueState.get(key) : end;
@@ -253,7 +333,34 @@ function setStatus(message, tone = "") {
 function updateClock() {
   const clock = $("screen-clock");
   if (!clock) return;
-  setText(clock, new Date().toLocaleTimeString("zh-CN", { hour12: false }));
+  setText(clock, zonedParts(new Date()).time);
+}
+
+function renderUpdatedAt(value) {
+  const node = $("screen-updated");
+  if (!node) return;
+  const date = value ? new Date(value) : null;
+  setText(node, date && Number.isFinite(date.getTime()) ? `数据更新于 ${zonedParts(date).time}` : "");
+}
+
+const HEALTH_REASON_LABELS = {
+  worker_heartbeat_missing: "队列 worker 无心跳",
+  queue_backlog: "队列积压",
+  circuit_open: "有渠道熔断",
+  error_rate_high: "错误率偏高"
+};
+
+function renderHealth(live) {
+  const node = $("screen-health");
+  if (!node) return;
+  const level = live?.health?.level || "unknown";
+  const reasons = Array.isArray(live?.health?.reasons) ? live.health.reasons : [];
+  node.className = `screen-health is-${level}`;
+  const labels = { ok: "运行正常", warn: "需要关注", critical: "服务异常", unknown: "状态未知" };
+  const detail = reasons.map((reason) => HEALTH_REASON_LABELS[reason] || reason).join("、");
+  const pending = live?.queue?.pending;
+  node.title = [labels[level] || labels.unknown, detail, pending != null ? `队列待处理 ${formatNumber(pending)}` : ""].filter(Boolean).join(" · ");
+  setText(node, labels[level] || labels.unknown);
 }
 
 function createText(tag, className, value) {
@@ -477,26 +584,28 @@ function bucketDate(value) {
   return Number.isFinite(date.getTime()) ? date : null;
 }
 
-// Hourly calls today against yesterday (local time), as two lines.
+// Hourly calls today against yesterday, as two lines. Day boundaries follow the
+// business time zone reported by the backend, not the browser's zone.
 function renderOverviewTrend(rows) {
   const host = $("overview-trend");
   if (!host) return;
   const today = new Array(24).fill(null);
   const yesterday = new Array(24).fill(0);
   const now = new Date();
-  const startToday = new Date(now);
-  startToday.setHours(0, 0, 0, 0);
-  const startYesterday = new Date(startToday.getTime() - 86400000);
+  const nowParts = zonedParts(now);
+  const todayKey = nowParts.day;
+  const yesterdayKey = zonedParts(new Date(now.getTime() - 86400000)).day;
   let any = false;
   for (const row of Array.isArray(rows) ? rows : []) {
     const date = bucketDate(row.bucket_at);
     if (!date) continue;
-    const hour = date.getHours();
+    const parts = zonedParts(date);
+    const hour = parts.hour;
     const value = numericValue(row.request_count);
-    if (date >= startToday) {
+    if (parts.day === todayKey) {
       today[hour] = (today[hour] || 0) + value;
       any = true;
-    } else if (date >= startYesterday) {
+    } else if (parts.day === yesterdayKey) {
       yesterday[hour] += value;
       any = true;
     }
@@ -505,7 +614,7 @@ function renderOverviewTrend(rows) {
     renderEmpty(host, "暂无趋势数据");
     return;
   }
-  for (let hour = 0; hour <= now.getHours(); hour += 1) {
+  for (let hour = 0; hour <= nowParts.hour; hour += 1) {
     if (today[hour] === null) today[hour] = 0;
   }
   const max = Math.max(1, ...yesterday, ...today.filter((value) => value !== null));
@@ -520,7 +629,7 @@ function renderOverviewTrend(rows) {
   svg.setAttribute("class", "trend-svg");
   svg.setAttribute("role", "img");
   const todayTotal = today.reduce((sum, value) => sum + (value || 0), 0);
-  const yesterdaySame = yesterday.slice(0, now.getHours() + 1).reduce((sum, value) => sum + value, 0);
+  const yesterdaySame = yesterday.slice(0, nowParts.hour + 1).reduce((sum, value) => sum + value, 0);
   svg.setAttribute("aria-label", `今日累计调用 ${formatNumber(todayTotal)} 次，昨日同时段 ${formatNumber(yesterdaySame)} 次`);
   for (let step = 0; step <= 4; step += 1) {
     const line = document.createElementNS(ns, "path");
@@ -618,7 +727,7 @@ function renderTrendBars(rows) {
   host.replaceChildren(...data.map((row) => {
     const item = document.createElement("div");
     item.className = "trend-row";
-    const label = createText("span", "trend-label", formatTime(row.bucket_at));
+    const label = createText("span", "trend-label", formatBucketTime(row.bucket_at));
     const track = document.createElement("span");
     track.className = "trend-track";
     const fill = document.createElement("span");
@@ -682,7 +791,7 @@ function renderSecurityPanel(data) {
 function renderPerformancePanel(data) {
   const host = $("performance");
   const source = data?.data || data || {};
-  const buckets = Array.isArray(source.buckets) ? source.buckets.slice(-6) : [];
+  const buckets = Array.isArray(source.buckets) ? [...source.buckets].sort((a, b) => String(a.bucket_at).localeCompare(String(b.bucket_at))).slice(-6) : [];
   if (buckets.length === 0) {
     renderEmpty(host, "暂无性能数据");
     return;
@@ -691,7 +800,7 @@ function renderPerformancePanel(data) {
     const card = document.createElement("article");
     card.className = "performance-card";
     card.append(
-      createText("span", "performance-time", formatTime(row.bucket_at)),
+      createText("span", "performance-time", formatBucketTime(row.bucket_at)),
       createText("strong", "performance-main", formatLatency(row.avg_latency_ms)),
       createText("small", "performance-meta", `P95 ${formatLatency(row.p95_latency_ms)} · P99 ${formatLatency(row.p99_latency_ms)}`),
       createText("small", "performance-meta", `${formatNumber(row.request_count)} 请求`)
@@ -700,26 +809,99 @@ function renderPerformancePanel(data) {
   }));
 }
 
+function renderLivePanel(live) {
+  const host = $("live-metrics");
+  if (!host) return;
+  if (!live || live.blocked) {
+    renderEmpty(host, "暂无实时数据");
+    return;
+  }
+  const circuits = live.circuits || {};
+  const ttft = live.ttft || {};
+  const cards = [
+    ["QPS", Number(live.qps || 0).toFixed(2), `近 ${live.window_minutes || 5} 分钟 ${formatNumber(live.request_count)} 次`],
+    ["TPS", formatNumber(Math.round(Number(live.tps || 0))), `Token / 秒`],
+    ["错误率", formatPercent(live.error_rate), `${formatNumber(live.failed_count)} 次失败`],
+    ["延迟 P95", formatSeconds(live.p95_latency_ms), `P99 ${formatSeconds(live.p99_latency_ms)}`],
+    ["首 Token", ttft.available ? formatSeconds(ttft.avg_ms) : "--", ttft.available ? "平均首 Token 延迟" : "待网关记录"],
+    ["未处理告警", live.open_alerts == null ? "--" : formatNumber(live.open_alerts), live.open_alerts == null ? "仅全局大屏显示" : "状态为待处理"],
+    ["熔断", formatNumber(circuits.open || 0), `半开 ${formatNumber(circuits.half_open || 0)} · 正常 ${formatNumber(circuits.closed || 0)}`]
+  ];
+  host.replaceChildren(...cards.map(([label, value, meta]) => {
+    const card = document.createElement("article");
+    card.className = "live-metric-card";
+    card.append(createText("span", "metric-label", label), createText("strong", "", value), createText("small", "performance-meta", meta));
+    return card;
+  }));
+  const providers = $("provider-health");
+  if (!providers) return;
+  const rows = Array.isArray(live.providers) ? live.providers.slice(0, 6) : [];
+  if (rows.length === 0) {
+    renderEmpty(providers, "近 5 分钟暂无调用");
+    return;
+  }
+  providers.replaceChildren(...rows.map((row, index) => {
+    const item = document.createElement("div");
+    item.className = `rank-row${Number(row.error_rate || 0) >= 20 ? " is-warn" : ""}`;
+    item.append(
+      createText("span", "rank-index", String(index + 1).padStart(2, "0")),
+      createText("strong", "rank-name", row.name || (row.id ? `厂商 #${row.id}` : "未知厂商")),
+      createText("small", "rank-meta", `QPS ${Number(row.qps || 0).toFixed(2)} · 错误率 ${formatPercent(row.error_rate)} · 平均 ${formatSeconds(row.avg_latency_ms)}`),
+      createText("span", "rank-value", formatNumber(row.request_count))
+    );
+    return item;
+  }));
+}
+
+function isAuthError(error) {
+  return error?.status === 401 || error?.status === 403 || ["SCREEN_LINK_DISABLED", "SCREEN_LINK_EXPIRED", "SCREEN_IP_FORBIDDEN", "SCREEN_UNAUTHENTICATED"].includes(error?.code);
+}
+
+const SCREEN_METRICS = ["overview", "trends", "rankings", "security", "performance", "live"];
+
 async function render() {
   setStatus("刷新中", "busy");
-  const [overview, trends, rankings, security, performance] = await Promise.all([
-    api("/screen-api/dashboard/overview"),
-    api("/screen-api/dashboard/trends"),
-    api("/screen-api/dashboard/rankings"),
-    api("/screen-api/dashboard/security"),
-    api("/screen-api/dashboard/performance")
-  ]);
-  renderOverview(overview);
-  const trendRows = trends.data || trends || [];
-  const rankingRows = rankings.data || rankings || [];
-  renderTrendBars(trendRows);
-  renderOverviewTrend(trendRows);
-  renderRankingList(rankingRows);
-  renderOverviewRankings(rankingRows);
-  renderSecurityPanel(security);
-  renderOverviewSecurity(security);
-  renderPerformancePanel(performance);
-  renderOverviewPerformance(performance, (overview?.data || overview || {}).totals);
+  const results = await Promise.allSettled(SCREEN_METRICS.map((metric) => api(`/screen-api/dashboard/${metric}`)));
+  const failure = results.find((result) => result.status === "rejected");
+  const authFailure = results.find((result) => result.status === "rejected" && isAuthError(result.reason));
+  if (authFailure) {
+    throw authFailure.reason;
+  }
+  const value = (index) => (results[index].status === "fulfilled" ? results[index].value : null);
+  const [overview, trends, rankings, security, performance, live] = SCREEN_METRICS.map((_, index) => value(index));
+  setBusinessTimeZone(overview?.business_timezone || overview?.data?.business_timezone || trends?.business_timezone || live?.business_timezone);
+  if (overview) {
+    renderOverview(overview);
+    renderUpdatedAt((overview.data || overview).generated_at);
+  }
+  if (trends) {
+    const trendRows = trends.data || trends || [];
+    renderTrendBars(trendRows);
+    renderOverviewTrend(trendRows);
+  }
+  if (rankings) {
+    const rankingRows = rankings.data || rankings || [];
+    renderRankingList(rankingRows);
+    renderOverviewRankings(rankingRows);
+  }
+  if (security) {
+    renderSecurityPanel(security);
+    renderOverviewSecurity(security);
+  }
+  if (performance) {
+    renderPerformancePanel(performance);
+    renderOverviewPerformance(performance, (overview?.data || overview || {}).totals);
+  }
+  if (live) {
+    const liveData = live.blocked ? null : (live.data || live);
+    renderLivePanel(liveData);
+    renderHealth(liveData);
+  }
+  updateClock();
+  if (failure) {
+    setStatus(failure.reason?.code === "SCREEN_TIMEOUT" ? "部分数据超时" : "部分数据刷新失败", "error");
+    throw failure.reason;
+  }
   setStatus("已更新", "ready");
 }
 
@@ -731,10 +913,21 @@ async function showScreen() {
   if (clockTimer === null) {
     clockTimer = setInterval(updateClock, 1000);
   }
-  await refreshScreen();
-  if (refreshTimer === null) {
-    refreshTimer = setInterval(refreshScreen, SCREEN_REFRESH_INTERVAL_MS);
+  // Visibility-aware polling (pauses in background tabs, refreshes when the screen or
+  // the network comes back, backs off after failures); never two refreshes at once.
+  if (poller === null) {
+    poller = createPoller(refreshScreen, { interval: SCREEN_REFRESH_INTERVAL_MS, maxInterval: SCREEN_REFRESH_INTERVAL_MS * 8 });
+  } else {
+    await poller.refresh();
   }
+}
+
+function stopPolling() {
+  if (poller !== null) {
+    poller.stop();
+    poller = null;
+  }
+  abortInflightRequests();
 }
 
 function updateFullscreenButton() {
@@ -759,10 +952,7 @@ async function toggleFullscreen() {
 }
 
 function showLogin(message = "") {
-  if (refreshTimer !== null) {
-    clearInterval(refreshTimer);
-    refreshTimer = null;
-  }
+  stopPolling();
   $("screen").hidden = true;
   $("login").hidden = false;
   $("credential-fields").hidden = shareCodeFromPath() !== "";
@@ -801,15 +991,42 @@ async function enterByCredentials() {
   await showScreen();
 }
 
-async function refreshScreen() {
+// In-flight guard: a refresh never starts while the previous one is still running.
+function refreshScreen() {
+  if (refreshing) {
+    return refreshing;
+  }
+  refreshing = refreshOnce().finally(() => {
+    refreshing = null;
+  });
+  return refreshing;
+}
+
+async function refreshOnce() {
   try {
     await render();
+    reloginTried = false;
   } catch (error) {
-    if (error.status === 401 || error.status === 403 || ["SCREEN_LINK_DISABLED", "SCREEN_IP_FORBIDDEN", "SCREEN_UNAUTHENTICATED"].includes(error.code)) {
+    if (error?.code === "SCREEN_ABORTED") {
+      return;
+    }
+    // An expired session on a share-code screen signs in again once, silently.
+    if (error?.status === 401 && shareCodeFromPath() && !reloginTried) {
+      reloginTried = true;
+      try {
+        await api("/screen-api/auth/share-login", { method: "POST", body: JSON.stringify({ share_code: shareCodeFromPath() }) });
+        await render();
+        reloginTried = false;
+        return;
+      } catch (retryError) {
+        error = retryError;
+      }
+    }
+    if (isAuthError(error)) {
       showLogin(screenErrorMessage(error, "大屏会话已失效，请重新登录"));
       return;
     }
-    setStatus("刷新失败", "error");
+    setStatus(error?.code === "SCREEN_TIMEOUT" ? "刷新超时" : "刷新失败", "error");
     throw error;
   }
 }

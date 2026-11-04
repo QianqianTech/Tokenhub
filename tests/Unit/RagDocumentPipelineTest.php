@@ -122,4 +122,19 @@ assert_same(60, (int) $pdo->query("SELECT superseded_by_document_id FROM rag_doc
 assert_same(3, (int) $pdo->query('SELECT version FROM rag_documents WHERE id = 60')->fetchColumn(), 'Version 3.');
 assert_same(['uploads' => 0, 'superseded' => 0], $versions->publishPending(), 'Idempotent.');
 
+// The admin workbench defaults to the "text" table template; a document picked with that
+// default (or sent by an older client) is still parsed as a document, not as a spreadsheet.
+$md = $uploads->upload($apiKey, 'kb_1', [
+    'filename' => '差旅制度.md',
+    'content_type' => 'text',
+    'content_base64' => base64_encode("# 差旅制度\n\n## 第一章 总则\n\n适用于全体员工。\n"),
+    'processing' => ['target_dataset_id' => 'ds_1', 'template' => 'text'],
+]);
+assert_same('document', $pdo->query("SELECT content_type FROM rag_uploads WHERE upload_id = '{$md['upload_id']}'")->fetchColumn(), 'A document uploaded with the text template is imported as a document.');
+rag_expect_abort(static fn () => $uploads->upload($apiKey, 'kb_1', [
+    'filename' => 'table.xlsx',
+    'content_base64' => base64_encode('%PDF-1.4 this is not a workbook'),
+    'processing' => ['target_dataset_id' => 'ds_1', 'template' => 'text'],
+]), 'RAG_EXCEL_UNREADABLE', 'A file that is not a readable spreadsheet is a 422, not a 500.');
+
 echo "PASS\n";

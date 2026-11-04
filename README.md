@@ -2,7 +2,7 @@
 
 TokenHub 是企业内部的大模型服务治理平台，提供统一的 OpenAI/Anthropic 兼容网关、API Key 与额度、成本统计、知识库（RAG）、智能体管理 API、MCP 接入和运维大屏。TokenHub 不内置 WAF，需要时在其前面部署专业 WAF 或云 WAF。
 
-技术栈：PHP 8.2+（FPM）、Caddy、MySQL 8.4+/9.x、Redis、Qdrant、Python RAG worker。
+技术栈：PHP（FPM，推荐 8.4，支持 8.2～8.5；CI 在 8.2 / 8.3 / 8.4 上测试）、Caddy、MySQL 8.4+/9.x、Redis、Qdrant、Python RAG worker、Go realtime-gateway。
 
 ## 安装
 
@@ -52,6 +52,7 @@ docker compose exec -T php php bin/run-tests.php
 - Docker 构建、离线包与镜像仓库：`docs/deployment/docker.md`；客户侧说明：`deploy/docker/README.md`
 - 源码安装：`docs/deployment/linux-source.md`
 - 备份与恢复：`docs/deployment/backup-restore.md`
+- 版本变更：`CHANGELOG.md`；发布流水线：`docs/deployment/docker.md`「发布流水线」
 - 使用与管理指南：`docs/tokenhub-usage-management-guide.md`
 - 对外 API：`docs/external-api-complete.md`；OpenAPI 规范：`public/openapi.json`（线上为 `GET /v1/openapi.json`）
 - 智能体管理 API：`docs/agent-management-api.md`

@@ -1206,6 +1206,16 @@
           "hit_count": {
             "type": "integer"
           },
+          "vector_status": {
+            "type": "string",
+            "enum": [
+              "ok",
+              "degraded",
+              "error",
+              "none"
+            ],
+            "description": "向量检索状态：ok 正常；degraded 部分向量检索失败、对应部分只用了关键词结果；error 全部失败、只用了关键词结果；none 没有可用的向量配置"
+          },
           "sources": {
             "type": "array",
             "items": {
@@ -5824,6 +5834,83 @@
             "description": "VIDEO_NOT_READY"
           }
         }
+      }
+    },
+    "/v1/systemone": {
+      "post": {
+        "tags": [
+          "Gateway"
+        ],
+        "summary": "Structured decision model request",
+        "security": [
+          {
+            "BearerApiKey": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "model",
+                  "state",
+                  "questions"
+                ],
+                "properties": {
+                  "model": {
+                    "type": "string"
+                  },
+                  "state": {
+                    "type": "object",
+                    "additionalProperties": true
+                  },
+                  "questions": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "object"
+                    }
+                  }
+                },
+                "additionalProperties": true
+              },
+              "examples": {
+                "default": {
+                  "value": {
+                    "model": "decision-model-preview",
+                    "state": {
+                      "value": 2
+                    },
+                    "questions": {
+                      "check": {
+                        "type": "choice",
+                        "instructions": "Is state.value equal to 2?",
+                        "criteria": {
+                          "yes": "value is 2",
+                          "no": "value is not 2"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Structured answers and upstream measured usage"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "description": "Forward model, state and questions to the provider systemone endpoint. Returns structured answers and measured input token usage; requires model permission and normal model quotas and rate limits.",
+        "operationId": "createStructuredDecision"
       }
     }
   },

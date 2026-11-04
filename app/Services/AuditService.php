@@ -6,6 +6,7 @@ namespace TokenHub\Services;
 
 use TokenHub\Support\App;
 use TokenHub\Support\ConfigVersion;
+use TokenHub\Support\Request;
 
 final class AuditService
 {
@@ -13,16 +14,22 @@ final class AuditService
     {
         $context = App::context();
         $actor = $context->adminUser();
+        // Agent-management and other API-key initiated writes (SEC-110).
+        $apiKeyId = (int) ($context->apiKey()['id'] ?? 0) ?: null;
         $values = [
             'actor_user_id' => $actor['id'] ?? null,
-            'actor_type' => $actor ? 'admin' : 'system',
+            'actor_type' => $actor ? 'admin' : ($apiKeyId !== null ? 'api_key' : 'system'),
+            'actor_api_key_id' => $apiKeyId,
             'action' => $action,
             'target_type' => $targetType,
             'target_id' => $targetId === null ? null : (string) $targetId,
             'request_id' => $context->requestId(),
             'trace_id' => $context->traceId(),
-            'client_ip' => $_SERVER['REMOTE_ADDR'] ?? null,
+            'client_ip' => self::clientIp(),
             'details' => json_encode(App::logger()->sanitize($details), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
+            // Console vs TokenHub APP, and which APP device (APP-009).
+            'channel' => $context->adminAuth()['channel'] ?? ($actor ? 'web' : null),
+            'device_id' => ($context->adminAuth()['device_id'] ?? null) ?: null,
         ];
         $columns = array_values(array_intersect(array_keys($values), $this->auditColumns()));
         if ($columns !== []) {
@@ -37,6 +44,20 @@ final class AuditService
             // not after cache TTLs expire (see ConfigVersion).
             ConfigVersion::bump('global', $action);
         }
+    }
+
+    /**
+     * The real client address: X-Forwarded-For is honoured only from trusted
+     * proxies (TrustedProxyService), so a client cannot forge its audit IP.
+     */
+    public static function clientIp(): ?string
+    {
+        if (!isset($_SERVER['REMOTE_ADDR']) || (string) $_SERVER['REMOTE_ADDR'] === '') {
+            return null;
+        }
+        $request = new Request('GET', '/', $_SERVER, [], [], '', App::context());
+
+        return (new TrustedProxyService())->clientIp($request);
     }
 
     /**

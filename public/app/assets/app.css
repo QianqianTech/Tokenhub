@@ -1,0 +1,231 @@
+/* TokenHub APP shell. Loaded after the console stylesheets; colours come from
+   tokens.css only. Phones: top bar + bottom tab bar. Wide screens (>= 1024px):
+   the tab bar becomes a left rail. */
+
+html, body { height: 100%; }
+body { background: var(--app-bg); overscroll-behavior-y: none; -webkit-tap-highlight-color: transparent; }
+
+.app-shell.tha-app {
+  display: block;
+  min-height: 100vh;
+  min-height: 100dvh;
+  --tha-topbar: 52px;
+  --tha-tabbar: 58px;
+  padding-top: calc(var(--tha-topbar) + env(safe-area-inset-top));
+  padding-bottom: calc(var(--tha-tabbar) + env(safe-area-inset-bottom));
+}
+.app-shell.tha-app[data-state="welcome"],
+.app-shell.tha-app[data-state="booting"] { padding-bottom: env(safe-area-inset-bottom); }
+.app-shell.tha-app.is-locked .tha-content,
+.app-shell.tha-app.is-locked .tha-tabbar { filter: blur(14px); pointer-events: none; }
+
+/* ---------- Top bar ---------- */
+.tha-topbar {
+  position: fixed; inset: 0 0 auto 0; z-index: 30;
+  height: calc(var(--tha-topbar) + env(safe-area-inset-top));
+  padding: env(safe-area-inset-top) max(16px, env(safe-area-inset-right)) 0 max(16px, env(safe-area-inset-left));
+  display: flex; align-items: center; gap: 10px;
+  background: var(--sidebar-bg); color: var(--sidebar-text);
+  border-bottom: 1px solid var(--sidebar-rule);
+}
+.tha-brand { display: flex; }
+.tha-brand img { width: 28px; height: 28px; border-radius: 7px; }
+.app-shell.tha-app .tha-title { margin: 0; flex: 1 1 auto; min-width: 0; font-size: 16px; font-weight: 600; color: var(--sidebar-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tha-net { font-size: 12px; padding: 2px 8px; border-radius: 999px; background: var(--danger-soft); color: var(--danger); }
+
+/* ---------- Banners and content ---------- */
+.tha-banners { display: flex; flex-direction: column; }
+.tha-banner { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 16px; font-size: 13px; background: var(--surface-soft); border-bottom: 1px solid var(--border); }
+.tha-banner--warning { background: var(--warning-bg); color: var(--warning-text); }
+.app-shell.tha-app .global-error:empty { display: none; }
+.app-shell.tha-app .tha-content {
+  display: block;
+  padding: 14px max(14px, env(safe-area-inset-right)) 24px max(14px, env(safe-area-inset-left));
+  max-width: 1280px;
+  margin: 0 auto;
+  min-width: 0;
+}
+.tha-splash { min-height: 60vh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; color: var(--muted); }
+.tha-splash img { border-radius: 16px; }
+.tha-updated { margin: 0 0 10px; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.tha-muted { color: var(--muted); font-size: 13px; line-height: 1.6; margin: 6px 0 0; }
+.tha-warning { margin: 10px 0 0; padding: 8px 10px; border-radius: 8px; background: var(--warning-bg); color: var(--warning-text); font-size: 13px; line-height: 1.5; }
+.tha-error { color: var(--danger); font-size: 13px; margin: 6px 0; min-height: 1em; }
+.tha-link { color: var(--primary); font-size: 13px; text-decoration: none; font-weight: 600; }
+
+/* ---------- Cards ---------- */
+.tha-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 14px; margin-bottom: 12px; }
+.tha-card-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
+.tha-card-header h2 { margin: 0; font-size: 15px; font-weight: 600; color: var(--text-strong); }
+.tha-overview, .tha-me, .tha-manage, .tha-ca { display: grid; gap: 0; }
+
+.tha-kpis { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.tha-kpi { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border-radius: 10px; background: var(--surface-soft); min-width: 0; }
+.tha-kpi-label { font-size: 12px; color: var(--muted); }
+.tha-kpi-value { font-size: 20px; font-weight: 700; color: var(--text-strong); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.tha-kpi-hint { font-size: 12px; color: var(--muted); }
+.tha-kpi--danger .tha-kpi-value { color: var(--danger); }
+
+.tha-health { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 12px; }
+.tha-health-item { display: flex; align-items: center; gap: 8px; font-size: 13px; min-width: 0; }
+.tha-health-state { margin-left: auto; font-size: 12px; color: var(--muted); }
+.tha-dot { width: 8px; height: 8px; border-radius: 50%; flex: 0 0 8px; background: var(--success, var(--primary)); }
+.tha-health-item.is-bad .tha-dot { background: var(--danger); }
+.tha-health-item.is-bad .tha-health-state { color: var(--danger); font-weight: 600; }
+.tha-queues { display: grid; grid-template-columns: repeat(2, auto 1fr); gap: 4px 10px; margin: 12px 0 0; font-size: 13px; }
+.tha-queues dt { color: var(--muted); }
+.tha-queues dd { margin: 0; font-variant-numeric: tabular-nums; }
+.tha-queues dd.is-bad, .tha-alert-count.is-bad { color: var(--danger); }
+.tha-alert-count { display: block; font-size: 18px; }
+.tha-alert-count.is-ok { color: var(--muted); font-weight: 600; font-size: 14px; }
+.tha-alert-line { margin: 6px 0 0; font-size: 13px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ---------- Lists, rows, switches ---------- */
+.tha-menu { list-style: none; margin: 0; padding: 0; }
+.tha-menu-item { display: flex; align-items: center; min-height: 44px; padding: 0 4px; border-top: 1px solid var(--border-soft); color: var(--text); text-decoration: none; font-size: 15px; }
+.tha-menu li:first-child .tha-menu-item { border-top: 0; }
+.tha-menu-item::after { content: "›"; margin-left: auto; color: var(--muted); font-size: 18px; }
+.tha-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; padding: 6px 0; border-top: 1px solid var(--border-soft); }
+.tha-card > .tha-row:first-of-type, .tha-devices > .tha-row:first-child { border-top: 0; }
+.tha-row-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.tha-row-label { font-size: 14px; color: var(--text-strong); }
+.tha-row-value { font-size: 12.5px; color: var(--muted); line-height: 1.5; overflow-wrap: anywhere; }
+.tha-switch { position: relative; display: inline-flex; flex: 0 0 auto; }
+.tha-switch input { position: absolute; opacity: 0; width: 100%; height: 100%; margin: 0; cursor: pointer; }
+.tha-switch span { width: 44px; height: 26px; border-radius: 13px; background: var(--border); transition: background .15s; position: relative; }
+.tha-switch span::after { content: ""; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: var(--surface); transition: transform .15s; }
+.tha-switch input:checked + span { background: var(--primary); }
+.tha-switch input:checked + span::after { transform: translateX(18px); }
+.tha-switch input:disabled + span { opacity: .45; }
+.tha-switch input:focus-visible + span { outline: 2px solid var(--primary); outline-offset: 2px; }
+.tha-version { text-align: center; font-size: 12px; color: var(--muted); }
+.tha-steps { margin: 0; padding-left: 20px; display: grid; gap: 6px; font-size: 14px; line-height: 1.55; }
+
+/* ---------- Welcome / sign-in ---------- */
+.tha-welcome { max-width: 460px; margin: 4vh auto 0; display: flex; flex-direction: column; gap: 14px; }
+.tha-welcome-logo { border-radius: 16px; align-self: center; }
+.tha-welcome h2 { margin: 0; text-align: center; font-size: 20px; }
+.tha-welcome-form { display: flex; flex-direction: column; gap: 8px; }
+.tha-link-input { width: 100%; box-sizing: border-box; font-size: 14px; padding: 10px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface); color: var(--text); resize: vertical; }
+.tha-scanner:empty { display: none; }
+.tha-match-code { margin: 4px 0 0; text-align: center; font-size: 40px; font-weight: 700; letter-spacing: 0.35em; padding-left: 0.35em; font-variant-numeric: tabular-nums; color: var(--text); }
+.tha-pending .tha-muted { text-align: center; }
+.tha-scanner-video { width: 100%; border-radius: 12px; background: var(--sidebar-bg); aspect-ratio: 1; object-fit: cover; }
+.tha-ca-downloads { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.tha-ca-open { display: flex; align-items: center; gap: 12px; margin-top: 12px; }
+.tha-ca-qr { width: 120px; height: 120px; flex: 0 0 120px; background: var(--qr-light); border-radius: 8px; padding: 4px; }
+.tha-ca-qr svg { width: 100%; height: 100%; display: block; }
+
+/* ---------- PIN prompt ---------- */
+.tha-pin-form { display: flex; flex-direction: column; gap: 10px; }
+.tha-pin-intro { margin: 0; font-size: 14px; line-height: 1.6; }
+.tha-pin-input { font-size: 22px; letter-spacing: .3em; text-align: center; padding: 10px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface); color: var(--text); }
+.tha-pin-message { margin: 0; min-height: 1.2em; color: var(--danger); font-size: 13px; }
+
+/* ---------- Tab bar ---------- */
+.tha-tabbar {
+  position: fixed; inset: auto 0 0 0; z-index: 30;
+  height: calc(var(--tha-tabbar) + env(safe-area-inset-bottom));
+  padding: 0 env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  display: flex; background: var(--surface); border-top: 1px solid var(--border);
+}
+.tha-tabbar[hidden] { display: none; }
+.tha-tab { position: relative; flex: 1 1 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; color: var(--muted); text-decoration: none; font-size: 11px; min-width: 0; }
+.tha-tab svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.tha-tab.is-active { color: var(--primary); font-weight: 600; }
+.tha-tab-badge { position: absolute; top: 6px; left: calc(50% + 6px); min-width: 16px; height: 16px; padding: 0 4px; border-radius: 8px; background: var(--danger); color: var(--danger-text); font-size: 10px; line-height: 16px; text-align: center; font-weight: 700; }
+.tha-tab-badge[hidden] { display: none; }
+
+/* ---------- Console pages inside the APP ---------- */
+.tha-chips { display: flex; gap: 6px; overflow-x: auto; padding: 0 0 10px; margin: 0 0 4px; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+.tha-chips::-webkit-scrollbar { display: none; }
+.tha-chip { flex: 0 0 auto; padding: 6px 12px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface); color: var(--text); font-size: 13px; text-decoration: none; white-space: nowrap; }
+.tha-chip.is-active { background: var(--primary); border-color: var(--primary); color: var(--primary-ink, var(--brand-ink)); }
+.tha-app .tha-page { min-width: 0; }
+.tha-app .table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; max-width: 100%; }
+.tha-app .domain-page .page-header,
+.tha-app .domain-page .filter-bar,
+.tha-app .domain-page .toolbar { flex-wrap: wrap; }
+.tha-app .domain-page input,
+.tha-app .domain-page select,
+.tha-app .domain-page textarea { font-size: 16px; } /* no iOS zoom on focus */
+.tha-app :where(button, .button-link, a.tha-menu-item) { min-height: 40px; }
+
+@media (max-width: 720px) {
+  .tha-app .domain-page [class*="grid"],
+  .tha-app .modal-dialog form [class*="grid"] { grid-template-columns: minmax(0, 1fr) !important; }
+  .tha-app dialog.modal-dialog { width: 100vw; max-width: 100vw; height: 100%; max-height: 100dvh; margin: 0; border-radius: 0; padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom); }
+  .tha-app dialog.modal-dialog--sm { height: auto; margin: auto 0 0; border-radius: 16px 16px 0 0; }
+}
+
+@media (min-width: 640px) {
+  .tha-kpis { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+  .tha-health { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+/* ---------- Wide screens: left rail ---------- */
+@media (min-width: 1024px) {
+  .app-shell.tha-app { padding-bottom: 0; padding-left: 92px; }
+  .app-shell.tha-app[data-state="welcome"], .app-shell.tha-app[data-state="booting"] { padding-left: 0; }
+  .tha-tabbar {
+    inset: calc(var(--tha-topbar) + env(safe-area-inset-top)) auto 0 0;
+    width: 92px; height: auto; flex-direction: column; justify-content: flex-start;
+    padding: 12px 0; border-top: 0; border-right: 1px solid var(--border);
+  }
+  .tha-tab { flex: 0 0 64px; }
+  .tha-overview { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 12px; }
+  .tha-overview > .tha-card:nth-child(2) { grid-column: 1 / -1; order: -1; }
+  .tha-manage { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0 12px; align-items: start; }
+  .tha-me { max-width: 760px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tha-switch span, .tha-switch span::after { transition: none; }
+}
+
+/* Passkey */
+.tha-row-actions { display: flex; gap: 8px; flex: 0 0 auto; }
+.tha-passkey-button { width: 100%; }
+
+/* Push rules and device risk */
+.tha-push-rules[hidden] { display: none; }
+.tha-time-range { display: flex; align-items: center; gap: 6px; }
+.tha-time-range input { width: 7.5em; }
+.tha-risk { font-size: 12px; color: var(--warning-text); }
+
+/* ---------- Phone: console tables as cards (cards.js adds data-label) ---------- */
+@media (max-width: 720px) {
+  .tha-app .tha-page .table-scroll { overflow-x: visible; }
+  .tha-app .tha-page table.tha-cards,
+  .tha-app .tha-page table.tha-cards > tbody { display: block; width: 100%; border: 0; background: transparent; }
+  .tha-app .tha-page table.tha-cards > thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  .tha-app .tha-page table.tha-cards { table-layout: auto !important; min-width: 0 !important; }
+  .tha-app .tha-page table.tha-cards > colgroup { display: none; }
+  .tha-app .tha-page table.tha-cards > tbody > tr {
+    display: block; width: auto !important; margin: 0 0 10px; padding: 8px 12px;
+    border: 1px solid var(--border); border-radius: 12px; background: var(--surface);
+  }
+  .tha-app .tha-page table.tha-cards > tbody > tr > td {
+    display: flex; align-items: flex-start; justify-content: space-between; gap: 12px;
+    width: 100% !important; max-width: none !important; min-width: 0 !important; box-sizing: border-box; left: auto; right: auto;
+    padding: 6px 0; border: 0; border-top: 1px solid var(--border-soft);
+    text-align: right; white-space: normal; overflow-wrap: anywhere; position: static; min-width: 0;
+  }
+  .tha-app .tha-page table.tha-cards > tbody > tr > td:first-child { border-top: 0; }
+  .tha-app .tha-page table.tha-cards > tbody > tr > td::before {
+    content: attr(data-label); flex: 0 0 auto; max-width: 45%;
+    color: var(--muted); font-size: 12.5px; text-align: left;
+  }
+  .tha-app .tha-page table.tha-cards > tbody > tr > td[data-label=""]::before { content: none; }
+  .tha-app .tha-page table.tha-cards > tbody > tr > td.table-cell--actions { justify-content: flex-end; flex-wrap: wrap; }
+  .tha-app .tha-page table.tha-cards > tbody > tr > td.table-cell--select { justify-content: flex-start; }
+  .tha-app .tha-page table.tha-cards > tbody > tr > td.tha-card-wide { display: block; text-align: left; }
+  .tha-app .tha-page table.tha-cards > tbody > tr > td.tha-card-wide::before { content: none; }
+}
+
+/* Live updates indicator */
+.tha-live { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--sidebar-muted); }
+.tha-live[hidden] { display: none; }
+.tha-live span { width: 7px; height: 7px; border-radius: 50%; background: var(--primary); box-shadow: 0 0 0 0 var(--primary); animation: tha-pulse 2s infinite; }
+@keyframes tha-pulse { 0% { opacity: 1; } 50% { opacity: .35; } 100% { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .tha-live span { animation: none; } }

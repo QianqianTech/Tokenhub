@@ -29,6 +29,14 @@ final class RagVectorConfigService
     public function store(?array $config = null): RagVectorStoreInterface
     {
         $store = (string) ($config['vector_store'] ?? App::config()->get('rag.vector_store.primary', 'qdrant'));
+        if ($store === 'milvus' || $store === 'pgvector') {
+            // V-06: no Milvus/pgvector driver exists; older rows keep working on the MySQL store.
+            static $warned = [];
+            if (!isset($warned[$store])) {
+                $warned[$store] = true;
+                App::logger()->warning('rag', 'rag vector store not implemented, using the MySQL fallback', ['vector_store' => $store, 'config_id' => $config['config_id'] ?? null]);
+            }
+        }
         if ($store === 'qdrant') {
             $factory = is_callable($this->qdrantFactory) ? $this->qdrantFactory : self::$defaultQdrantFactory;
             $qdrant = (is_callable($factory) ? $factory() : new QdrantVectorStore())->forConfig($config);
@@ -55,12 +63,21 @@ final class RagVectorConfigService
         $this->assertAllowed($effective, 'modality', ['text', 'image', 'multimodal']);
         $this->assertAllowed($effective, 'distance_metric', ['cosine', 'dot', 'euclidean']);
         $this->assertAllowed($effective, 'vector_store', ['qdrant', 'milvus', 'pgvector', 'mysql_fallback']);
+        if (array_key_exists('vector_store', $data) && in_array((string) $data['vector_store'], ['milvus', 'pgvector'], true)
+            && (string) ($existing['vector_store'] ?? '') !== (string) $data['vector_store']) {
+            abort_json('RAG_VECTOR_STORE_UNSUPPORTED', 'Milvus and pgvector are not supported yet; use Qdrant (or the MySQL fallback for small datasets)', 422);
+        }
         $dimension = $effective['dimension'] ?? null;
         if (!is_numeric($dimension) || (int) $dimension < 1) {
             throw new RuntimeException('RAG_VECTOR_CONFIG_INVALID');
         }
         if (trim((string) ($effective['collection_name'] ?? '')) === '') {
             throw new RuntimeException('RAG_VECTOR_CONFIG_INVALID');
+        }
+
+        $this->assertCollectionNotShared($effective, $id);
+        if ($existing !== null) {
+            $this->assertNotInUse($existing, $effective);
         }
 
         $providerId = $this->positiveId($effective['provider_id'] ?? null);
@@ -97,8 +114,11 @@ final class RagVectorConfigService
     }
 
     /** @param array<string, mixed> $data */
-    public function assertBindingReferences(string $table, array $data): void
+    public function assertBindingReferences(string $table, array $data, ?int $id = null): void
     {
+        if ($id !== null) {
+            $this->assertRebindingAllowed($table, $data, $id);
+        }
         $columns = match ($table) {
             'rag_knowledge_bases' => [
                 'default_text_vector_config_id' => 'text',
@@ -133,10 +153,12 @@ final class RagVectorConfigService
             throw new RuntimeException('RAG_MODEL_NOT_CONFIGURED');
         }
         $modality = (string) ($config['modality'] ?? 'text');
+        $configured = (int) ($config['dimension'] ?? 0);
+        // Ask the model without a dimension so a wrong value reports the real one.
         $vector = ($this->embeddingProvider ?? new RagEmbeddingProviderService())->embed(
             $modality,
             ['text' => 'TokenHub RAG embedding probe'],
-            $config,
+            [...$config, 'dimension' => null],
         );
 
         return [
@@ -145,6 +167,8 @@ final class RagVectorConfigService
             'model_name' => (string) $config['model_name'],
             'modality' => $modality,
             'dimension' => count($vector),
+            'configured_dimension' => $configured,
+            'dimension_matches' => $configured === count($vector),
         ];
     }
 
@@ -231,6 +255,111 @@ final class RagVectorConfigService
             'SELECT * FROM rag_vector_configs WHERE id = ? AND modality = ? AND enabled = 1',
             [$id, $modality]
         );
+    }
+
+    /**
+     * V-02: once a config has indexed vectors, changing what produces or stores them
+     * (model, dimension, distance, store, collection, document prefix) or disabling it
+     * would silently mix embedding spaces or break retrieval. Switch models with a new
+     * config and `php bin/rag-index.php reindex --dataset=<id> --config=<new config id>`.
+     *
+     * @param array<string, mixed> $existing
+     * @param array<string, mixed> $effective
+     */
+    private function assertNotInUse(array $existing, array $effective): void
+    {
+        $changed = [];
+        foreach (['model_id' => 'int', 'dimension' => 'int', 'distance_metric' => 'string', 'vector_store' => 'string', 'collection_name' => 'string'] as $field => $type) {
+            $before = $existing[$field] ?? null;
+            $after = $effective[$field] ?? null;
+            if ($type === 'int' ? (int) $before !== (int) $after : trim((string) $before) !== trim((string) $after)) {
+                $changed[] = $field;
+            }
+        }
+        if (self::prefix($existing['config_json'] ?? null, 'document_prefix') !== self::prefix($effective['config_json'] ?? null, 'document_prefix')) {
+            $changed[] = 'document_prefix';
+        }
+        if ((int) ($existing['enabled'] ?? 1) === 1 && array_key_exists('enabled', $effective) && (int) $effective['enabled'] === 0) {
+            $changed[] = 'enabled';
+        }
+        if ($changed === []) {
+            return;
+        }
+        $vectors = (int) (App::db()->first('SELECT COUNT(*) AS c FROM rag_vector_records WHERE vector_config_id = ? AND status = "indexed"', [(int) $existing['id']])['c'] ?? 0);
+        if ($vectors > 0) {
+            abort_json('RAG_VECTOR_CONFIG_IN_USE', 'This vector config already indexed ' . $vectors . ' vector(s); changing ' . implode(', ', $changed) . ' would mix or break them. Create a new vector config and switch datasets with "php bin/rag-index.php reindex --dataset=<id> --config=<new id>"', 409);
+        }
+    }
+
+    /**
+     * Two configs may share a collection only when they produce the same kind of vectors.
+     *
+     * @param array<string, mixed> $effective
+     */
+    private function assertCollectionNotShared(array $effective, ?int $id): void
+    {
+        $collection = trim((string) ($effective['collection_name'] ?? ''));
+        if ($collection === '' || (string) ($effective['vector_store'] ?? 'qdrant') !== 'qdrant') {
+            return;
+        }
+        foreach (App::db()->select('SELECT id, model_id, dimension, distance_metric FROM rag_vector_configs WHERE collection_name = ? AND vector_store = "qdrant"', [$collection]) as $other) {
+            if ($id !== null && (int) $other['id'] === $id) {
+                continue;
+            }
+            if ((int) $other['model_id'] !== (int) ($effective['model_id'] ?? 0) || (int) $other['dimension'] !== (int) ($effective['dimension'] ?? 0) || (string) $other['distance_metric'] !== (string) ($effective['distance_metric'] ?? 'cosine')) {
+                abort_json('RAG_VECTOR_COLLECTION_IN_USE', 'Collection "' . $collection . '" is used by another vector config with a different model, dimension or distance; choose another collection name', 409);
+            }
+        }
+    }
+
+    /**
+     * Changing which config a dataset (or a knowledge base default) uses leaves its existing
+     * vectors behind in the old model's space; that switch goes through reindex.
+     *
+     * @param array<string, mixed> $data
+     */
+    private function assertRebindingAllowed(string $table, array $data, int $id): void
+    {
+        if ($table === 'rag_vector_datasets' && array_key_exists('text_vector_config_id', $data)) {
+            $dataset = App::db()->first('SELECT * FROM rag_vector_datasets WHERE id = ?', [$id]);
+            if ($dataset === null) {
+                return;
+            }
+            $before = (int) ($this->textConfig($dataset)['id'] ?? 0);
+            $after = $this->positiveId($data['text_vector_config_id']);
+            $afterEffective = (int) ($this->textConfig([...$dataset, 'text_vector_config_id' => $after])['id'] ?? 0);
+            if ($before !== $afterEffective && $this->datasetHasVectors($id, $before)) {
+                abort_json('RAG_VECTOR_CONFIG_IN_USE', 'The dataset already has vectors from its current vector config; switch configs with "php bin/rag-index.php reindex --dataset=' . $id . ' --config=' . ($afterEffective ?: '<id>') . '" so they are rebuilt', 409);
+            }
+        }
+        if ($table === 'rag_knowledge_bases' && array_key_exists('default_text_vector_config_id', $data)) {
+            $knowledgeBase = App::db()->first('SELECT * FROM rag_knowledge_bases WHERE id = ?', [$id]);
+            if ($knowledgeBase === null || (int) ($knowledgeBase['default_text_vector_config_id'] ?? 0) === (int) ($this->positiveId($data['default_text_vector_config_id']) ?? 0)) {
+                return;
+            }
+            foreach (App::db()->select('SELECT * FROM rag_vector_datasets WHERE kb_id = ? AND (text_vector_config_id IS NULL OR text_vector_config_id = 0) AND deleted_at IS NULL', [$id]) as $dataset) {
+                $before = (int) ($this->textConfig($dataset)['id'] ?? 0);
+                if ($this->datasetHasVectors((int) $dataset['id'], $before)) {
+                    abort_json('RAG_VECTOR_CONFIG_IN_USE', 'Dataset ' . $dataset['dataset_id'] . ' inherits the current default vector config and already has vectors; bind it explicitly or rebuild it with "php bin/rag-index.php reindex" before changing the default', 409);
+                }
+            }
+        }
+    }
+
+    private function datasetHasVectors(int $datasetId, int $configId): bool
+    {
+        if ($configId <= 0) {
+            return false;
+        }
+
+        return App::db()->first('SELECT 1 AS hit FROM rag_vector_records WHERE dataset_id = ? AND vector_config_id = ? AND status = "indexed" LIMIT 1', [$datasetId, $configId]) !== null;
+    }
+
+    public static function prefix(mixed $configJson, string $key): string
+    {
+        $settings = is_array($configJson) ? $configJson : (is_string($configJson) && $configJson !== '' ? (json_decode($configJson, true) ?: []) : []);
+
+        return (string) ($settings[$key] ?? '');
     }
 
     /** @param array<string, mixed> $data */

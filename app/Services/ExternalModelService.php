@@ -78,12 +78,18 @@ final class ExternalModelService
             'protocol' => (string) $row['protocol'],
             'health' => $this->healthFor($row),
         ], $rows);
+        $statuses = array_count_values(array_map(static fn (array $model): string => $model['health']['status'], $models));
 
         return [
             'summary' => [
                 'total' => count($models),
-                'active' => count(array_filter($models, static fn (array $model): bool => ($model['health']['status'] ?? '') === 'active')),
-                'degraded' => count(array_filter($models, static fn (array $model): bool => ($model['health']['status'] ?? '') !== 'active')),
+                // Enabled routes and observed health are separate dimensions.
+                'active' => count(array_filter($models, static fn (array $model): bool => ($model['health']['route_status'] ?? '') === 'active')),
+                'healthy' => $statuses['healthy'] ?? 0,
+                'degraded' => $statuses['degraded'] ?? 0,
+                'unhealthy' => $statuses['unhealthy'] ?? 0,
+                'unknown' => $statuses['unknown'] ?? 0,
+                'disabled' => $statuses['disabled'] ?? 0,
             ],
             'models' => $models,
         ];

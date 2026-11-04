@@ -33,8 +33,16 @@ test("screen share form picks scope objects and metrics instead of JSON", async 
   await picker.press("Escape");
   await dialog.locator('input[name="allowed_metrics"][value="overview"]').check();
   await dialog.locator('input[name="allowed_metrics"][value="trends"]').check();
-  await dialog.getByRole("button", { name: "保存" }).click();
+  await dialog.getByRole("button", { name: "创建并显示访问密码" }).click();
   await settle(page);
+  // The one-time password and the share link are shown with copy buttons (UX-103).
+  const secret = dialog.locator(".secret-output");
+  await secret.waitFor();
+  const secretText = await secret.innerText();
+  assert.match(secretText, /scr_pwd_once_only/);
+  assert.match(secretText, /\/screen\/scr_/);
+  assert.equal(await secret.getByRole("button", { name: /复制密码/ }).count(), 1);
+  assert.equal(await secret.getByRole("button", { name: /复制链接/ }).count(), 1);
   const body = lastPost("/admin-api/dashboard-share-links");
   assert.equal(body.scope_type, "department");
   assert.ok(Array.isArray(body.scope_ids) && body.scope_ids.length === 1 && Number.isFinite(body.scope_ids[0]), JSON.stringify(body));

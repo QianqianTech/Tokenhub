@@ -80,7 +80,7 @@ final class DepartmentService
         }
 
         App::db()->execute(
-            'UPDATE admin_sessions s JOIN users u ON u.id = s.user_id JOIN departments d ON d.id = u.department_id SET s.revoked_at = COALESCE(s.revoked_at, NOW()) WHERE d.path LIKE ?',
+            'UPDATE admin_sessions s JOIN users u ON u.id = s.user_id JOIN departments d ON d.id = u.department_id SET s.revoked_at = COALESCE(s.revoked_at, UTC_TIMESTAMP()) WHERE d.path LIKE ?',
             [(string) $department['path'] . '%']
         );
     }

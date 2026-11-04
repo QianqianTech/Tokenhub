@@ -17,6 +17,7 @@ final class GatewayController
         '/v1/embeddings',
         '/v1/rerank',
         '/v1/moderations',
+        '/v1/systemone',
         '/v1/messages',
         '/v1/messages/count_tokens',
         '/v1/audio/transcriptions',

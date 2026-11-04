@@ -14,7 +14,13 @@ $ErrorActionPreference = 'Continue'
 $KitDir = $PSScriptRoot
 $EnvFile = Join-Path $KitDir '.env'
 if (-not (Test-Path $EnvFile)) { throw "$EnvFile not found." }
-if (-not $BackupDir) { $BackupDir = Join-Path $KitDir 'backups' }
+# Default outside the kit / source tree (backups hold APP_KEY and database passwords).
+if (-not $BackupDir) {
+    $fromEnv = (Get-Content $EnvFile | Where-Object { $_ -match '^BACKUP_DIR=.+' } | Select-Object -Last 1) -replace '^BACKUP_DIR=', ''
+    if ($fromEnv) { $BackupDir = $fromEnv.Trim('"') }
+    elseif ($env:ProgramData) { $BackupDir = Join-Path $env:ProgramData 'TokenHub\backups' }
+    else { $BackupDir = Join-Path $env:USERPROFILE 'tokenhub-backups' }
+}
 $envValues = @{}
 Get-Content $EnvFile | Where-Object { $_ -match '^[A-Z0-9_]+=' } | ForEach-Object { $k, $v = $_ -split '=', 2; $envValues[$k] = $v.Trim('"') }
 $project = $(if ($envValues['COMPOSE_PROJECT_NAME']) { $envValues['COMPOSE_PROJECT_NAME'] } else { 'tokenhub' })

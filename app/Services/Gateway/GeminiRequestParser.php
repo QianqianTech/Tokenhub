@@ -23,15 +23,21 @@ final class GeminiRequestParser
         $payload['model'] = $model;
         $input = MediaPayload::estimate($payload)['tokens'];
         $images = $this->countInline($payload, 'image/');
+        $stream = str_contains($request->path, ':streamGenerateContent');
+        // Without ?alt=sse the Gemini API streams one JSON array
+        // ("[{...},\r\n{...}]"); the official SDKs that do not ask for SSE
+        // parse that shape.
+        $jsonArray = $stream && strtolower((string) ($request->query['alt'] ?? '')) !== 'sse';
 
         return new GatewayRequest(
             endpoint: $request->path,
             protocol: 'gemini',
             capability: InputModalities::capability(InputModalities::count($payload)),
             model: $model,
-            stream: str_contains($request->path, ':streamGenerateContent'),
+            stream: $stream,
             payload: $payload,
             estimatedUsage: ['input_tokens' => $input, 'output_tokens' => 0, 'total_tokens' => $input, 'image_count' => $images],
+            options: $jsonArray ? ['gemini_json_array' => true] : [],
         );
     }
 

@@ -2,7 +2,7 @@ import { adminErrorMessage, api } from "../api.js";
 import { button, el, setText, showModal, statusMessage } from "../dom.js";
 import { setErrorOutput, setOperationOutput } from "../lib/output.js";
 import { columnLabel } from "../resources.js";
-import { providerCatalogModels } from "../lib/ops-tools.js";
+import { providerCatalogModels } from "../lib/provider-catalog.js";
 
 const MODEL_PRICE_CATEGORIES = [
   { key: "text", label: "文字", fields: ["input_token_price", "output_token_price"] },
@@ -35,7 +35,9 @@ const providerBaseUrlPresets = {
   "gemini": "https://generativelanguage.googleapis.com/v1beta/openai",
   "moonshot": "https://api.moonshot.cn/v1",
   "kimi_code": "https://api.kimi.com/coding/v1",
-  "qwen": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+  "qwen": "https://token-plan.maas.qianwenaiapi.com/compatible-mode/v1",
+  "qwen_payg": "https://maas.qianwenaiapi.com/compatible-mode/v1",
+  "bailian_compatible": "https://dashscope.aliyuncs.com/compatible-mode/v1",
   "siliconflow": "https://api.siliconflow.cn/v1",
   "zhipu": "https://open.bigmodel.cn/api/paas/v4",
   "doubao": "https://ark.cn-beijing.volces.com/api/v3",
@@ -65,7 +67,9 @@ const providerBaseUrlPresets = {
 
 const providerAnthropicBaseUrlPresets = {
   "anthropic": "https://api.anthropic.com",
-  "deepseek": "https://api.deepseek.com/anthropic"
+  "deepseek": "https://api.deepseek.com/anthropic",
+  "qwen": "https://token-plan.maas.qianwenaiapi.com/apps/anthropic",
+  "qwen_payg": "https://maas.qianwenaiapi.com/apps/anthropic"
 };
 
 const providerNameAliases = [
@@ -89,9 +93,15 @@ const providerNameAliases = [
   ["kimi for coding", "kimi_code"],
   ["kimi-for-coding", "kimi_code"],
   ["kimi", "moonshot"],
+  ["千问按量", "qwen_payg"],
+  ["千问（按量", "qwen_payg"],
+  ["qwen payg", "qwen_payg"],
+  ["百炼兼容", "bailian_compatible"],
+  ["dashscope", "bailian_compatible"],
   ["qwen", "qwen"],
+  ["qianwen", "qwen"],
+  ["千问", "qwen"],
   ["通义", "qwen"],
-  ["dashscope", "qwen"],
   ["siliconflow", "siliconflow"],
   ["硅基流动", "siliconflow"],
   ["zhipu", "zhipu"],
@@ -139,23 +149,28 @@ const providerNameAliases = [
 ];
 
 const providerDisplayNamePresets = [
+  { name: "千问 Token Plan", protocol: "openai", baseUrl: providerBaseUrlPresets.qwen },
+  { name: "千问（按量计费）", protocol: "openai", baseUrl: providerBaseUrlPresets.qwen_payg },
   { name: "黔前智算", protocol: "openai", baseUrl: providerBaseUrlPresets.qianqianai },
   { name: "DeepSeek", protocol: "openai", baseUrl: providerBaseUrlPresets.deepseek },
+  { name: "OpenAI", protocol: "openai", baseUrl: providerBaseUrlPresets.openai },
+  { name: "Anthropic Claude", protocol: "anthropic", baseUrl: providerBaseUrlPresets.anthropic },
+  { name: "Google Gemini 原生", protocol: "gemini", baseUrl: providerBaseUrlPresets.gemini_native },
+  { name: "兼容 OpenAI", protocol: "openai", baseUrl: providerBaseUrlPresets.openai },
   { name: "火山引擎", protocol: "openai", baseUrl: providerBaseUrlPresets.volcengine },
   { name: "腾讯云", protocol: "openai", baseUrl: providerBaseUrlPresets.tencent },
   { name: "Kimi API / Moonshot", protocol: "openai", baseUrl: providerBaseUrlPresets.moonshot },
   { name: "Kimi Code", protocol: "openai", baseUrl: providerBaseUrlPresets.kimi_code },
   { name: "MiniMax（海螺视频/生图/语音）", protocol: "openai", baseUrl: providerBaseUrlPresets.minimax },
   { name: "阿里云百炼原生（万相/CosyVoice）", protocol: "openai", baseUrl: providerBaseUrlPresets.bailian },
-  { name: "Google Gemini 原生", protocol: "gemini", baseUrl: providerBaseUrlPresets.gemini_native },
+  { name: "阿里云百炼兼容", protocol: "openai", baseUrl: providerBaseUrlPresets.bailian_compatible },
   { name: "可灵 Kling", protocol: "openai", baseUrl: providerBaseUrlPresets.kling },
   { name: "生数 Vidu", protocol: "openai", baseUrl: providerBaseUrlPresets.vidu },
   { name: "xAI Grok", protocol: "openai", baseUrl: providerBaseUrlPresets.xai },
   { name: "OpenRouter", protocol: "openai", baseUrl: providerBaseUrlPresets.openrouter },
   { name: "FLUX（Black Forest Labs）", protocol: "openai", baseUrl: providerBaseUrlPresets.bfl },
   { name: "fal.ai", protocol: "openai", baseUrl: providerBaseUrlPresets.fal },
-  { name: "ElevenLabs", protocol: "openai", baseUrl: providerBaseUrlPresets.elevenlabs },
-  { name: "兼容 OpenAI", protocol: "openai", baseUrl: providerBaseUrlPresets.openai }
+  { name: "ElevenLabs", protocol: "openai", baseUrl: providerBaseUrlPresets.elevenlabs }
 ];
 
 export function renderPriceCategoryChips(row, context) {
@@ -336,28 +351,105 @@ export function renderProviderPresetPicker(form) {
   const nameInput = form.querySelector('[name="name"]');
   const protocolInput = form.querySelector('[name="protocol"]');
   const baseUrlInput = form.querySelector('[name="base_url"]');
-  const picker = el("section", { className: "provider-preset-picker" }, [
-    el("span", { className: "provider-preset-title", text: "常用厂商" })
+  const editing = form.dataset.mode === "edit";
+  const picker = el(editing ? "details" : "section", { className: "provider-preset-picker" }, [
+    el(editing ? "summary" : "strong", { className: "provider-preset-title", text: editing ? "切换厂商预设" : "选择厂商，自动填写协议与地址" })
   ]);
-  for (const preset of providerDisplayNamePresets) {
-    picker.append(button(preset.name, () => {
+  const common = el("div", { className: "provider-preset-grid" });
+  const more = el("details", { className: "provider-preset-more" }, [el("summary", { text: "更多厂商" })]);
+  const others = el("div", { className: "provider-preset-grid" });
+  providerDisplayNamePresets.forEach((preset, index) => {
+    const pick = button(preset.name, () => {
       if (nameInput) {
         nameInput.value = preset.name;
       }
       if (protocolInput) {
         protocolInput.value = preset.protocol;
       }
-      if (baseUrlInput) {
-        baseUrlInput.value = "";
-      }
-      nameInput?.dispatchEvent(new Event("input", { bubbles: true }));
-      // The picked preset wins over the name-alias guess (e.g. Gemini native vs OpenAI-compatible).
       if (baseUrlInput && preset.baseUrl) {
         baseUrlInput.value = preset.baseUrl;
       }
-    }, "secondary provider-preset-button"));
-  }
+      nameInput?.dispatchEvent(new Event("input", { bubbles: true }));
+      protocolInput?.dispatchEvent(new Event("change", { bubbles: true }));
+      picker.querySelectorAll(".provider-preset-button").forEach((item) => item.setAttribute("aria-pressed", String(item === pick)));
+    }, "secondary provider-preset-button", { "aria-pressed": "false" });
+    (index < 8 ? common : others).append(pick);
+  });
+  more.append(others);
+  picker.append(common, more);
   return picker;
+}
+
+export function providerSecretStatus(row) {
+  if (row.secret_status === "configured") return "已配置";
+  if (row.secret_status === "empty") return "未配置";
+  return "状态未知";
+}
+
+export function bindProviderSecretVisibility(form) {
+  const input = form.querySelector('[name="secret"]');
+  if (!input) return;
+  const wrapper = input.closest(".field");
+  input.id = `${input.getAttribute("aria-describedby")}-control`;
+  wrapper.htmlFor = input.id;
+  input.setAttribute("aria-labelledby", wrapper.querySelector(".field-label").id);
+  const hint = wrapper.querySelector(".field-hint");
+  if (hint) {
+    hint.id = `${input.id}-hint`;
+    input.setAttribute("aria-describedby", `${input.getAttribute("aria-describedby")} ${hint.id}`);
+  }
+  input.spellcheck = false;
+  input.autocapitalize = "off";
+  const toggle = button("显示", () => {
+    const visible = input.type === "password";
+    input.type = visible ? "text" : "password";
+    setText(toggle, visible ? "隐藏" : "显示");
+    toggle.setAttribute("aria-label", visible ? "隐藏 API Key" : "显示 API Key");
+    toggle.setAttribute("aria-pressed", String(visible));
+  }, "secondary provider-secret-toggle", { "aria-label": "显示 API Key", "aria-pressed": "false" });
+  wrapper.classList.add("provider-secret-field");
+  input.after(toggle);
+}
+
+export function organizeProviderForm(form, row, { mode }) {
+  form.classList.add("provider-config-form");
+  const moveFields = (names) => names.map((name) => form.querySelector(`[data-field="${name}"]`)).filter(Boolean);
+  const basic = el("fieldset", { className: "provider-form-section" }, [
+    el("legend", { text: "接入信息" }),
+    el("div", { className: "provider-form-grid" }, moveFields(["name", "protocol", "base_url"]))
+  ]);
+  const secret = form.querySelector('[name="secret"]');
+  // A stored credential is never used as a form value, including older API payloads.
+  if (secret) {
+    secret.value = "";
+    secret.placeholder = mode === "edit" ? "输入新 Key 可替换；留空保留原 Key" : "粘贴厂商提供的 API Key";
+  }
+  const credentials = el("fieldset", { className: "provider-form-section" }, [
+    el("legend", { text: "访问凭证" }),
+    ...(mode === "edit" ? [el("p", { className: "provider-secret-status", text: `当前 API Key：${providerSecretStatus(row)}。填写新 Key 后，保存即生效。` })] : []),
+    ...moveFields(["secret"])
+  ]);
+  const advanced = el("details", { className: "provider-form-advanced" }, [
+    el("summary", { text: "高级设置 · 超时、重试与请求头" }),
+    el("div", { className: "provider-form-grid" }, moveFields(["timeout_ms", "retry_count", "default_headers"]))
+  ]);
+  const guide = el("p", { className: "provider-endpoint-guide", role: "status" });
+  const updateGuide = () => {
+    const url = form.querySelector('[name="base_url"]')?.value.trim() || "";
+    if (/^https:\/\/token-plan\.maas\.qianwenaiapi\.com\//i.test(url)) {
+      setText(guide, "千问 Token Plan：请使用套餐专属 API Key（sk-sp- 开头）。保存后可在列表中拉取模型。");
+    } else if (/^https:\/\/maas\.qianwenaiapi\.com\//i.test(url)) {
+      setText(guide, "千问按量计费：请使用按量计费 API Key，与 Token Plan 套餐 Key 分开配置。");
+    } else {
+      setText(guide, "填写厂商的 API 基础地址，无需追加 /chat/completions 等接口路径。保存后可拉取模型。");
+    }
+  };
+  form.querySelector('[name="base_url"]')?.addEventListener("input", updateGuide);
+  form.addEventListener("input", updateGuide);
+  form.addEventListener("change", updateGuide);
+  form.append(basic, credentials, guide, advanced);
+  bindProviderSecretVisibility(form);
+  updateGuide();
 }
 
 export function bindProviderBaseUrlDefaults(form) {
@@ -377,7 +469,7 @@ export function bindProviderBaseUrlDefaults(form) {
       return;
     }
     const currentBaseUrl = baseUrlInput.value.trim();
-    if (currentBaseUrl === "" || currentBaseUrl === lastSuggestedBaseUrl) {
+    if (currentBaseUrl === "" || currentBaseUrl === lastSuggestedBaseUrl || currentBaseUrl === nextBaseUrl) {
       baseUrlInput.value = nextBaseUrl;
       lastSuggestedBaseUrl = nextBaseUrl;
     }
@@ -395,7 +487,7 @@ function providerBaseUrlForName(name, protocol = "openai") {
   if (normalizedName === "") {
     return "";
   }
-  const match = providerNameAliases.find(([alias]) => normalizedName.includes(alias));
+  const match = providerNameAliases.filter(([alias]) => normalizedName.includes(alias)).sort((a, b) => b[0].length - a[0].length)[0];
   const providerKey = match?.[1];
   if (!providerKey) {
     return "";

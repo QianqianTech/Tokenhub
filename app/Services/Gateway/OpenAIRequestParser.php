@@ -52,7 +52,7 @@ final class OpenAIRequestParser
         return match (true) {
             str_contains($path, '/embeddings') => 'embedding',
             str_contains($path, '/rerank') => 'rerank',
-            str_contains($path, '/moderations') => 'moderation',
+            str_contains($path, '/moderations'), $path === '/v1/systemone' => 'moderation',
             str_contains($path, '/audio/transcriptions'), str_contains($path, '/audio/translations') => 'asr',
             str_contains($path, '/audio/speech') => 'tts',
             str_contains($path, '/images/generations'), str_contains($path, '/images/edits') => 'image_generation',

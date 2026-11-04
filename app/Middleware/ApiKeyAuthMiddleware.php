@@ -49,10 +49,36 @@ final class ApiKeyAuthMiddleware
         $limitKey = $isModelEndpoint ? 'model_per_minute' : 'other_per_minute';
         $scope = $isModelEndpoint ? 'model' : 'other';
         $default = $isModelEndpoint ? 600 : 120;
-        if (($response = $this->rateLimitResponse($limiter, $scope, (int) ($apiKey['data']['id'] ?? 0), (int) App::config()->get('app.external_api_rate_limits.' . $limitKey, $default))) !== null) {
+        $keyId = (int) ($apiKey['data']['id'] ?? 0);
+        if (($response = $this->rateLimitResponse($limiter, $scope, $keyId, self::limitFor($apiKey['data'], $limitKey, (int) App::config()->get('app.external_api_rate_limits.' . $limitKey, $default)))) !== null) {
             return $response;
         }
+        // BIZ-022: management writes (create keys / users / webhooks, sync
+        // batches...) have their own, smaller bucket, so a write loop cannot
+        // use the whole "other" budget and reads keep working.
+        if (!$isModelEndpoint && in_array(strtoupper($request->method), ['POST', 'PUT', 'PATCH', 'DELETE'], true)) {
+            $writeLimit = self::limitFor($apiKey['data'], 'write_per_minute', (int) App::config()->get('app.external_api_rate_limits.write_per_minute', 60));
+            if (($response = $this->rateLimitResponse($limiter, 'write', $keyId, $writeLimit)) !== null) {
+                return $response;
+            }
+        }
         return (new IdempotencyService())->handle($request, $apiKey['data'], $next);
+    }
+
+    /**
+     * Per-key override (api_keys.rate_limit_<bucket>, BIZ-022): NULL keeps the
+     * global default, 0 disables the limit for that key.
+     *
+     * @param array<string, mixed> $apiKey
+     */
+    public static function limitFor(array $apiKey, string $bucket, int $default): int
+    {
+        $override = $apiKey['rate_limit_' . $bucket] ?? null;
+        if ($override === null || $override === '' || !is_numeric($override)) {
+            return $default;
+        }
+
+        return max(0, (int) $override);
     }
 
     private function rateLimitResponse(ExternalRateLimitService $limiter, string $scope, string|int $identity, int $limit): ?Response

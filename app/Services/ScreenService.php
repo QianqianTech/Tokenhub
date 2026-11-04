@@ -9,6 +9,12 @@ use TokenHub\Support\Crypto;
 
 final class ScreenService
 {
+    /** Metrics a share link may be limited to (allowed_metrics). */
+    public const METRICS = ['overview', 'realtime', 'trends', 'rankings', 'performance', 'security', 'multimodal', 'live'];
+
+    /** Minimum length of an operator-chosen share code (the code alone signs a screen in). */
+    public const MIN_CUSTOM_SHARE_CODE_LENGTH = 16;
+
     public function listShareLinks(array $query = []): array
     {
         $conditions = [];
@@ -65,7 +71,11 @@ final class ScreenService
     public function createShareLink(array $data): array
     {
         $password = (string) ($data['password'] ?? Crypto::token('scr_pwd_'));
-        $shareCode = (string) ($data['share_code'] ?? $this->generateShareCode());
+        $customCode = trim((string) ($data['share_code'] ?? ''));
+        if ($customCode !== '') {
+            $this->assertCustomShareCode($customCode);
+        }
+        $shareCode = $customCode !== '' ? $customCode : $this->generateShareCode();
         $payload = $this->storagePayload($data, true);
         $payload['share_code'] = $shareCode;
         $payload['password_hash'] = password_hash($password, PASSWORD_DEFAULT);
@@ -96,6 +106,15 @@ final class ScreenService
         $existing = $this->assertExistingShareAllowed($id);
         $payload = $this->storagePayload($data, false);
         unset($payload['password_hash']);
+        if (array_key_exists('share_code', $payload)) {
+            $code = trim((string) $payload['share_code']);
+            if ($code === '' || $code === (string) ($existing['share_code'] ?? '')) {
+                unset($payload['share_code']);
+            } else {
+                $this->assertCustomShareCode($code);
+                $payload['share_code'] = $code;
+            }
+        }
         if ($payload !== []) {
             $this->assertShareScopeAllowed([...$existing, ...$payload]);
         }
@@ -113,7 +132,7 @@ final class ScreenService
         $this->assertExistingShareAllowed($id);
         App::db()->transaction(function () use ($id): void {
             App::db()->execute('UPDATE dashboard_share_links SET status = "disabled", session_version = session_version + 1 WHERE id = ?', [$id]);
-            App::db()->execute('UPDATE dashboard_share_sessions SET revoked_at = COALESCE(revoked_at, NOW()) WHERE share_link_id = ?', [$id]);
+            App::db()->execute('UPDATE dashboard_share_sessions SET revoked_at = COALESCE(revoked_at, UTC_TIMESTAMP()) WHERE share_link_id = ?', [$id]);
             $this->log($id, 'session_revoked', $_SERVER['REMOTE_ADDR'] ?? null, $_SERVER['HTTP_USER_AGENT'] ?? '', 'link_disabled');
         });
         $this->audit('dashboard_share_link.disable', $id);
@@ -129,7 +148,7 @@ final class ScreenService
                 'UPDATE dashboard_share_links SET password_hash = ?, session_version = session_version + 1 WHERE id = ?',
                 [password_hash($plain, PASSWORD_DEFAULT), $id]
             );
-            App::db()->execute('UPDATE dashboard_share_sessions SET revoked_at = COALESCE(revoked_at, NOW()) WHERE share_link_id = ?', [$id]);
+            App::db()->execute('UPDATE dashboard_share_sessions SET revoked_at = COALESCE(revoked_at, UTC_TIMESTAMP()) WHERE share_link_id = ?', [$id]);
             $this->log($id, 'session_revoked', $_SERVER['REMOTE_ADDR'] ?? null, $_SERVER['HTTP_USER_AGENT'] ?? '', 'password_reset');
         });
         $this->audit('dashboard_share_link.password_reset', $id);
@@ -145,7 +164,7 @@ final class ScreenService
         $this->assertExistingShareAllowed($id);
         App::db()->transaction(function () use ($id): void {
             App::db()->execute('UPDATE dashboard_share_links SET session_version = session_version + 1 WHERE id = ?', [$id]);
-            App::db()->execute('UPDATE dashboard_share_sessions SET revoked_at = COALESCE(revoked_at, NOW()) WHERE share_link_id = ?', [$id]);
+            App::db()->execute('UPDATE dashboard_share_sessions SET revoked_at = COALESCE(revoked_at, UTC_TIMESTAMP()) WHERE share_link_id = ?', [$id]);
             $this->log($id, 'session_revoked', $_SERVER['REMOTE_ADDR'] ?? null, $_SERVER['HTTP_USER_AGENT'] ?? '', 'admin_revoked');
         });
         $this->audit('dashboard_share_link.sessions_revoke', $id);
@@ -221,7 +240,7 @@ final class ScreenService
                 'UPDATE dashboard_share_links SET allowed_ip_cidrs = ?, session_version = session_version + 1 WHERE id = ?',
                 [json_encode($cidrs, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE), $id]
             );
-            App::db()->execute('UPDATE dashboard_share_sessions SET revoked_at = COALESCE(revoked_at, NOW()) WHERE share_link_id = ?', [$id]);
+            App::db()->execute('UPDATE dashboard_share_sessions SET revoked_at = COALESCE(revoked_at, UTC_TIMESTAMP()) WHERE share_link_id = ?', [$id]);
             $this->audit('dashboard_share_link.allow_client_ip', $id, ['client_ip' => $ip]);
         }
 
@@ -263,7 +282,10 @@ final class ScreenService
             return null;
         }
         $row = App::db()->first(
-            'SELECT l.*, s.id AS session_id, s.revoked_at, s.session_version AS active_session_version FROM dashboard_share_sessions s JOIN dashboard_share_links l ON l.id = s.share_link_id WHERE s.session_hash = ?',
+            'SELECT l.*, s.id AS session_id, s.revoked_at, s.session_version AS active_session_version, s.updated_at AS session_seen_at,
+                    TIMESTAMPDIFF(SECOND, s.updated_at, NOW()) AS session_idle_seconds,
+                    TIMESTAMPDIFF(SECOND, l.expires_at, NOW()) AS link_expired_seconds
+             FROM dashboard_share_sessions s JOIN dashboard_share_links l ON l.id = s.share_link_id WHERE s.session_hash = ?',
             [Crypto::hashKey($session)]
         );
         if (!$row) {
@@ -272,19 +294,108 @@ final class ScreenService
         if ($row['revoked_at'] !== null || ($row['status'] ?? '') !== 'active' || (int) $row['active_session_version'] !== (int) $row['session_version']) {
             return null;
         }
-        if (!$this->ipAllowed($clientIp, json_decode($row['allowed_ip_cidrs'] ?? '[]', true) ?: [])) {
-            $this->log((int) $row['id'], 'ip_denied', $clientIp, $_SERVER['HTTP_USER_AGENT'] ?? '', 'ip_forbidden');
+        $userAgent = $_SERVER['HTTP_USER_AGENT'] ?? '';
+        // The link's access deadline ends existing sessions too, not only new logins.
+        if ($row['expires_at'] !== null && $row['link_expired_seconds'] !== null && (int) $row['link_expired_seconds'] >= 0) {
+            $this->endSession((int) $row['session_id'], (int) $row['id'], 'session_expired', $clientIp, $userAgent, 'share_expired');
             return null;
         }
-        $this->log((int) $row['id'], 'refresh', $clientIp, $_SERVER['HTTP_USER_AGENT'] ?? '');
+        // Sliding lifetime: a session unused for longer than the idle window is over.
+        if ((int) ($row['session_idle_seconds'] ?? 0) > $this->sessionIdleSeconds()) {
+            $this->endSession((int) $row['session_id'], (int) $row['id'], 'session_expired', $clientIp, $userAgent, 'idle_timeout');
+            return null;
+        }
+        if (!$this->ipAllowed($clientIp, json_decode($row['allowed_ip_cidrs'] ?? '[]', true) ?: [])) {
+            $this->log((int) $row['id'], 'ip_denied', $clientIp, $userAgent, 'ip_forbidden');
+            return null;
+        }
+        // A screen polls several endpoints every few seconds: record activity (and the
+        // "refresh" access-log row) at most once per session per interval. The
+        // conditional UPDATE lets exactly one of several parallel requests win.
+        if ((int) ($row['session_idle_seconds'] ?? 0) >= $this->refreshLogIntervalSeconds()) {
+            $touched = App::db()->execute(
+                'UPDATE dashboard_share_sessions SET updated_at = NOW() WHERE id = ? AND updated_at = ?',
+                [(int) $row['session_id'], $row['session_seen_at']]
+            );
+            if ($touched > 0) {
+                $this->log((int) $row['id'], 'refresh', $clientIp, $userAgent);
+            }
+        }
+
+        unset($row['session_seen_at'], $row['session_idle_seconds'], $row['link_expired_seconds']);
         return $this->publicShare($row);
+    }
+
+    /** Seconds a screen session survives without use (cookie lifetime, slid on every request). */
+    public function sessionIdleSeconds(): int
+    {
+        return max(300, (int) App::config()->get('app.screen.session_idle_seconds', 86400));
+    }
+
+    private function refreshLogIntervalSeconds(): int
+    {
+        return max(1, (int) App::config()->get('app.screen.refresh_log_interval_seconds', 300));
+    }
+
+    private function endSession(int $sessionId, int $shareId, string $event, string $clientIp, string $userAgent, string $reason): void
+    {
+        $ended = App::db()->execute('UPDATE dashboard_share_sessions SET revoked_at = NOW() WHERE id = ? AND revoked_at IS NULL', [$sessionId]);
+        if ($ended > 0) {
+            $this->log($shareId, $event, $clientIp, $userAgent, $reason);
+        }
+    }
+
+    /**
+     * Login throttling for /screen-api/auth/login and /share-login, per client IP and
+     * per share code or username. Every attempt counts (a share code alone signs in,
+     * so successful guesses must be rate limited as well).
+     *
+     * @return array{retry_after: int}|null null when the attempt may proceed
+     */
+    public function loginThrottle(string $clientIp, string $identity): ?array
+    {
+        $limiter = new ExternalRateLimitService();
+        $checks = [
+            ['screen-login-ip', $this->firstClientIp($clientIp), (int) App::config()->get('app.screen.login_per_ip_per_minute', 20)],
+            ['screen-login-code', strtolower(trim($identity)), (int) App::config()->get('app.screen.login_per_code_per_minute', 10)],
+        ];
+        foreach ($checks as [$scope, $subject, $limit]) {
+            if ($subject === '') {
+                continue;
+            }
+            try {
+                $result = $limiter->attempt($scope, $subject, $limit);
+            } catch (\Throwable $throwable) {
+                App::logger()->warning('Screen login throttle unavailable', ['error' => $throwable->getMessage()]);
+                return null;
+            }
+            if (($result['allowed'] ?? true) !== true) {
+                return ['retry_after' => (int) ($result['retry_after'] ?? 60)];
+            }
+        }
+
+        return null;
+    }
+
+    /** Deletes access-log rows older than the retention window; returns the number removed. */
+    public function pruneAccessLogs(?int $retentionDays = null): int
+    {
+        $days = max(1, $retentionDays ?? (int) App::config()->get('app.screen.access_log_retention_days', 90));
+        $cutoff = gmdate('Y-m-d H:i:s', time() - $days * 86400);
+        $removed = 0;
+        do {
+            $batch = App::db()->execute('DELETE FROM dashboard_share_access_logs WHERE created_at < ? LIMIT 5000', [$cutoff]);
+            $removed += $batch;
+        } while ($batch >= 5000);
+
+        return $removed;
     }
 
     public function logout(string $session, string $clientIp): void
     {
         $hash = Crypto::hashKey($session);
         $row = App::db()->first('SELECT share_link_id FROM dashboard_share_sessions WHERE session_hash = ?', [$hash]);
-        App::db()->execute('UPDATE dashboard_share_sessions SET revoked_at = NOW() WHERE session_hash = ?', [$hash]);
+        App::db()->execute('UPDATE dashboard_share_sessions SET revoked_at = UTC_TIMESTAMP() WHERE session_hash = ?', [$hash]);
         if ($row) {
             $this->log((int) $row['share_link_id'], 'logout', $clientIp, $_SERVER['HTTP_USER_AGENT'] ?? '');
         }
@@ -299,6 +410,11 @@ final class ScreenService
     {
         unset($share['password_hash'], $share['revoked_at']);
         $share['screen'] = true;
+        // allow_drilldown only ever meant "ranking rows keep their object ids"; the
+        // clearer name is exposed alongside the legacy column.
+        if (array_key_exists('allow_drilldown', $share)) {
+            $share['show_ranking_ids'] = (bool) $share['allow_drilldown'];
+        }
         return $share;
     }
 
@@ -316,6 +432,12 @@ final class ScreenService
             'expires_at',
             'status',
         ];
+        if (array_key_exists('show_ranking_ids', $data) && !array_key_exists('allow_drilldown', $data)) {
+            $data['allow_drilldown'] = $data['show_ranking_ids'];
+        }
+        if (array_key_exists('allowed_metrics', $data)) {
+            $data['allowed_metrics'] = $this->normalizeAllowedMetrics($data['allowed_metrics']);
+        }
         $payload = [];
         foreach ($allowed as $field) {
             if (array_key_exists($field, $data)) {
@@ -447,6 +569,80 @@ final class ScreenService
         }
 
         return array_values(array_unique(array_filter(array_map('intval', $value), static fn (int $id): bool => $id > 0)));
+    }
+
+    /**
+     * @return list<string>|null
+     */
+    private function normalizeAllowedMetrics(mixed $value): ?array
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+        if (is_string($value)) {
+            $decoded = json_decode($value, true);
+            $value = is_array($decoded) ? $decoded : array_map('trim', explode(',', $value));
+        }
+        if (!is_array($value)) {
+            abort_json('ADMIN_INVALID_PAYLOAD', 'allowed_metrics must be a list', 422);
+        }
+        $metrics = array_values(array_unique(array_filter(array_map(static fn (mixed $metric): string => trim((string) $metric), $value), static fn (string $metric): bool => $metric !== '')));
+        $unknown = array_values(array_diff($metrics, self::METRICS));
+        if ($unknown !== []) {
+            abort_json('ADMIN_INVALID_PAYLOAD', 'Unknown screen metric: ' . implode(', ', $unknown) . ' (allowed: ' . implode(', ', self::METRICS) . ')', 422);
+        }
+
+        return $metrics;
+    }
+
+    /**
+     * A share code alone signs a screen in, so an operator-chosen code must be as hard to
+     * guess as a generated one: at least 16 characters of [A-Za-z0-9_-], mixing letters
+     * and digits, at least 10 distinct characters, no runs ("aaaa", "12345") and no
+     * word-like stretches of 6+ same-case letters. A heuristic: leaving the code empty
+     * (generated) is always the safer choice.
+     */
+    public function assertCustomShareCode(string $code): void
+    {
+        if (!self::customShareCodeAcceptable($code)) {
+            abort_json(
+                'ADMIN_INVALID_PAYLOAD',
+                '自定义链接码至少 ' . self::MIN_CUSTOM_SHARE_CODE_LENGTH . ' 位，只能包含字母、数字、下划线和连字符，需同时包含字母和数字、看起来随机（不能有单词或简单重复）；建议留空自动生成。',
+                422
+            );
+        }
+    }
+
+    public static function customShareCodeAcceptable(string $code): bool
+    {
+        if (strlen($code) < self::MIN_CUSTOM_SHARE_CODE_LENGTH || strlen($code) > 80) {
+            return false;
+        }
+        if (preg_match('/^[A-Za-z0-9_-]+$/', $code) !== 1) {
+            return false;
+        }
+        if (preg_match('/[A-Za-z]/', $code) !== 1 || preg_match('/[0-9]/', $code) !== 1) {
+            return false;
+        }
+        if (count(array_unique(str_split(strtolower($code)))) < 10) {
+            return false;
+        }
+        // Word-like stretches ("lobby", "screen") make a code guessable.
+        if (preg_match('/[a-z]{6,}|[A-Z]{6,}/', $code) === 1) {
+            return false;
+        }
+        // Long runs of one character ("aaaa") or of consecutive characters ("12345", "abcde").
+        $run = 1;
+        $sequence = 1;
+        for ($i = 1, $length = strlen($code); $i < $length; $i++) {
+            $run = $code[$i] === $code[$i - 1] ? $run + 1 : 1;
+            $sequence = ord(strtolower($code[$i])) === ord(strtolower($code[$i - 1])) + 1 ? $sequence + 1 : 1;
+            if ($run >= 4 || $sequence >= 5) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private function generateShareCode(): string

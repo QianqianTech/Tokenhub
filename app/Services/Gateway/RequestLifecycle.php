@@ -22,9 +22,13 @@ use TokenHub\Support\App;
  * finalize without double refunds or negative counters.
  *
  * Process death: reservations are mirrored to a Redis lease (see
- * ReservationLeaseStore). If the PHP process is killed before finalizing, the
- * queue worker's sweeper releases concurrency after the lease deadline and
- * keeps the token/cost reservation as the charged estimate.
+ * ReservationLeaseStore). The lease is renewed while the request runs
+ * (renewLease(), driven by the upstream transfer, MT-002), so only a process
+ * that was killed or hangs lets it expire; the queue worker's sweeper then
+ * rolls back every reservation of that lease. Finalization claims the lease
+ * first: if the sweeper got it already, concurrency is not released again and
+ * the measured usage is charged in full (the reservations it replaced were
+ * rolled back by the sweeper), so no counter moves twice.
  */
 final class RequestLifecycle
 {
@@ -37,6 +41,9 @@ final class RequestLifecycle
     /** @var null|callable(): array<string, mixed> */
     private $usageOnAbort = null;
     private bool $shutdownRegistered = false;
+    private bool $leasePersisted = false;
+    private bool $leaseLost = false;
+    private float $lastRenewal = 0.0;
 
     /**
      * @param array<string, mixed> $apiKey
@@ -162,12 +169,15 @@ final class RequestLifecycle
             return;
         }
         $this->state = self::STATE_REJECTED;
+        if (!$this->claimLease()) {
+            // The sweeper already rolled everything back.
+            return;
+        }
         $this->quota->rollbackReservations($this->quotaReservations);
         if ($this->route !== null) {
             $this->modelQuota->rollbackReservations($this->modelQuotaReservations);
         }
         $this->quota->releaseConcurrency($this->concurrencyKeys);
-        $this->dropLease();
     }
 
     /**
@@ -181,15 +191,61 @@ final class RequestLifecycle
             return;
         }
         $this->state = self::STATE_SETTLED;
+        $owned = $this->claimLease();
+        // A swept lease had all its reservations rolled back: charge the
+        // measured usage in full (zero reservations) and count the request
+        // again; its concurrency slot is already free.
+        $quotaReservations = $owned ? $this->quotaReservations : self::zeroed($this->quotaReservations);
+        $modelReservations = $owned ? $this->modelQuotaReservations : self::zeroed($this->modelQuotaReservations);
         try {
-            $this->quota->recordUsage($this->apiKey, $usage, $this->quotaReservations);
+            $this->quota->recordUsage($this->apiKey, $usage, $quotaReservations);
             if ($this->route !== null) {
-                $this->modelQuota->recordUsage($this->apiKey, $this->route, $usage, $this->modelQuotaReservations);
+                $this->modelQuota->recordUsage($this->apiKey, $this->route, $usage, $modelReservations);
+            }
+            if (!$owned) {
+                self::recount($this->quotaReservations);
+                if ($this->route !== null) {
+                    self::recount($this->modelQuotaReservations);
+                }
             }
         } finally {
-            $this->quota->releaseConcurrency($this->concurrencyKeys);
-            $this->dropLease();
+            if ($owned) {
+                $this->quota->releaseConcurrency($this->concurrencyKeys);
+            }
         }
+    }
+
+    /**
+     * Keeps the crash-recovery lease alive while the request is running
+     * (throttled to GATEWAY_LEASE_RENEW_SECONDS, default 60). Called from the
+     * upstream transfer's progress callback, so a 30-minute stream holds its
+     * lease for 30 minutes and a hung process stops renewing.
+     */
+    public function renewLease(bool $force = false): void
+    {
+        if ($this->state !== self::STATE_OPEN || $this->leases === null || $this->requestId === '' || !$this->leasePersisted || $this->leaseLost) {
+            return;
+        }
+        $now = microtime(true);
+        if (!$force && $now - $this->lastRenewal < $this->renewInterval()) {
+            return;
+        }
+        $this->lastRenewal = $now;
+        try {
+            if (!$this->leases->renew($this->requestId, $this->leaseTtl())) {
+                $this->leaseLost = true;
+                App::logger()->warning('quota', 'reservation lease was swept while the request was running', ['request_id' => $this->requestId]);
+            }
+        } catch (Throwable) {
+        }
+    }
+
+    public function leaseTtl(): int
+    {
+        $base = $this->leaseSeconds > 0 ? $this->leaseSeconds : (int) env_value('GATEWAY_RESERVATION_LEASE_SECONDS', 900);
+
+        // Several renewal intervals: one missed renewal never expires a live lease.
+        return max($base, (int) ceil($this->renewInterval() * 3));
     }
 
     /**
@@ -244,7 +300,10 @@ final class RequestLifecycle
                 $key = (string) ($counter['key'] ?? '');
                 if ($key !== '' && isset($index[$key])) {
                     [$listIndex, $counterIndex] = $index[$key];
-                    $base[$listIndex][$counterIndex]['amount'] = (float) $base[$listIndex][$counterIndex]['amount'] + (float) $counter['amount'];
+                    $current = $base[$listIndex][$counterIndex]['amount'];
+                    $add = $counter['amount'];
+                    // Integer counters (tokens, cost micro-units) stay integers.
+                    $base[$listIndex][$counterIndex]['amount'] = is_int($current) && is_int($add) ? $current + $add : (float) $current + (float) $add;
                     continue;
                 }
                 $extra[] = $counter;
@@ -259,29 +318,77 @@ final class RequestLifecycle
 
     private function persistLease(): void
     {
-        if ($this->leases === null || $this->requestId === '') {
+        if ($this->leases === null || $this->requestId === '' || $this->leaseLost) {
             return;
         }
         try {
-            $this->leases->put($this->requestId, [
+            $stored = $this->leases->put($this->requestId, [
                 'concurrency_keys' => $this->concurrencyKeys,
                 'quota_reservations' => $this->quotaReservations,
                 'model_quota_reservations' => $this->modelQuotaReservations,
                 'api_key_id' => $this->apiKey['id'] ?? null,
-            ], $this->leaseSeconds);
+            ], $this->leaseTtl());
+            $this->leasePersisted = $this->leasePersisted || $stored;
+            $this->lastRenewal = microtime(true);
         } catch (Throwable $throwable) {
             App::logger()->warning('quota', 'reservation lease write failed', ['error' => $throwable->getMessage()]);
         }
     }
 
-    private function dropLease(): void
+    /**
+     * True when this request (not the sweeper) releases its reservations.
+     */
+    private function claimLease(): bool
     {
-        if ($this->leases === null || $this->requestId === '') {
-            return;
+        if ($this->leases === null || $this->requestId === '' || !$this->leasePersisted) {
+            return true;
+        }
+        if ($this->leaseLost) {
+            try {
+                $this->leases->claim($this->requestId);
+            } catch (Throwable) {
+            }
+            return false;
         }
         try {
-            $this->leases->forget($this->requestId);
+            return $this->leases->claim($this->requestId);
         } catch (Throwable) {
+            return true;
+        }
+    }
+
+    private function renewInterval(): float
+    {
+        return max(1.0, (float) env_value('GATEWAY_LEASE_RENEW_SECONDS', 60));
+    }
+
+    /**
+     * @param list<list<array<string, mixed>>> $reservations
+     * @return list<list<array<string, mixed>>>
+     */
+    private static function zeroed(array $reservations): array
+    {
+        // amount forced to 0, every other field kept
+        return array_map(
+            static fn (array $counters): array => array_map(static fn (array $counter): array => ['amount' => 0] + array_diff_key($counter, ['amount' => true]), $counters),
+            $reservations
+        );
+    }
+
+    /**
+     * Request counters rolled back by the sweeper are counted again: the
+     * request did reach the upstream.
+     *
+     * @param list<list<array<string, mixed>>> $reservations
+     */
+    private static function recount(array $reservations): void
+    {
+        foreach ($reservations as $counters) {
+            foreach ($counters as $counter) {
+                if (($counter['metric'] ?? '') === 'requests' && isset($counter['key']) && (float) ($counter['amount'] ?? 0) > 0) {
+                    App::redis()->incrementByFloat((string) $counter['key'], (int) $counter['amount'], (int) ($counter['ttl'] ?? 0));
+                }
+            }
         }
     }
 }

@@ -67,6 +67,35 @@ final class MediaPayload
      */
     public static function estimate(array $payload): array
     {
+        // PERF-021: one request estimates the same (often large) payload
+        // several times (parser, preflight budget, final budget). The last
+        // results are memoized; comparing with === is O(1) when the array is
+        // the same copy-on-write value and far cheaper than re-walking and
+        // re-encoding it otherwise.
+        $settings = env_value('GATEWAY_MEDIA_TOKEN_ESTIMATE', 1500) . '|' . env_value('GATEWAY_VIDEO_TOKEN_ESTIMATE', 8000);
+        foreach (self::$memo as [$seen, $seenSettings, $result]) {
+            if ($seenSettings === $settings && $seen === $payload) {
+                return $result;
+            }
+        }
+        $result = self::compute($payload);
+        self::$memo[] = [$payload, $settings, $result];
+        if (count(self::$memo) > 2) {
+            array_shift(self::$memo);
+        }
+
+        return $result;
+    }
+
+    /** @var list<array{0: array<string, mixed>, 1: string, 2: array{tokens: int, media_parts: int}}> */
+    private static array $memo = [];
+
+    /**
+     * @param array<string, mixed> $payload
+     * @return array{tokens: int, media_parts: int}
+     */
+    private static function compute(array $payload): array
+    {
         $media = 0;
         $video = 0;
         $stripped = self::strip($payload, null, null, $media, $video);

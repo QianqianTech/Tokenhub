@@ -3,13 +3,14 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="referrer" content="no-referrer">
     <title>TokenHub 管理后台</title>
     <link rel="icon" href="/admin/assets/brand/favicon.ico" sizes="any">
     <link rel="apple-touch-icon" href="/admin/assets/brand/apple-touch-icon.png">
-    <link rel="stylesheet" href="/admin/assets/css/tokens.css?v=20261030-rag-v1">
-    <link rel="stylesheet" href="/admin/assets/css/app.css?v=20261030-rag-v1">
-    <link rel="stylesheet" href="/admin/assets/css/components.css?v=20261030-rag-v1">
-    <link rel="stylesheet" href="/admin/assets/css/redesign.css?v=20261030-rag-v1">
+    <link rel="stylesheet" href="/admin/assets/css/tokens.css?v=20261031-validation-fix">
+    <link rel="stylesheet" href="/admin/assets/css/app.css?v=20261031-validation-fix">
+    <link rel="stylesheet" href="/admin/assets/css/components.css?v=20261031-validation-fix">
+    <link rel="stylesheet" href="/admin/assets/css/redesign.css?v=20261031-validation-fix">
   </head>
   <body>
     <a class="skip-link" href="#content">跳到主要内容</a>
@@ -26,6 +27,9 @@
             <span id="current-user" class="sidebar-user-name"></span>
             <span id="current-role" class="sidebar-user-role"></span>
           </span>
+          <button id="app-devices" type="button" class="sidebar-logout" aria-label="APP 设备" title="APP 设备：在手机或电脑上登录">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="7" y="2.5" width="10" height="19" rx="2"/><path d="M11 18h2"/></svg>
+          </button>
           <button id="logout" type="button" class="sidebar-logout" aria-label="退出登录" title="退出登录">
             <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3M10 16l4-4-4-4M14 12H4"/></svg>
           </button>
@@ -87,20 +91,46 @@
           </label>
           <div class="login-options">
             <label class="login-remember"><input id="remember-username" type="checkbox">记住用户名</label>
-            <span class="login-help">忘记密码请联系超级管理员</span>
+            <button id="forgot-password-link" class="login-help login-text-button" type="button" hidden>忘记密码？</button>
+            <span id="forgot-password-contact" class="login-help" hidden>忘记密码请联系超级管理员重置</span>
           </div>
           <button id="login-button" type="submit">登录</button>
           <p id="login-error" class="error login-error" role="alert" aria-live="assertive"></p>
+          <p id="login-status" class="login-success" role="status" aria-live="polite" hidden></p>
           <p class="login-note">
             <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M12 3l8 3v6c0 4.5-3.4 8.3-8 9-4.6-.7-8-4.5-8-9V6l8-3Z"/></svg>
             同一 IP 或账号短时间内多次登录失败，会被暂时限制登录
           </p>
+        </form>
+        <form id="forgot-password" class="login-panel" aria-labelledby="forgot-password-title" hidden>
+          <div class="login-heading">
+            <h2 id="forgot-password-title">找回管理员密码</h2>
+            <p class="login-subtitle">输入管理员账号已绑定的邮箱，我们将发送密码重置链接。</p>
+          </div>
+          <label class="login-field">邮箱地址<input id="recovery-email" name="email" type="email" autocomplete="email" maxlength="254" required></label>
+          <button id="recovery-send" type="submit">发送重置邮件</button>
+          <p id="recovery-error" class="login-error" role="alert" aria-live="assertive"></p>
+          <p id="recovery-status" class="login-success" role="status" aria-live="polite" hidden></p>
+          <p class="login-note">邮箱需预先在“管理员管理”中绑定。未绑定邮箱时，可由超级管理员或服务器管理员协助重置。</p>
+          <button class="login-text-button" type="button" data-return-login>返回登录</button>
+        </form>
+        <form id="reset-password" class="login-panel" aria-labelledby="reset-password-title" hidden>
+          <div class="login-heading">
+            <h2 id="reset-password-title">设置新密码</h2>
+            <p class="login-subtitle">新密码至少 12 个字符，最多 72 字节。重置后需在所有设备上重新登录。</p>
+          </div>
+          <label class="login-field">新密码<input id="reset-new-password" name="password" type="password" autocomplete="new-password" minlength="12" maxlength="72" required></label>
+          <label class="login-field">确认新密码<input id="reset-confirm-password" name="password_confirmation" type="password" autocomplete="new-password" minlength="12" maxlength="72" required></label>
+          <button id="recovery-reset" type="submit">重置密码</button>
+          <p id="reset-error" class="login-error" role="alert" aria-live="assertive"></p>
+          <button id="recovery-request-again" class="login-text-button" type="button">重新申请重置邮件</button>
+          <button class="login-text-button" type="button" data-return-login>返回登录</button>
         </form>
         <section id="content" class="content" tabindex="-1" hidden></section>
         <div id="modal-root"></div>
         <div class="app-copyright" aria-label="版权信息">黔前智算 TokenHub 版权所有</div>
       </section>
     </main>
-    <script type="module" src="/admin/assets/js/app.js?v=20261030-rag-v1"></script>
+    <script type="module" src="/admin/assets/js/app.js?v=20261031-validation-fix"></script>
   </body>
 </html>

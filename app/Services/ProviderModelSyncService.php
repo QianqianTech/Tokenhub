@@ -233,7 +233,7 @@ final class ProviderModelSyncService
      *
      * @return array{provider_id: int, applied: bool, added: list<array<string, mixed>>, changed: list<array<string, mixed>>, missing: list<array<string, mixed>>, unchanged: int}
      */
-    public function syncProvider(int $providerId, bool $apply = false): array
+    public function syncProvider(int $providerId, bool $apply = false, bool $recordHistory = true): array
     {
         if ($providerId <= 0) {
             return ['provider_id' => 0, 'applied' => false, 'added' => [], 'changed' => [], 'missing' => [], 'unchanged' => 0];
@@ -248,7 +248,9 @@ final class ProviderModelSyncService
             $existingByExternal[(string) $row['external_name']] = $row;
         }
         $hasLayers = SchemaInspector::hasColumn('models', 'capabilities');
-        $hasHistory = SchemaInspector::hasColumn('model_catalog_changes', 'change_type');
+        // The scheduled daily dry-run (dryRunAll) only reports: it must not add
+        // the same unapplied changes to the history table every day.
+        $hasHistory = $recordHistory && SchemaInspector::hasColumn('model_catalog_changes', 'change_type');
         $added = [];
         $changed = [];
         $missing = [];
@@ -312,6 +314,56 @@ final class ProviderModelSyncService
         }
 
         return ['provider_id' => $providerId, 'applied' => $apply, 'added' => $added, 'changed' => $changed, 'missing' => $missing, 'unchanged' => $unchanged, 'hidden_unsupported' => $hiddenAdded];
+    }
+
+    /**
+     * BIZ-018: scheduled daily dry-run ("catalog.dry-run") over every active
+     * provider. Nothing is applied; a provider whose upstream catalog differs
+     * from the local one (new, changed or missing models; context length or
+     * catalog price changes) raises a "catalog_drift" alert, and an
+     * unreachable catalog raises "catalog_sync_failed". Alerts of providers
+     * that are in sync again are resolved.
+     *
+     * @return array{providers: int, drifted: int, failed: int, results: list<array<string, mixed>>}
+     */
+    public function dryRunAll(?AlertService $alerts = null): array
+    {
+        $alerts ??= new AlertService();
+        $providers = App::db()->select('SELECT id, name FROM providers WHERE status = "active" ORDER BY id');
+        $results = [];
+        $drifted = 0;
+        $failed = 0;
+        foreach ($providers as $provider) {
+            $providerId = (int) $provider['id'];
+            try {
+                $diff = $this->syncProvider($providerId, false, false);
+                $prices = [];
+                try {
+                    $prices = $this->catalogPrices($providerId, false)['models'];
+                } catch (\Throwable) {
+                }
+                $summary = [
+                    'provider_id' => $providerId,
+                    'added' => count($diff['added']),
+                    'changed' => count($diff['changed']),
+                    'missing' => count($diff['missing']),
+                    'price_changes' => count($prices),
+                ];
+                $results[] = $summary;
+                if ($summary['added'] + $summary['changed'] + $summary['missing'] + $summary['price_changes'] > 0) {
+                    $drifted++;
+                    $alerts->record('catalog_drift', 'warning', 'Upstream model catalog differs from TokenHub', [...$summary, 'provider' => (string) ($provider['name'] ?? '')]);
+                }
+            } catch (\Throwable $throwable) {
+                $failed++;
+                $results[] = ['provider_id' => $providerId, 'error' => mb_substr($throwable->getMessage(), 0, 200)];
+                $alerts->record('catalog_sync_failed', 'info', 'Upstream model catalog could not be read', ['provider_id' => $providerId, 'error' => mb_substr($throwable->getMessage(), 0, 200)]);
+            }
+        }
+        $alerts->resolveCleared(['catalog_drift', 'catalog_sync_failed']);
+        App::logger()->info('worker', 'catalog dry-run completed', ['providers' => count($providers), 'drifted' => $drifted, 'failed' => $failed]);
+
+        return ['providers' => count($providers), 'drifted' => $drifted, 'failed' => $failed, 'results' => $results];
     }
 
     /**

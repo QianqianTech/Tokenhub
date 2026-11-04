@@ -347,6 +347,7 @@ export function readFields(form, fields, { validate = false, mode = "create" } =
       continue;
     }
     if (config.optional && raw === "") {
+      if (Object.hasOwn(config, "emptyValue")) values[config.name] = config.emptyValue;
       continue;
     }
     if (config.type === "number" || config.coerce === "number") {

@@ -23,6 +23,11 @@ class Database:
             password=self.config.db_password,
             autocommit=False,
         )
+        # BIZ-001: the session runs in UTC like the PHP side, so NOW() matches
+        # the gmdate() values PHP writes (locked_at, next_run_at, ...).
+        session = connection.cursor()
+        session.execute("SET time_zone = '+00:00'")
+        session.close()
         try:
             yield connection
             connection.commit()
@@ -199,22 +204,22 @@ class Database:
                     cursor.execute(
                         """
                         UPDATE rag_vector_datasets
-                        SET chunk_count = (SELECT COUNT(*) FROM rag_chunks WHERE kb_id = %s AND lifecycle_status = 'active'),
+                        SET chunk_count = (SELECT COUNT(*) FROM rag_chunks c LEFT JOIN rag_documents doc ON doc.id = c.document_id WHERE (c.dataset_id = %s OR (c.dataset_id IS NULL AND doc.dataset_id = %s)) AND c.lifecycle_status = 'active'),
                             vector_count = (SELECT COUNT(*) FROM rag_vector_records WHERE dataset_id = %s AND index_status = 'indexed'),
                             last_indexed_at = NOW()
                         WHERE id = %s
                         """,
-                        (upload.get("kb_id"), dataset_id, dataset_id),
+                        (dataset_id, dataset_id, dataset_id, dataset_id),
                     )
                 else:
                     cursor.execute(
                         """
                         UPDATE rag_vector_datasets
-                        SET chunk_count = (SELECT COUNT(*) FROM rag_chunks WHERE kb_id = %s AND lifecycle_status = 'active'),
+                        SET chunk_count = (SELECT COUNT(*) FROM rag_chunks c LEFT JOIN rag_documents doc ON doc.id = c.document_id WHERE (c.dataset_id = %s OR (c.dataset_id IS NULL AND doc.dataset_id = %s)) AND c.lifecycle_status = 'active'),
                             vector_count = (SELECT COUNT(*) FROM rag_vector_records WHERE dataset_id = %s AND index_status = 'indexed')
                         WHERE id = %s
                         """,
-                        (upload.get("kb_id"), dataset_id, dataset_id),
+                        (dataset_id, dataset_id, dataset_id, dataset_id),
                     )
 
     def row(self, sql: str, params: tuple[Any, ...]) -> dict[str, Any] | None:

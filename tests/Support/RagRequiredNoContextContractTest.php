@@ -79,7 +79,7 @@ $requiredPayload = [
 ];
 $childCode = 'require "tests/bootstrap.php"; register_shutdown_function(static function (): void { fwrite(STDERR, "STATUS=" . http_response_code()); }); $apiKey = json_decode(base64_decode("' . base64_encode(json_encode($apiKey)) . '"), true); $payload = json_decode(base64_decode("' . base64_encode(json_encode($requiredPayload)) . '"), true); (new TokenHub\\Services\\RagRetrievalService())->retrieve($apiKey, $payload);';
 $descriptorSpec = [1 => ['pipe', 'w'], 2 => ['pipe', 'w']];
-$process = proc_open(['php', '-r', $childCode], $descriptorSpec, $pipes, '/srv/app');
+$process = proc_open(['php', '-r', 'try { ' . $childCode . ' } catch (\TokenHub\Support\HttpAbortException $e) { $e->response()->send(); }'], $descriptorSpec, $pipes, dirname(__DIR__, 2));
 assert_true(is_resource($process), 'Required no-context child process must start.');
 $requiredBody = stream_get_contents($pipes[1]);
 $requiredStatus = stream_get_contents($pipes[2]);
@@ -175,7 +175,7 @@ assert_true(str_contains((string) ($sourcedRecordFailure['payload']['input'] ?? 
 $requiredSourcedPayload = $sourcedPayload;
 $requiredSourcedPayload['rag']['required'] = true;
 $childCode = 'require "tests/bootstrap.php"; register_shutdown_function(static function (): void { fwrite(STDERR, "STATUS=" . http_response_code()); }); $apiKey = json_decode(base64_decode("' . base64_encode(json_encode($apiKey)) . '"), true); $payload = json_decode(base64_decode("' . base64_encode(json_encode($requiredSourcedPayload)) . '"), true); $result = (new TokenHub\\Services\\RagRetrievalService(null, null, null, static function (): never { throw new RuntimeException("controlled successful retrieval-log failure"); }))->retrieve($apiKey, $payload); echo json_encode($result);';
-$process = proc_open(['php', '-r', $childCode], $descriptorSpec, $pipes, '/srv/app');
+$process = proc_open(['php', '-r', 'try { ' . $childCode . ' } catch (\TokenHub\Support\HttpAbortException $e) { $e->response()->send(); }'], $descriptorSpec, $pipes, dirname(__DIR__, 2));
 assert_true(is_resource($process), 'Required sourced log-failure child process must start.');
 $requiredSourcedBody = stream_get_contents($pipes[1]);
 $requiredSourcedStatus = stream_get_contents($pipes[2]);

@@ -51,6 +51,17 @@ assert_same('GET', $models['method'], 'Provider model listing should support GET
 assert_same('', $models['body'], 'GET model listing should not send a JSON body.');
 assert_same('https://provider.example/v1/models', $models['url'], 'Provider model listing should call the models endpoint.');
 
+$jsonRoute = ['base_url' => 'https://provider.example/v1', 'protocol' => 'openai'];
+$automaticJson = $client->prepareRequest('/v1/chat/completions', $jsonRoute, ['json' => ['model' => 'qwen3.7-plus']]);
+assert_same('application/json', $automaticJson['headers']['Content-Type'] ?? null, 'A serialized JSON payload must be labelled as JSON even when the caller omits the header.');
+assert_same('qwen3.7-plus', json_decode($automaticJson['body'], true)['model'] ?? null, 'The model must survive JSON serialization.');
+$explicitType = $client->prepareRequest('/v1/chat/completions', $jsonRoute, ['headers' => ['content-type' => 'application/custom+json'], 'json' => ['model' => 'qwen3.7-plus']]);
+assert_same('application/custom+json', $explicitType['headers']['content-type'] ?? null, 'An explicitly configured media type is preserved case-insensitively.');
+assert_true(!isset($explicitType['headers']['Content-Type']), 'The default must not introduce a duplicate Content-Type header.');
+$rawBody = $client->prepareRequest('/v1/audio/transcriptions', $jsonRoute, ['body' => 'raw-audio-bytes']);
+assert_true(!isset($rawBody['headers']['Content-Type']), 'Raw binary and multipart bodies must not be labelled as JSON automatically.');
+assert_true(!isset($models['headers']['Content-Type']), 'Body-free model listing must not gain a JSON Content-Type.');
+
 $kimiCode = $client->prepareRequest('/v1/chat/completions', [
     'base_url' => 'https://api.kimi.com/coding/v1',
     'protocol' => 'openai',

@@ -1,0 +1,26 @@
+{
+  "name": "tokenhub-app-mobile",
+  "private": true,
+  "version": "0.1.0",
+  "description": "TokenHub APP for iOS and Android: a thin Capacitor shell around the server's /app/ page.",
+  "scripts": {
+    "add:ios": "node scripts/add-platform.mjs ios",
+    "add:android": "node scripts/add-platform.mjs android",
+    "sync": "node scripts/configure-navigation.mjs && cap sync",
+    "sync:ios:local": "node scripts/sync-ios-local.mjs",
+    "open:ios": "cap open ios",
+    "open:android": "cap open android",
+    "configure:navigation": "node scripts/configure-navigation.mjs"
+  },
+  "dependencies": {
+    "@capacitor/android": "^6.1.0",
+    "@capacitor/app": "^6.0.0",
+    "@capacitor/core": "^6.1.0",
+    "@capacitor/ios": "^6.1.0",
+    "@capacitor/push-notifications": "^6.0.0"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^6.1.0",
+    "xcode": "^4.0.0"
+  }
+}

@@ -1,5 +1,5 @@
 // Operations tools ported from the former single-file table.js into
-// lib/ops-tools.js: quota status/adjustment, key rotation, request
+// lib/api-key-tools.js, diagnostics.js, provider-catalog.js, capability-editor.js: quota status/adjustment, key rotation, request
 // diagnostics, provider catalog sync, capability contract editor, agent
 // management scopes and the API key trial mode of the chat page.
 import { after, afterEach, before, test } from "node:test";

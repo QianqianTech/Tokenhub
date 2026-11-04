@@ -57,6 +57,8 @@ $cases = [
     ['https://generativelanguage.googleapis.com/v1beta/openai/', '/v1/embeddings', 'https://generativelanguage.googleapis.com/v1beta/openai/embeddings'],
     ['https://open.bigmodel.cn/api/paas/v4', '/v1/chat/completions', 'https://open.bigmodel.cn/api/paas/v4/chat/completions'],
     ['https://dashscope.aliyuncs.com/compatible-mode/v1', '/v1/chat/completions', 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions'],
+    ['https://token-plan.maas.qianwenaiapi.com/compatible-mode/v1', '/v1/chat/completions', 'https://token-plan.maas.qianwenaiapi.com/compatible-mode/v1/chat/completions'],
+    ['https://token-plan.maas.qianwenaiapi.com/compatible-mode/v1/', '/v1/models', 'https://token-plan.maas.qianwenaiapi.com/compatible-mode/v1/models'],
     ['https://ark.cn-beijing.volces.com/api/v3', '/v1/chat/completions', 'https://ark.cn-beijing.volces.com/api/v3/chat/completions'],
     ['https://openrouter.ai/api/v1', '/v1/chat/completions', 'https://openrouter.ai/api/v1/chat/completions'],
     ['https://openrouter.ai/api/v1', '/v1/generation?id=gen-1', 'https://openrouter.ai/api/v1/generation?id=gen-1'],

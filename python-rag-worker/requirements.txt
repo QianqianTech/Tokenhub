@@ -1,6 +1,7 @@
-mysql-connector-python==9.1.0
+# SEC-115: >= 9.2.0 / >= 2.32.4 for the published CVE fixes.
+mysql-connector-python>=9.2.0,<10
 redis==5.2.1
-requests==2.32.3
+requests>=2.32.4,<3
 Pillow==12.3.0
 # Document parsing (RAG-020): PDF text layer for files PHP cannot parse.
 pdfplumber==0.11.10

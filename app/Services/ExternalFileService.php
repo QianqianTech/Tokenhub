@@ -134,7 +134,7 @@ final class ExternalFileService
     public function delete(array $apiKey, string $fileId): array
     {
         $asset = $this->file($apiKey, $fileId);
-        App::db()->execute('UPDATE media_assets SET deleted_at = NOW() WHERE id = ? AND deleted_at IS NULL', [(int) $asset['id']]);
+        App::db()->execute('UPDATE media_assets SET deleted_at = UTC_TIMESTAMP() WHERE id = ? AND deleted_at IS NULL', [(int) $asset['id']]);
         (new AuditService())->write('asset.delete', 'media_assets', (string) $asset['asset_id'], ['api_key_id' => $apiKey['id'] ?? null]);
         $this->deleteOwnedLocalFile((string) ($asset['storage_path'] ?? ''));
         return ['file_id' => $fileId, 'deleted' => true, 'deleted_at' => gmdate('Y-m-d H:i:s')];

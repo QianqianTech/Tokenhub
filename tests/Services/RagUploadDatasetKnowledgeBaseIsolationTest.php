@@ -69,7 +69,7 @@ $payload = base64_encode(json_encode([
 ]));
 $childCode = 'require "tests/bootstrap.php"; $payload = json_decode(base64_decode("' . $payload . '"), true); (new TokenHub\\Services\\RagUploadService())->confirm($payload["api_key"], $payload["upload_id"], ["dataset_id" => $payload["dataset_id"]]);';
 $descriptorSpec = [1 => ['pipe', 'w'], 2 => ['pipe', 'w']];
-$process = proc_open(['php', '-r', $childCode], $descriptorSpec, $pipes, '/srv/app');
+$process = proc_open(['php', '-r', 'try { ' . $childCode . ' } catch (\TokenHub\Support\HttpAbortException $e) { $e->response()->send(); }'], $descriptorSpec, $pipes, dirname(__DIR__, 2));
 assert_true(is_resource($process), 'The cross-KB rejection assertion child process should start.');
 $stdout = stream_get_contents($pipes[1]);
 $stderr = stream_get_contents($pipes[2]);

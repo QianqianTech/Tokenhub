@@ -4,8 +4,9 @@ import { button, el, field, readFields, showModal } from "../dom.js";
 import { clearLookupCache } from "./lookups.js";
 import { oneTimeSecretText, setErrorOutput, setOperationOutput } from "./output.js";
 import { lookupAwareFields, quotaTargetRef } from "./references.js";
-import { bindProviderBaseUrlDefaults, renderProviderPresetPicker } from "../pages/catalog.js";
-import { createApiKeyManagementScopeEditor, createModelCapabilityEditor } from "./ops-tools.js";
+import { bindProviderBaseUrlDefaults, bindProviderSecretVisibility, organizeProviderForm, providerSecretStatus, renderProviderPresetPicker } from "../pages/catalog.js";
+import { createApiKeyManagementScopeEditor } from "./api-key-tools.js";
+import { createModelCapabilityEditor } from "./capability-editor.js";
 
 // "用户管理" → "用户": dialog titles name the record, not the page.
 function recordNoun(label = "") {
@@ -39,7 +40,7 @@ function submitButton(label, handler, variant = "") {
 export async function showCreateModal(resourceKey, config, onSaved, initialValues = {}) {
   const formFields = await lookupAwareFields(config.form);
   const form = resourceForm(formFields, initialValues, resourceKey, { mode: "create" });
-  const output = el("p", { className: `notice ${config.oneTimeSecret ? "secret-output" : ""}`.trim(), hidden: true, role: "status" });
+  const output = el(config.oneTimeSecret ? "div" : "p", { className: `notice ${config.oneTimeSecret ? "secret-output" : ""}`.trim(), hidden: true, role: "status" });
   appendVectorConfigProbe(resourceKey, form, formFields, output);
   const scopeEditor = resourceKey === "api-keys" ? createApiKeyManagementScopeEditor([]) : null;
   if (scopeEditor) {
@@ -47,7 +48,7 @@ export async function showCreateModal(resourceKey, config, onSaved, initialValue
   }
   let modal = null;
   form.append(el("div", { className: "form-actions" }, [
-    submitButton(config.oneTimeSecret ? "创建并显示一次明文" : "保存", async () => {
+    submitButton(config.oneTimeSecret ? (config.createLabel || "创建并显示一次明文") : "保存", async () => {
       let values;
       try {
         values = readFields(form, formFields, { validate: true, mode: "create" });
@@ -66,11 +67,13 @@ export async function showCreateModal(resourceKey, config, onSaved, initialValue
         });
         invalidateLookups(resourceKey);
         if (config.oneTimeSecret) {
-          const secret = oneTimeSecretText(result.data);
           output.replaceChildren(
             el("strong", { text: "请立即复制并妥善保存，关闭后无法再次查看：" }),
-            el("code", { className: "secret-value", text: secret }),
-            copyButton(secret)
+            ...oneTimeSecretEntries(resourceKey, result.data || {}).map(([label, value, copyLabel]) => el("div", { className: "secret-entry" }, [
+              label ? el("span", { className: "secret-label", text: label }) : null,
+              el("code", { className: "secret-value", text: value }),
+              copyButton(value, copyLabel)
+            ].filter(Boolean)))
           );
           output.className = "notice secret-output";
           output.hidden = false;
@@ -94,7 +97,7 @@ export async function showCreateModal(resourceKey, config, onSaved, initialValue
 
 export async function showEditModal(resourceKey, config, row, onSaved) {
   const formFields = await lookupAwareFields(config.form);
-  const form = resourceForm(formFields, row, resourceKey, { mode: "edit" });
+  const form = resourceForm(formFields, resourceKey === "rag-knowledge-bases" ? knowledgeBaseFormValues(row) : row, resourceKey, { mode: "edit" });
   const output = el("p", { className: "notice", hidden: true, role: "status" });
   appendVectorConfigProbe(resourceKey, form, formFields, output);
   const capabilityEditor = resourceKey === "models" ? createModelCapabilityEditor(row) : null;
@@ -120,7 +123,7 @@ export async function showEditModal(resourceKey, config, row, onSaved) {
         values.model_ids = Array.isArray(values.model_ids) ? values.model_ids.filter((id) => Number.isFinite(id) && id > 0) : [];
       }
       try {
-        const payload = resourcePayload(resourceKey, values);
+        const payload = resourcePayload(resourceKey, values, row);
         if (capabilityEditor) {
           Object.assign(payload, capabilityEditor.payload());
         }
@@ -146,6 +149,32 @@ export async function showEditModal(resourceKey, config, row, onSaved) {
   modal = showModal(`编辑${recordNoun(config.label)}`, form);
 }
 
+export function showProviderSecretModal(row, onSaved) {
+  const fields = [{ name: "secret", label: "新 API Key", type: "password", required: true, placeholder: "粘贴新的完整 API Key", hint: "保存后立即替换当前 Key；原 Key 不会回显。" }];
+  const form = resourceForm(fields, {}, "", { mode: "edit" });
+  form.classList.add("provider-key-form");
+  form.prepend(el("p", { className: "provider-secret-status", text: `${row.name || `厂商 #${row.id}`} · 当前 API Key：${providerSecretStatus(row)}` }));
+  bindProviderSecretVisibility(form);
+  const output = el("p", { className: "notice", hidden: true, role: "status" });
+  let modal;
+  form.append(el("div", { className: "form-actions" }, [
+    submitButton("保存 Key", async () => {
+      try {
+        const payload = readFields(form, fields, { validate: true, mode: "edit" });
+        await api(`/admin-api/providers/${row.id}`, { method: "PUT", body: JSON.stringify(payload) });
+        form.querySelector('[name="secret"]').value = "";
+        toast("厂商 API Key 已更新", { tone: "success" });
+        modal.markClean();
+        await modal.close({ force: true });
+        await onSaved();
+      } catch (error) {
+        setErrorOutput(output, adminErrorMessage(error, error.code === "FORM_INVALID" ? error.message : "Key 保存失败，请重试"));
+      }
+    })
+  ]), output);
+  modal = showModal(row.secret_status === "empty" ? "配置厂商 API Key" : "修改厂商 API Key", form, { size: "sm" });
+}
+
 function appendVectorConfigProbe(resourceKey, form, fields, output) {
   if (resourceKey !== "rag-vector-configs") {
     return;
@@ -157,6 +186,10 @@ function appendVectorConfigProbe(resourceKey, form, fields, output) {
         body: JSON.stringify(resourcePayload(resourceKey, readFields(form, fields, { validate: true })))
       });
       const probe = result.data || {};
+      if (probe.dimension_matches === false) {
+        setErrorOutput(output, `模型可用，但实际维度是 ${probe.dimension}，与填写的 ${probe.configured_dimension || "-"} 不一致，请把“向量维度”改为 ${probe.dimension}`);
+        return;
+      }
       setOperationOutput(output, probe, `测试成功：${probe.model_name || "向量模型"}，维度 ${probe.dimension || "-"}`);
     } catch (error) {
       setErrorOutput(output, adminErrorMessage(error, error.code === "FORM_INVALID" ? error.message : "向量模型测试失败"));
@@ -164,7 +197,101 @@ function appendVectorConfigProbe(resourceKey, form, fields, output) {
   }, "secondary"));
 }
 
-export function resourcePayload(resourceKey, values) {
+// What a create response reveals once: the API key, or for a screen share the
+// login, password and link (ScreenService::createShareLink).
+export function oneTimeSecretEntries(resourceKey, data = {}) {
+  if (resourceKey === "dashboard-share-links") {
+    const url = data.share_url ? new URL(String(data.share_url), window.location.origin).href : "";
+    return [
+      data.username ? ["登录账号", String(data.username), "复制账号"] : null,
+      data.password ? ["访问密码", String(data.password), "复制密码"] : null,
+      url ? ["分享链接", url, "复制链接"] : null
+    ].filter(Boolean);
+  }
+  return [["", oneTimeSecretText(data), undefined]];
+}
+
+// Knowledge base: structured fields <-> chunking_profile.redaction and
+// retrieval_profile (RagRedactionService, RagRetrievalProfileService,
+// RagRerankService). Keys the form does not know are kept as they were.
+const KB_RETRIEVAL_KEYS = ["min_vector_score", "min_lexical_score", "min_hybrid_confidence", "exact_match_discount"];
+const KB_FORM_KEYS = ["redaction_mode", "redaction_types", ...KB_RETRIEVAL_KEYS, "rerank_model_id", "rerank_top_n", "rerank_min_score"];
+
+function jsonObject(value) {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    return value;
+  }
+  if (typeof value === "string" && value.trim() !== "") {
+    try {
+      const parsed = JSON.parse(value);
+      return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+    } catch {
+      return {};
+    }
+  }
+  return {};
+}
+
+export function knowledgeBaseFormValues(row = {}) {
+  const chunking = jsonObject(row.chunking_profile);
+  const retrieval = jsonObject(row.retrieval_profile);
+  const values = { ...row };
+  if (Object.hasOwn(chunking, "redaction")) {
+    const redaction = chunking.redaction;
+    const types = Array.isArray(redaction) ? redaction : Array.isArray(redaction?.types) ? redaction.types : [];
+    values.redaction_mode = redaction === false || redaction?.enabled === false ? "off" : "custom";
+    values.redaction_types = types;
+  }
+  for (const key of KB_RETRIEVAL_KEYS) {
+    if (retrieval[key] !== undefined && retrieval[key] !== null) values[key] = retrieval[key];
+  }
+  const rerank = jsonObject(retrieval.rerank);
+  if (rerank.model_id) {
+    values.rerank_model_id = rerank.model_id;
+    if (rerank.top_n !== undefined) values.rerank_top_n = rerank.top_n;
+    if (rerank.min_score !== undefined) values.rerank_min_score = rerank.min_score;
+  }
+  return values;
+}
+
+function knowledgeBasePayload(values, row = {}) {
+  const payload = Object.fromEntries(Object.entries(values).filter(([key]) => !KB_FORM_KEYS.includes(key)));
+  const chunking = { ...jsonObject(row.chunking_profile) };
+  const mode = values.redaction_mode || "";
+  if (mode === "off") {
+    chunking.redaction = false;
+  } else if (mode === "custom") {
+    chunking.redaction = { types: Array.isArray(values.redaction_types) ? values.redaction_types : [] };
+  } else {
+    delete chunking.redaction;
+  }
+  const retrieval = { ...jsonObject(row.retrieval_profile) };
+  for (const key of KB_RETRIEVAL_KEYS) {
+    if (values[key] === undefined || values[key] === null || values[key] === "") delete retrieval[key];
+    else retrieval[key] = Number(values[key]);
+  }
+  if (values.rerank_model_id) {
+    retrieval.rerank = {
+      ...jsonObject(retrieval.rerank),
+      enabled: true,
+      model_id: Number(values.rerank_model_id),
+      ...(values.rerank_top_n ? { top_n: Number(values.rerank_top_n) } : {}),
+      ...(values.rerank_min_score !== undefined && values.rerank_min_score !== null ? { min_score: Number(values.rerank_min_score) } : {})
+    };
+  } else {
+    delete retrieval.rerank;
+  }
+  const hadChunking = Object.keys(jsonObject(row.chunking_profile)).length > 0;
+  const hadRetrieval = Object.keys(jsonObject(row.retrieval_profile)).length > 0;
+  if (Object.keys(chunking).length > 0 || hadChunking) payload.chunking_profile = chunking;
+  if (Object.keys(retrieval).length > 0 || hadRetrieval) payload.retrieval_profile = retrieval;
+  return payload;
+}
+
+export function resourcePayload(resourceKey, values, row = {}) {
+  if (resourceKey === "rag-knowledge-bases") {
+    return knowledgeBasePayload(values, row);
+  }
   if (resourceKey === "dashboard-share-links") {
     // A global share has no scope objects; unselected metrics mean "all".
     return {
@@ -186,7 +313,7 @@ export function resourcePayload(resourceKey, values) {
 }
 
 export function resourceForm(fields, row = {}, resourceKey = "", { mode = "edit" } = {}) {
-  const form = el("form", { className: "edit-form", noValidate: true, onSubmit: (event) => event.preventDefault() });
+  const form = el("form", { className: "edit-form", dataset: { mode }, noValidate: true, onSubmit: (event) => event.preventDefault() });
   for (const config of fields) {
     let value = row[config.name] ?? "";
     if (resourceKey === "quota-bindings" && config.name === "target_ref") {
@@ -214,6 +341,7 @@ export function resourceForm(fields, row = {}, resourceKey = "", { mode = "edit"
   if (resourceKey === "providers") {
     form.prepend(renderProviderPresetPicker(form));
     bindProviderBaseUrlDefaults(form);
+    organizeProviderForm(form, row, { mode });
   }
   if (resourceKey === "api-keys") {
     bindApiKeyDepartmentUserPicker(form);

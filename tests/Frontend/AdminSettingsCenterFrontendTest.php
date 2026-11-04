@@ -52,7 +52,7 @@ assert_true(str_contains($resources, '"settings-rag-upload-review"'), 'Admin res
 assert_true(str_contains($resources, '"settings-rag-package-upload"'), 'Admin resources should expose RAG image package upload settings as a subpage.');
 assert_true(str_contains($resources, '"settings-rag-ai-image-processing"'), 'Admin resources should expose RAG AI image processing settings as a subpage.');
 assert_true(str_contains($resources, '"settings-rag-vectorization-monitoring"'), 'Admin resources should expose RAG vectorization monitoring settings as a subpage.');
-assert_true(str_contains((string) file_get_contents(__DIR__ . '/../../public/admin/assets/js/domains.js'), '{ key: "system", label: "系统运维"'), 'System settings should be a left sidebar section.');
+assert_true(str_contains((string) file_get_contents(__DIR__ . '/../../public/admin/assets/js/domains.js'), '{ key: "system", label: "系统设置"'), 'System settings should be a left sidebar section.');
 $domainsSource = (string) file_get_contents(__DIR__ . '/../../public/admin/assets/js/domains.js');
 $systemSectionStart = strpos($domainsSource, '{ key: "system"');
 $systemSectionEnd = $systemSectionStart === false ? false : strpos($domainsSource, "\n", $systemSectionStart);

@@ -21,6 +21,7 @@ if (!in_array('sqlite', PDO::getAvailableDrivers(), true)) {
 }
 $queue = 'tokenhub:embtest:' . bin2hex(random_bytes(4));
 $_ENV['QUEUE_NAME'] = $queue;
+$_ENV['QUEUE_ROUTING'] = 'false'; // these assertions read the main queue (PERF-015 routes usage.write to <name>:usage)
 (new ReflectionProperty(App::class, 'config'))->setValue(null, \TokenHub\Support\Config::default());
 try {
     App::redis()->connection()->ping();

@@ -52,8 +52,8 @@ final class RagEmbeddingJobService
         }
 
         App::db()->execute(
-            'UPDATE rag_vector_datasets SET chunk_count = (SELECT COUNT(*) FROM rag_chunks WHERE kb_id = ? AND lifecycle_status = "active"), vector_count = (SELECT COUNT(*) FROM rag_vector_records WHERE dataset_id = ? AND index_status = "indexed") WHERE id = ?',
-            [$dataset['kb_id'], $dataset['id'], $dataset['id']]
+            'UPDATE rag_vector_datasets SET chunk_count = (SELECT COUNT(*) FROM rag_chunks c LEFT JOIN rag_documents doc ON doc.id = c.document_id WHERE (c.dataset_id = ? OR (c.dataset_id IS NULL AND doc.dataset_id = ?)) AND c.lifecycle_status = "active"), vector_count = (SELECT COUNT(*) FROM rag_vector_records WHERE dataset_id = ? AND index_status = "indexed") WHERE id = ?',
+            [$dataset['id'], $dataset['id'], $dataset['id'], $dataset['id']]
         );
 
         $providerPending = (int) (App::db()->first(
@@ -76,7 +76,7 @@ final class RagEmbeddingJobService
         App::db()->execute(
             'UPDATE rag_embedding_jobs SET status = "retrying", locked_at = NULL, lock_token = NULL, dispatched_at = NULL, next_run_at = NULL
              WHERE upload_id = ? AND execution_backend = "php_provider" AND status = "running"
-               AND (locked_at IS NULL OR TIMESTAMPDIFF(SECOND, locked_at, NOW()) > ?)',
+               AND (locked_at IS NULL OR TIMESTAMPDIFF(SECOND, locked_at, UTC_TIMESTAMP()) > ?)',
             [$uploadId, $leaseSeconds]
         );
 
@@ -139,7 +139,7 @@ final class RagEmbeddingJobService
             }
             try {
                 App::db()->execute(
-                    'UPDATE rag_vector_records SET index_status = "indexed", status = "indexed", indexed_at = NOW(), deleted_at = NULL WHERE vector_id = ?',
+                    'UPDATE rag_vector_records SET index_status = "indexed", status = "indexed", indexed_at = UTC_TIMESTAMP(), deleted_at = NULL WHERE vector_id = ?',
                     [$vectorId]
                 );
             } catch (Throwable $throwable) {
@@ -217,9 +217,13 @@ final class RagEmbeddingJobService
      */
     private function inputHash(array $config, array $input): string
     {
+        $prefix = RagVectorConfigService::prefix($config['config_json'] ?? null, 'document_prefix');
+
         return hash('sha256', implode("\x1f", [
             (string) ($config['model_id'] ?? $config['model_name'] ?? ''),
             (string) ($config['dimension'] ?? ''),
+            // The document prefix is part of what the model embeds (V-15); empty keeps old hashes.
+            ...($prefix === '' ? [] : ['prefix:' . $prefix]),
             (string) ($input['modality'] ?? 'text'),
             (string) ($input['image_sha256'] ?? ''),
             (string) $input['text'],
@@ -255,7 +259,7 @@ final class RagEmbeddingJobService
     {
         $configService = $this->vectorConfigs ?? new RagVectorConfigService();
         $precomputed = $this->batchEmbed($dataset, $jobs);
-        foreach ($jobs as $job) {
+        foreach ($jobs as $position => $job) {
             $config = App::db()->first('SELECT * FROM rag_vector_configs WHERE id = ? AND enabled = 1', [(int) ($job['vector_config_id'] ?? 0)]);
             if ($config === null) {
                 App::db()->execute('UPDATE rag_embedding_jobs SET status = "failed", error_code = "RAG_MODEL_NOT_CONFIGURED", error_message = "Vector config is missing", locked_at = NULL, lock_token = NULL WHERE id = ? AND lock_token = ?', [$job['id'], $job['lock_token']]);
@@ -277,7 +281,7 @@ final class RagEmbeddingJobService
                 App::db()->execute('UPDATE rag_embedding_jobs SET status = "succeeded", processed_items = 1, progress_percent = 100, error_code = NULL, error_message = NULL, locked_at = NULL, lock_token = NULL, next_run_at = NULL WHERE id = ? AND lock_token = ?', [$job['id'], $job['lock_token']]);
             } catch (Throwable $throwable) {
                 $message = $throwable->getMessage();
-                $errorCode = in_array($message, ['RAG_MODEL_NOT_CONFIGURED', 'RAG_EMBEDDING_INVALID_RESPONSE', 'RAG_EMBEDDING_DIMENSION_MISMATCH', 'RAG_VECTOR_STORE_UNAVAILABLE', 'RAG_VECTOR_STORE_REJECTED', 'RAG_VECTOR_PERSISTENCE_UNAVAILABLE', 'PROVIDER_TIMEOUT', 'PROVIDER_ERROR', 'PROVIDER_REJECTED'], true)
+                $errorCode = in_array($message, ['RAG_MODEL_NOT_CONFIGURED', 'RAG_EMBEDDING_INVALID_RESPONSE', 'RAG_EMBEDDING_DIMENSION_MISMATCH', 'RAG_VECTOR_STORE_UNAVAILABLE', 'RAG_VECTOR_STORE_REJECTED', 'RAG_VECTOR_COLLECTION_MISMATCH', 'RAG_VECTOR_PERSISTENCE_UNAVAILABLE', 'PROVIDER_TIMEOUT', 'PROVIDER_ERROR', 'PROVIDER_REJECTED'], true)
                     ? $message
                     : $this->errorCode($modality);
                 $attempts = (int) ($job['attempts'] ?? 1);
@@ -285,10 +289,18 @@ final class RagEmbeddingJobService
                 $retryable = in_array($errorCode, ['PROVIDER_TIMEOUT', 'PROVIDER_ERROR', 'RAG_VECTOR_STORE_UNAVAILABLE', 'RAG_VECTOR_PERSISTENCE_UNAVAILABLE'], true) && $attempts < $maxAttempts;
                 $delaySeconds = $retryable ? $this->retryDelaySeconds($attempts) : 0;
                 App::db()->execute(
-                    'UPDATE rag_embedding_jobs SET status = ?, error_code = ?, error_message = ?, locked_at = NULL, lock_token = NULL, dispatched_at = NULL, next_run_at = IF(? > 0, TIMESTAMPADD(SECOND, ?, NOW()), NULL) WHERE id = ? AND lock_token = ?',
+                    'UPDATE rag_embedding_jobs SET status = ?, error_code = ?, error_message = ?, locked_at = NULL, lock_token = NULL, dispatched_at = NULL, next_run_at = IF(? > 0, TIMESTAMPADD(SECOND, ?, UTC_TIMESTAMP()), NULL) WHERE id = ? AND lock_token = ?',
                     [$retryable ? 'retrying' : 'failed', $errorCode, substr($message, 0, 500), $delaySeconds, $delaySeconds, $job['id'], $job['lock_token']]
                 );
                 if ($retryable) {
+                    // V-14: hand the rest of this claimed batch back right away instead of
+                    // leaving it "running" until the 15-minute lease expires.
+                    foreach (array_slice($jobs, $position + 1) as $pending) {
+                        App::db()->execute(
+                            'UPDATE rag_embedding_jobs SET status = "retrying", attempts = GREATEST(0, attempts - 1), locked_at = NULL, lock_token = NULL, dispatched_at = NULL, next_run_at = IF(? > 0, TIMESTAMPADD(SECOND, ?, UTC_TIMESTAMP()), NULL) WHERE id = ? AND lock_token = ?',
+                            [$delaySeconds, $delaySeconds, $pending['id'], $pending['lock_token']]
+                        );
+                    }
                     $this->refreshUploadStatus($uploadId, $dataset);
                     return false;
                 }
@@ -368,7 +380,7 @@ final class RagEmbeddingJobService
             App::redis()->push((string) App::config()->get('queue.name', 'tokenhub:jobs'), $message);
         }
         App::db()->execute(
-            'UPDATE rag_embedding_jobs SET dispatched_at = NOW() WHERE upload_id = ? AND execution_backend = "php_provider" AND status IN ("queued","retrying")',
+            'UPDATE rag_embedding_jobs SET dispatched_at = UTC_TIMESTAMP() WHERE upload_id = ? AND execution_backend = "php_provider" AND status IN ("queued","retrying")',
             [$uploadId]
         );
     }
@@ -386,7 +398,7 @@ final class RagEmbeddingJobService
                  WHERE j.upload_id = ?
                    AND j.execution_backend = "php_provider"
                    AND j.status IN ("queued","retrying")
-                   AND (j.next_run_at IS NULL OR j.next_run_at <= NOW())
+                   AND (j.next_run_at IS NULL OR j.next_run_at <= UTC_TIMESTAMP())
                  ORDER BY j.id
                  LIMIT ' . max(1, $limit) . '
                  FOR UPDATE SKIP LOCKED',
@@ -395,7 +407,7 @@ final class RagEmbeddingJobService
             $claimed = [];
             foreach ($jobs as $job) {
                 $db->execute(
-                    'UPDATE rag_embedding_jobs SET status = "running", attempts = attempts + 1, locked_at = NOW(), lock_token = ?, dispatched_at = NULL, progress_percent = 5 WHERE id = ? AND status IN ("queued","retrying")',
+                    'UPDATE rag_embedding_jobs SET status = "running", attempts = attempts + 1, locked_at = UTC_TIMESTAMP(), lock_token = ?, dispatched_at = NULL, progress_percent = 5 WHERE id = ? AND status IN ("queued","retrying")',
                     [$lockToken, $job['id']]
                 );
                 $job['attempts'] = (int) ($job['attempts'] ?? 0) + 1;
@@ -440,8 +452,8 @@ final class RagEmbeddingJobService
             [$status, $status === 'processing' ? 'vectorizing' : $status, $succeeded, $progress, $progress, $status, $status, $uploadId]
         );
         App::db()->execute(
-            'UPDATE rag_vector_datasets SET chunk_count = (SELECT COUNT(*) FROM rag_chunks WHERE kb_id = ? AND lifecycle_status = "active"), vector_count = (SELECT COUNT(*) FROM rag_vector_records WHERE dataset_id = ? AND index_status = "indexed"), last_indexed_at = IF(? = "indexed", NOW(), last_indexed_at) WHERE id = ?',
-            [$dataset['kb_id'], $dataset['id'], $status, $dataset['id']]
+            'UPDATE rag_vector_datasets SET chunk_count = (SELECT COUNT(*) FROM rag_chunks c LEFT JOIN rag_documents doc ON doc.id = c.document_id WHERE (c.dataset_id = ? OR (c.dataset_id IS NULL AND doc.dataset_id = ?)) AND c.lifecycle_status = "active"), vector_count = (SELECT COUNT(*) FROM rag_vector_records WHERE dataset_id = ? AND index_status = "indexed"), last_indexed_at = IF(? = "indexed", UTC_TIMESTAMP(), last_indexed_at) WHERE id = ?',
+            [$dataset['id'], $dataset['id'], $dataset['id'], $status, $dataset['id']]
         );
     }
 

@@ -19,18 +19,31 @@ use RuntimeException;
  *                      compatibility. Pin it to the old APP_KEY before rotating
  *                      APP_KEY so stored API key hashes stay valid.
  *
+ * Key separation (SEC-112)
+ * - New ciphertexts use an encryption key derived with HKDF-SHA256 from the
+ *   key material (info "tokenhub:encryption"), so the AES key is never the
+ *   key used for HMACs.
+ * - hashKey() keeps its historical key (sha256 of APP_HASH_KEY / APP_KEY):
+ *   stored API key and session hashes are deterministic lookups and must keep
+ *   matching. New keyed MACs use hmac($purpose, ...) with their own HKDF key.
+ *
  * Ciphertext formats
- * - "v2:{kid}:{base64(iv|tag|cipher)}"  current, key id is explicit.
- * - "{base64(iv|tag|cipher)}"           legacy, tried against every known key.
+ * - "v3:{kid}:{base64(iv|tag|cipher)}"  current, HKDF-derived key, key id explicit.
+ * - "v2:{kid}:{base64(iv|tag|cipher)}"  previous, sha256(key) as AES key; still decrypted.
+ * - "{base64(iv|tag|cipher)}"           legacy, tried against every known key
+ *                                       (the development key only outside production).
  */
 final class Crypto
 {
     private const DEVELOPMENT_KEY = 'development-tokenhub-key-change-me';
-    private const PREFIX = 'v2:';
+    private const PREFIX = 'v3:';
+    private const LEGACY_PREFIX = 'v2:';
+    private const ENCRYPTION_INFO = 'tokenhub:encryption';
 
     public static function encrypt(string $plainText): string
     {
-        [$keyId, $key] = self::primary();
+        [$keyId, $raw] = self::primaryRaw();
+        $key = self::deriveKey($raw, self::ENCRYPTION_INFO);
         $iv = random_bytes(12);
         $tag = '';
         $cipher = openssl_encrypt($plainText, 'aes-256-gcm', $key, OPENSSL_RAW_DATA, $iv, $tag);
@@ -47,7 +60,7 @@ final class Crypto
             return '';
         }
 
-        [$keyId, $payload] = self::split($encoded);
+        [$keyId, $payload, $version] = self::split($encoded);
         $raw = base64_decode($payload, true);
         if ($raw === false || strlen($raw) < 28) {
             return '';
@@ -56,7 +69,7 @@ final class Crypto
         $tag = substr($raw, 12, 16);
         $cipher = substr($raw, 28);
 
-        foreach (self::candidateKeys($keyId) as $key) {
+        foreach (self::candidateKeys($keyId, $version) as $key) {
             $plain = openssl_decrypt($cipher, 'aes-256-gcm', $key, OPENSSL_RAW_DATA, $iv, $tag);
             if ($plain !== false) {
                 return $plain;
@@ -75,9 +88,10 @@ final class Crypto
         if ($encoded === '') {
             return false;
         }
-        [$keyId] = self::split($encoded);
+        [$keyId, , $version] = self::split($encoded);
 
-        return $keyId !== self::primary()[0];
+        // Rewritten when under an older key id or in a pre-HKDF format (v2, legacy).
+        return $keyId !== self::primaryKeyId() || $version !== 3;
     }
 
     public static function keyIdOf(string $encoded): ?string
@@ -104,6 +118,23 @@ final class Crypto
         }
 
         return array_values(array_unique($hashes));
+    }
+
+    /**
+     * Keyed MAC under a purpose-specific key derived with HKDF from the
+     * primary key material (SEC-112), e.g. hmac('task-callback', ...).
+     */
+    public static function hmac(string $purpose, string $data): string
+    {
+        return hash_hmac('sha256', $data, self::derivedKey($purpose));
+    }
+
+    /**
+     * 32-byte key for one purpose, derived with HKDF-SHA256 from APP_KEY.
+     */
+    public static function derivedKey(string $purpose): string
+    {
+        return self::deriveKey(self::primaryRaw()[1], 'tokenhub:' . $purpose);
     }
 
     public static function token(string $prefix = ''): string
@@ -155,9 +186,23 @@ final class Crypto
     }
 
     /**
+     * Primary key id and the legacy (sha256) form of its key.
+     *
      * @return array{0: string, 1: string}
      */
     private static function primary(): array
+    {
+        [$id, $raw] = self::primaryRaw();
+
+        return [$id, hash('sha256', $raw, true)];
+    }
+
+    /**
+     * Primary key id and raw key material.
+     *
+     * @return array{0: string, 1: string}
+     */
+    private static function primaryRaw(): array
     {
         $raw = (string) env_value('APP_KEY', '');
         if ($raw === '') {
@@ -167,7 +212,12 @@ final class Crypto
             $raw = self::DEVELOPMENT_KEY;
         }
 
-        return [self::primaryKeyId(), hash('sha256', $raw, true)];
+        return [self::primaryKeyId(), $raw];
+    }
+
+    private static function deriveKey(string $raw, string $info): string
+    {
+        return hash_hkdf('sha256', $raw, 32, $info, 'tokenhub-hkdf-v1');
     }
 
     private static function primaryKeyId(): string
@@ -188,36 +238,47 @@ final class Crypto
     }
 
     /**
-     * @return array{0: ?string, 1: string}
+     * @return array{0: ?string, 1: string, 2: int} key id, payload, format version (3, 2 or 1 = legacy)
      */
     private static function split(string $encoded): array
     {
-        if (str_starts_with($encoded, self::PREFIX)) {
-            $parts = explode(':', $encoded, 3);
-            if (count($parts) === 3) {
-                return [$parts[1], $parts[2]];
+        foreach ([self::PREFIX => 3, self::LEGACY_PREFIX => 2] as $prefix => $version) {
+            if (str_starts_with($encoded, $prefix)) {
+                $parts = explode(':', $encoded, 3);
+                if (count($parts) === 3) {
+                    return [$parts[1], $parts[2], $version];
+                }
             }
         }
 
-        return [null, $encoded];
+        return [null, $encoded, 1];
     }
 
     /**
+     * AES keys to try for a ciphertext of the given key id and format.
+     *
      * @return list<string>
      */
-    private static function candidateKeys(?string $keyId): array
+    private static function candidateKeys(?string $keyId, int $version): array
     {
-        [$primaryId, $primaryKey] = self::primary();
-        $keys = [$primaryId => $primaryKey];
+        [$primaryId, $primaryRaw] = self::primaryRaw();
+        $raws = [$primaryId => $primaryRaw];
         foreach (self::previousKeys() as $id => $raw) {
-            $keys[$id] ??= hash('sha256', $raw, true);
+            $raws[$id] ??= $raw;
         }
+        $derive = static fn (string $raw): string => $version === 3
+            ? self::deriveKey($raw, self::ENCRYPTION_INFO)
+            : hash('sha256', $raw, true);
 
         if ($keyId !== null) {
-            return isset($keys[$keyId]) ? [$keys[$keyId]] : [];
+            return isset($raws[$keyId]) ? [$derive($raws[$keyId])] : [];
         }
 
-        $keys[] = hash('sha256', self::DEVELOPMENT_KEY, true);
+        $keys = array_map($derive, array_values($raws));
+        if (!self::isProduction()) {
+            // Values written by an unconfigured development install; never tried in production.
+            $keys[] = $derive(self::DEVELOPMENT_KEY);
+        }
 
         return array_values(array_unique($keys));
     }

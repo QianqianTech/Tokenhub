@@ -57,6 +57,7 @@ final class AdminUserService
 
         $username = trim((string) ($data['username'] ?? ''));
         $password = (string) ($data['password'] ?? '');
+        $email = $this->recoveryEmail($data['email'] ?? null);
         $departmentId = (int) ($data['department_id'] ?? 0);
         $role = $this->adminRole((string) ($data['role'] ?? 'admin'));
         $managedDepartmentIds = $this->managedDepartmentIds($data['managed_department_ids'] ?? []);
@@ -72,7 +73,7 @@ final class AdminUserService
         $this->assertManagedDepartmentsAllowed($managedDepartmentIds);
 
         App::db()->execute(
-            'INSERT INTO users (department_id, username, password_hash, role, admin_type, managed_department_ids, admin_scope, admin_permission_mode, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            'INSERT INTO users (department_id, username, password_hash, role, admin_type, managed_department_ids, admin_scope, admin_permission_mode, status, email) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
             [
                 $departmentId,
                 $username,
@@ -83,6 +84,7 @@ final class AdminUserService
                 $adminScope,
                 $permissionMode,
                 $this->status((string) ($data['status'] ?? 'active')),
+                $email,
             ]
         );
         $id = (int) App::db()->pdo()->lastInsertId();
@@ -110,6 +112,9 @@ final class AdminUserService
         $current = $this->adminUser($id);
 
         $updates = [];
+        if (array_key_exists('email', $data)) {
+            $updates['email'] = $this->recoveryEmail($data['email'], $id);
+        }
         if (array_key_exists('username', $data)) {
             $username = trim((string) $data['username']);
             if ($username === '') {
@@ -146,6 +151,13 @@ final class AdminUserService
         if ($updates !== []) {
             $sets = implode(', ', array_map(static fn (string $field): string => "{$field} = ?", array_keys($updates)));
             App::db()->execute("UPDATE users SET {$sets} WHERE id = ?", [...array_values($updates), $id]);
+            $emailChanged = array_key_exists('email', $updates) && $updates['email'] !== ($current['email'] ?? null);
+            if ($emailChanged || (isset($updates['status']) && $updates['status'] !== 'active')) {
+                App::db()->execute('UPDATE admin_password_resets SET used_at = UTC_TIMESTAMP() WHERE user_id = ? AND used_at IS NULL', [$id]);
+                if (!empty($current['email'])) {
+                    App::redis()->delete(AdminPasswordResetService::latestRequestKey($current['email']));
+                }
+            }
             if (array_key_exists('department_id', $updates)) {
                 App::db()->execute('UPDATE api_keys SET department_id = ? WHERE user_id = ?', [$updates['department_id'], $id]);
             }
@@ -153,6 +165,9 @@ final class AdminUserService
                 $this->syncPermissions($id, $permissionCodes);
             }
             $this->revokeSessions($id, false);
+            if (array_key_exists('status', $updates) && $updates['status'] !== 'active') {
+                (new AppDeviceAuthService())->revokeUserDevices($id, 'user_disabled');
+            }
             (new ApiKeyService())->invalidateByUser($id);
             (new AuditService())->write('admin_user.update', 'users', $id, $this->auditDetails($updates));
         }
@@ -172,6 +187,7 @@ final class AdminUserService
         }
         App::db()->execute('UPDATE users SET password_hash = ? WHERE id = ?', [password_hash($password, PASSWORD_DEFAULT), $id]);
         $this->revokeSessions($id, false);
+        (new AppDeviceAuthService())->revokeUserDevices($id, 'password_reset');
         (new ApiKeyService())->invalidateByUser($id);
         \TokenHub\Services\Mcp\OAuth\OAuthServer::revokeUserGrantsAfterPasswordChange($id);
         (new AuditService())->write('admin_user.password.reset', 'users', $id);
@@ -197,11 +213,13 @@ final class AdminUserService
             $this->adminUser($id);
         }
         $revoked = App::db()->execute(
-            'UPDATE admin_sessions SET revoked_at = COALESCE(revoked_at, NOW()) WHERE user_id = ? AND revoked_at IS NULL',
+            'UPDATE admin_sessions SET revoked_at = COALESCE(revoked_at, UTC_TIMESTAMP()) WHERE user_id = ? AND revoked_at IS NULL',
             [$id]
         );
         if ($requireActor) {
-            (new AuditService())->write('admin_user.sessions.revoke', 'users', $id, ['revoked' => $revoked]);
+            // "吊销全部会话" also signs out every TokenHub APP device.
+            $devices = (new AppDeviceAuthService())->revokeUserDevices($id, 'admin_revoke_all');
+            (new AuditService())->write('admin_user.sessions.revoke', 'users', $id, ['revoked' => $revoked, 'app_devices_revoked' => $devices]);
         }
 
         return ['id' => $id, 'revoked' => $revoked];
@@ -218,6 +236,18 @@ final class AdminUserService
         }
 
         return $this->presentAdminUser($row);
+    }
+
+    private function recoveryEmail(mixed $value, int $exceptId = 0): ?string
+    {
+        if ($value === null || (is_string($value) && trim($value) === '')) {
+            return null;
+        }
+        $email = AdminPasswordResetService::normalizeEmail($value);
+        if (App::db()->first('SELECT id FROM users WHERE email = ? AND id <> ?', [$email, $exceptId])) {
+            abort_json('ADMIN_EMAIL_IN_USE', '该邮箱已绑定其他账号', 422);
+        }
+        return $email;
     }
 
     /**

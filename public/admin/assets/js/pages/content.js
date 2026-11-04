@@ -6,6 +6,9 @@ import { pager } from "../components/pager.js";
 import { COLUMN_LOOKUPS, canLookup, lookupLabel, resolveRowReferences } from "../lib/lookups.js";
 import { renderDataDetails, setErrorOutput, setOperationOutput, showOperationResult } from "../lib/output.js";
 import { columnLabel, formatResourceValue } from "../resources.js";
+import { fromLocalInputValue, toLocalInputValue } from "../lib/format.js";
+import { guardForm, markClean } from "../lib/dirty-guard.js";
+import { departmentSelectOptions } from "../lib/references.js";
 
 const ARCHIVE_LIMIT = 50;
 
@@ -48,14 +51,16 @@ export async function renderContentArchivePage(content, initialFilters = {}, con
     ])
   ]));
   const tablePanel = el("section", { className: "panel table-panel", "aria-live": "polite" });
-  form.append(button("查询", () => {
-    state.offset = 0;
-    return load();
-  }));
-  form.append(button("重置", () => {
-    context.setFilters?.({});
-    return renderContentArchivePage(content, {}, context);
-  }, "secondary"));
+  form.append(el("div", { className: "archive-filter-actions" }, [
+    button("查询", () => {
+      state.offset = 0;
+      return load();
+    }),
+    button("重置", () => {
+      context.setFilters?.({});
+      return renderContentArchivePage(content, {}, context);
+    }, "secondary")
+  ]));
   const exportButton = button("导出", async () => {
     const query = contentArchiveQuery(form, filters, state);
     delete query.limit;
@@ -117,45 +122,99 @@ export async function renderContentArchivePage(content, initialFilters = {}, con
   }
 }
 
+const RETENTION_MODES = [["summary", "只保存摘要"], ["redacted", "保存脱敏内容"], ["raw", "保存原文"], ["none", "不保存正文"]];
+const RAW_ROLE_OPTIONS = [["super_admin", "超级管理员"], ["admin", "管理员"]];
+// Per-target overrides (ContentRetentionService::normalizeScopePolicies):
+// { "<id>": { mode, days } }. API key beats user beats department.
+const RETENTION_SCOPES = [
+  { key: "departments", title: "部门策略", hint: "对部门及其下级部门生效。", picker: "department" },
+  { key: "users", title: "用户策略", hint: "覆盖该用户所在部门的策略。", picker: "users" },
+  { key: "api_keys", title: "API 密钥策略", hint: "优先级最高，覆盖用户和部门策略。", picker: "api-keys" }
+];
+
+function retentionScopeEditor(scope, entries, departmentOptions) {
+  const list = el("div", { className: "retention-scope-rows" });
+  let seq = 0;
+  const addRow = (targetId = "", rule = {}) => {
+    seq += 1;
+    const targetName = `${scope.key}_target_${seq}`;
+    const target = scope.picker === "department"
+      ? field({ name: targetName, label: "部门", type: "select", options: [["", "请选择部门"], ...departmentOptions] }, String(targetId))
+      : field({ name: targetName, label: scope.picker === "users" ? "用户" : "API 密钥", type: "remote-select", lookup: scope.picker }, targetId === "" ? "" : String(targetId));
+    if (scope.picker === "department") {
+      target.querySelector("select").value = String(targetId);
+    }
+    const mode = field({ name: `${scope.key}_mode_${seq}`, label: "留存方式", type: "select", options: RETENTION_MODES }, rule.mode || "summary");
+    mode.querySelector("select").value = rule.mode || "summary";
+    const days = field({ name: `${scope.key}_days_${seq}`, label: "保存天数", type: "number", optional: true }, rule.days ?? "");
+    const row = el("div", { className: "retention-scope-row", dataset: { scopeRow: scope.key } }, [target, mode, days]);
+    row.append(button("移除", () => {
+      row.remove();
+      list.closest("form")?.dispatchEvent(new Event("input", { bubbles: true }));
+    }, "secondary retention-scope-remove", { "aria-label": `移除这条${scope.title}` }));
+    list.append(row);
+  };
+  for (const [targetId, rule] of Object.entries(entries || {})) {
+    addRow(targetId, rule || {});
+  }
+  return el("fieldset", { className: "retention-scope", dataset: { scope: scope.key } }, [
+    el("legend", { text: scope.title }),
+    el("p", { className: "field-hint", text: scope.hint }),
+    list,
+    button(`添加${scope.title}`, () => addRow(), "secondary retention-scope-add")
+  ]);
+}
+
+function readRetentionScope(form, scope) {
+  const result = {};
+  for (const row of form.querySelectorAll(`[data-scope-row="${scope.key}"]`)) {
+    const target = row.querySelector(`[name^="${scope.key}_target_"]`)?.value.trim() || "";
+    if (!target) continue;
+    const mode = row.querySelector(`[name^="${scope.key}_mode_"]`)?.value || "summary";
+    const daysRaw = row.querySelector(`[name^="${scope.key}_days_"]`)?.value.trim() || "";
+    result[target] = { mode, ...(daysRaw !== "" ? { days: Number(daysRaw) } : {}) };
+  }
+  return result;
+}
+
 export async function renderContentRetentionPolicyPage(content) {
   clear(content);
-  const result = await api("/admin-api/system/content-retention");
+  const [result, departmentOptions] = await Promise.all([
+    api("/admin-api/system/content-retention"),
+    departmentSelectOptions()
+  ]);
   const data = result.data || {};
   const fields = [
-    { name: "mode", label: "默认模式", type: "select", options: [["summary", "只保存摘要"], ["redacted", "保存脱敏内容"], ["raw", "保存原文"], ["none", "不保存正文"]] },
+    { name: "mode", label: "默认模式", type: "select", options: RETENTION_MODES },
     { name: "default_days", label: "默认保存天数", type: "number" },
     { name: "max_days", label: "最大保存天数", type: "number" },
-    { name: "raw_allowed_roles", label: "原文角色，逗号分隔" },
-    { name: "departments", label: "部门策略 JSON", type: "json", optional: true },
-    { name: "users", label: "用户策略 JSON", type: "json", optional: true },
-    { name: "api_keys", label: "API 密钥策略 JSON", type: "json", optional: true }
+    { name: "raw_allowed_roles", label: "可查看原文的角色", type: "multiselect", options: RAW_ROLE_OPTIONS, optional: true }
   ];
-  const form = el("form", { className: "edit-form", onSubmit: (event) => event.preventDefault() });
-  const values = {
-    ...data,
-    raw_allowed_roles: (data.raw_allowed_roles || ["super_admin"]).join(","),
-    departments: JSON.stringify(data.departments || {}, null, 2),
-    users: JSON.stringify(data.users || {}, null, 2),
-    api_keys: JSON.stringify(data.api_keys || {}, null, 2)
-  };
+  const form = guardForm(el("form", { className: "edit-form retention-policy-form", onSubmit: (event) => event.preventDefault() }));
+  const values = { ...data, raw_allowed_roles: data.raw_allowed_roles || ["super_admin"] };
   for (const config of fields) {
     form.append(field(config, values[config.name]));
+  }
+  form.querySelector('select[name="mode"]').value = values.mode || "summary";
+  for (const scope of RETENTION_SCOPES) {
+    form.append(retentionScopeEditor(scope, data[scope.key], departmentOptions));
   }
   const output = el("p", { className: "notice", hidden: true });
   form.append(el("div", { className: "toolbar-actions" }, [button("保存策略", async () => {
     try {
-      const payload = readFields(form, fields);
-      payload.raw_allowed_roles = String(payload.raw_allowed_roles || "")
-        .split(",")
-        .map((role) => role.trim())
-        .filter(Boolean);
+      const payload = readFields(form, fields, { validate: true });
+      payload.raw_allowed_roles = Array.isArray(payload.raw_allowed_roles) ? payload.raw_allowed_roles : [];
+      for (const scope of RETENTION_SCOPES) {
+        payload[scope.key] = readRetentionScope(form, scope);
+      }
       const saved = await api("/admin-api/system/content-retention", {
         method: "PUT",
         body: JSON.stringify(payload)
       });
+      markClean(form);
       setOperationOutput(output, saved.data, "策略已保存");
     } catch (error) {
-      setErrorOutput(output, adminErrorMessage(error, "保存策略失败，请检查输入内容"));
+      setErrorOutput(output, adminErrorMessage(error, error.code === "FORM_INVALID" ? error.message : "保存策略失败，请检查输入内容"));
     }
   })]));
   form.append(output);
@@ -196,22 +255,8 @@ function urlFilters(query) {
 }
 
 // datetime-local values are local wall-clock time; the API compares UTC.
-function utcTimestamp(localValue) {
-  const date = new Date(localValue);
-  return Number.isFinite(date.getTime()) ? date.toISOString().slice(0, 19).replace("T", " ") : localValue;
-}
-
-function toLocalInput(utcValue) {
-  if (!utcValue) {
-    return "";
-  }
-  const date = new Date(`${String(utcValue).replace(" ", "T")}Z`);
-  if (!Number.isFinite(date.getTime())) {
-    return "";
-  }
-  const pad = (value) => String(value).padStart(2, "0");
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
-}
+const utcTimestamp = fromLocalInputValue;
+const toLocalInput = toLocalInputValue;
 
 const ARCHIVE_COLUMNS = ["content_id", "request_id", "session_id", "user_id", "department_id", "api_key_id", "model_name", "status", "retention_mode", "created_at", "cleaned_at"];
 

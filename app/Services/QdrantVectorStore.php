@@ -14,6 +14,9 @@ final class QdrantVectorStore implements RagVectorStoreInterface
     private const PAYLOAD_INDEXES = ['dataset_id' => 'keyword', 'kb_id' => 'keyword', 'modality' => 'keyword', 'chunk_id' => 'keyword', 'document_key' => 'keyword'];
     public const LEXICAL_SUFFIX = '__lexical';
 
+    /** @var array<string, true> collections verified or created by this process */
+    private static array $knownCollections = [];
+
     public function __construct(private readonly mixed $transport = null, private readonly string $distance = 'Cosine')
     {
     }
@@ -32,17 +35,39 @@ final class QdrantVectorStore implements RagVectorStoreInterface
 
     public function upsert(string $collection, string $vectorId, array $vector, array $payload): void
     {
-        $this->ensureCollection($collection, count($vector));
-        $payload['vector_id'] ??= $vectorId;
-        $response = $this->request('PUT', '/collections/' . rawurlencode($collection) . '/points?wait=true', [
-            'points' => [[
-                'id' => (new RagVectorContractService())->pointId($vectorId),
-                'vector' => array_values($vector),
-                'payload' => $payload,
-            ]],
-        ]);
-        if (!$response['ok']) {
-            throw new RuntimeException($this->writeErrorCode($response));
+        $this->upsertMany($collection, [['vector_id' => $vectorId, 'vector' => $vector, 'payload' => $payload]]);
+    }
+
+    /**
+     * Writes many points with one request per batch (V-08) instead of one
+     * request per point.
+     *
+     * @param list<array{vector_id: string, vector: list<float>, payload: array<string, mixed>}> $points
+     */
+    public function upsertMany(string $collection, array $points, int $batchSize = 128): void
+    {
+        if ($points === []) {
+            return;
+        }
+        $this->ensureCollection($collection, count($points[0]['vector']));
+        $contract = new RagVectorContractService();
+        foreach (array_chunk($points, max(1, $batchSize)) as $batch) {
+            $body = [];
+            foreach ($batch as $point) {
+                $payload = $point['payload'];
+                $payload['vector_id'] ??= $point['vector_id'];
+                $body[] = ['id' => $contract->pointId($point['vector_id']), 'vector' => array_values($point['vector']), 'payload' => $payload];
+            }
+            $response = $this->request('PUT', '/collections/' . rawurlencode($collection) . '/points?wait=true', ['points' => $body]);
+            if ($response['status'] === 404) {
+                // Collection dropped outside this process since it was cached: recreate once.
+                $this->forget($collection);
+                $this->ensureCollection($collection, count($points[0]['vector']));
+                $response = $this->request('PUT', '/collections/' . rawurlencode($collection) . '/points?wait=true', ['points' => $body]);
+            }
+            if (!$response['ok']) {
+                throw new RuntimeException($this->writeErrorCode($response));
+            }
         }
     }
 
@@ -67,9 +92,14 @@ final class QdrantVectorStore implements RagVectorStoreInterface
             return [];
         }
 
+        // Qdrant returns the distance itself for Euclid (smaller = closer). Callers rank
+        // and threshold by "higher = more similar", so convert to a (0, 1] similarity (V-05).
+        $euclid = $this->distance === 'Euclid';
+
         return array_values(array_map(static fn (array $item): array => [
             'vector_id' => (string) (($item['payload']['vector_id'] ?? null) ?: ($item['id'] ?? '')),
-            'score' => (float) ($item['score'] ?? 0),
+            'score' => $euclid ? 1.0 / (1.0 + max(0.0, (float) ($item['score'] ?? 0))) : (float) ($item['score'] ?? 0),
+            'raw_distance' => $euclid ? (float) ($item['score'] ?? 0) : null,
             'payload' => is_array($item['payload'] ?? null) ? $item['payload'] : [],
         ], $result));
     }
@@ -115,6 +145,33 @@ final class QdrantVectorStore implements RagVectorStoreInterface
         ]);
         if (!$response['ok']) {
             throw new RuntimeException($this->writeErrorCode($response));
+        }
+    }
+
+    /**
+     * @param list<array{vector_id: string, text: string, payload: array<string, mixed>}> $points
+     */
+    public function upsertLexicalMany(string $collection, array $points, int $batchSize = 128): void
+    {
+        $encoder = new RagSparseEncoder();
+        $contract = new RagVectorContractService();
+        $target = $collection . self::LEXICAL_SUFFIX;
+        $body = [];
+        foreach ($points as $point) {
+            $sparse = $encoder->encodeDocument($point['text']);
+            if ($sparse['indices'] !== []) {
+                $body[] = ['id' => $contract->pointId($point['vector_id']), 'vector' => ['lexical' => $sparse], 'payload' => $point['payload']];
+            }
+        }
+        if ($body === []) {
+            return;
+        }
+        $this->ensureLexicalCollection($target);
+        foreach (array_chunk($body, max(1, $batchSize)) as $batch) {
+            $response = $this->request('PUT', '/collections/' . rawurlencode($target) . '/points?wait=true', ['points' => $batch]);
+            if (!$response['ok']) {
+                throw new RuntimeException($this->writeErrorCode($response));
+            }
         }
     }
 
@@ -252,18 +309,61 @@ final class QdrantVectorStore implements RagVectorStoreInterface
 
     public function deleteCollection(string $collection): void
     {
+        $this->forget($collection);
         $this->request('DELETE', '/collections/' . rawurlencode($collection));
     }
 
     public function healthy(): bool
     {
-        return $this->request('GET', '/healthz')['ok'];
+        // One probe every few seconds per process, not one per indexed chunk (V-08).
+        static $cache = [];
+        if (is_callable($this->transport)) {
+            return $this->request('GET', '/healthz')['ok'];
+        }
+        $key = (string) App::config()->get('rag.qdrant.url', 'http://qdrant:6333');
+        if (isset($cache[$key]) && $cache[$key][1] > microtime(true)) {
+            return $cache[$key][0];
+        }
+        $ok = $this->request('GET', '/healthz')['ok'];
+        $cache[$key] = [$ok, microtime(true) + ($ok ? 10.0 : 2.0)];
+
+        return $ok;
+    }
+
+    /**
+     * Vector size and distance of an existing collection (aliases resolve), or null.
+     *
+     * @return array{size: int, distance: string}|null
+     */
+    public function collectionVectors(string $collection): ?array
+    {
+        $response = $this->request('GET', '/collections/' . rawurlencode($collection));
+        if (!$response['ok']) {
+            return null;
+        }
+        $config = $response['json']['result']['config'] ?? [];
+        $vectors = $config['params']['vectors'] ?? $config['vectors'] ?? null;
+        if (!is_array($vectors) || !isset($vectors['size'])) {
+            return ['size' => 0, 'distance' => ''];
+        }
+
+        return ['size' => (int) $vectors['size'], 'distance' => (string) ($vectors['distance'] ?? '')];
     }
 
     public function ensureCollection(string $collection, int $dimension): void
     {
-        $exists = $this->request('GET', '/collections/' . rawurlencode($collection));
-        if ($exists['ok']) {
+        $cacheKey = $this->cacheKey($collection) . '|' . $dimension . '|' . $this->distance;
+        if (isset(self::$knownCollections[$cacheKey])) {
+            return;
+        }
+        $existing = $this->collectionVectors($collection);
+        if ($existing !== null) {
+            // V-02: a collection built for a model of another size would reject every point;
+            // fail once with a clear code instead (distance is fixed per collection by Qdrant).
+            if ($existing['size'] > 0 && $existing['size'] !== $dimension) {
+                throw new RuntimeException('RAG_VECTOR_COLLECTION_MISMATCH');
+            }
+            self::$knownCollections[$cacheKey] = true;
             return;
         }
         $created = $this->request('PUT', '/collections/' . rawurlencode($collection), [
@@ -276,6 +376,22 @@ final class QdrantVectorStore implements RagVectorStoreInterface
             throw new RuntimeException($this->writeErrorCode($created));
         }
         $this->ensurePayloadIndexes($collection);
+        self::$knownCollections[$cacheKey] = true;
+    }
+
+    private function cacheKey(string $collection): string
+    {
+        return (is_object($this->transport) ? (string) spl_object_id($this->transport) : 'http') . '|' . $collection;
+    }
+
+    private function forget(string $collection): void
+    {
+        $prefix = $this->cacheKey($collection) . '|';
+        foreach (array_keys(self::$knownCollections) as $key) {
+            if (str_starts_with($key, $prefix) || $key === $this->cacheKey($collection)) {
+                unset(self::$knownCollections[$key]);
+            }
+        }
     }
 
     public function ensurePayloadIndexes(string $collection): void
@@ -288,9 +404,9 @@ final class QdrantVectorStore implements RagVectorStoreInterface
 
     private function ensureLexicalCollection(string $collection): void
     {
-        static $known = [];
-        if (isset($known[$collection]) || $this->request('GET', '/collections/' . rawurlencode($collection))['ok']) {
-            $known[$collection] = true;
+        $key = $this->cacheKey($collection);
+        if (isset(self::$knownCollections[$key]) || $this->request('GET', '/collections/' . rawurlencode($collection))['ok']) {
+            self::$knownCollections[$key] = true;
             return;
         }
         $created = $this->request('PUT', '/collections/' . rawurlencode($collection), [
@@ -301,7 +417,7 @@ final class QdrantVectorStore implements RagVectorStoreInterface
             throw new RuntimeException($this->writeErrorCode($created));
         }
         $this->ensurePayloadIndexes($collection);
-        $known[$collection] = true;
+        self::$knownCollections[$key] = true;
     }
 
     /** @param array{ok: bool, status: int, body: string, json: array<string, mixed>|null} $response */

@@ -44,6 +44,17 @@ scripts/release/build-images.sh --tag 1.0.0 --push --image-prefix registry.examp
 
 PHP 版本可以用 `--php-version 8.3` 指定，默认 8.4。
 
+**基础镜像锁定（DEP-101）：** Dockerfile 的基础镜像都是构建参数（`PHP_BASE_IMAGE`、`COMPOSER_IMAGE`、`CADDY_BASE_IMAGE`、`PYTHON_BASE_IMAGE`、`DOCKER_CLI_BASE_IMAGE`、`GO_IMAGE`、`RUNTIME_IMAGE`），默认是浮动 tag。`build-images.sh` 从 `docker/release/base-images.lock` 读取 digest，传入 `<tag>@sha256:…`；没有 digest 的镜像照常构建并打印警告。发版前执行一次并提交结果：
+
+```sh
+scripts/release/pin-base-images.sh            # 需要 docker buildx 和镜像仓库访问
+scripts/release/pin-base-images.sh --check    # 有镜像未锁定时返回 1
+```
+
+phpredis 固定为 `PHPREDIS_VERSION`（默认 6.2.0）。运行时 PHP 镜像不含 git、unzip、composer，它们只在依赖构建阶段存在（SEC-008）。
+
+**APP 版本号（APP-106）：** 构建时 `scripts/release/stamp-app-version.sh` 把 `<tag>-<提交>` 写入 `public/app/sw.js`，每次发布都会刷新 APP 的离线外壳缓存。
+
 ## 离线安装包
 
 ```sh
@@ -79,12 +90,24 @@ docker run --privileged --rm tonistiigi/binfmt --install all
 
 - 版本号记录在仓库根目录的 `VERSION` 文件中，也是镜像 tag。
 - `bin/install.php run` 会把安装和升级历史写入 `system_settings.install.state`。
-- 升级时，`upgrade.sh` 依次执行：备份 → 修改 `TOKENHUB_IMAGE_TAG` → 拉取或构建镜像 → `up -d`（init 容器执行迁移）→ 等待健康 → 自检。
-- 数据库迁移无法自动回退。回滚步骤：切回旧的镜像 tag，再用 `restore.sh` 恢复升级前的备份。
+- 升级时，`upgrade.sh` 依次执行：打印 `CHANGELOG.md` 中已安装版本之后到目标版本的变更 → 备份 → 修改 `TOKENHUB_IMAGE_TAG` → 拉取或构建镜像 → `up -d`（init 容器执行迁移）→ 等待健康 → 自检。
+- 任一步失败时自动切回旧镜像 tag 并重新启动（`--no-rollback` 关闭）。数据库迁移无法自动回退：脚本比较升级前后已执行的迁移数，迁移已执行时提示用 `restore.sh` 恢复升级前的备份。`upgrade.ps1` 行为相同。
 
 ## 配置优先级
 
 PHP 读取配置时，**进程环境变量优先于 `.env` 文件**（compose 的 `environment:`、`env_file:`、CI 注入的变量都算环境变量），`.env` 只补充环境里没有的键。生产栈通过 `env_file: .env` 在容器创建时注入配置，因此修改 `.env` 后要执行 `docker compose up -d`（或 `upgrade.sh`）重建容器才会生效；只 `restart` 不会重新读取 `env_file`。源码安装的 PHP 服务不从 systemd 注入环境变量，修改 `/etc/tokenhub/tokenhub.env` 后重启对应服务即可。
+
+## 发布流水线
+
+`.github/workflows/release.yml` 在推送 `v*` tag（如 `v1.0.0`）时运行，也可手动指定已有 tag 重跑：
+
+1. 校验 tag 与 `VERSION` 一致，且 `CHANGELOG.md` 有对应小节；
+2. 锁定基础镜像 digest，用 `build-images.sh --push` 构建并推送 amd64 + arm64 镜像；
+3. 在两种架构上冒烟（arm64 通过 QEMU）：PHP 扩展、运行时镜像无构建工具、`caddy validate`、RAG worker 导入、网关与自动扩缩容镜像；
+4. 每种架构各打一个离线包（`TokenHub-<版本>-offline-<架构>.tar.gz`，超过 2 GB 自动分卷）；
+5. 生成 `SHA256SUMS`，以 CHANGELOG 小节为说明创建 GitHub Release，附带离线包和 `base-images.lock`。
+
+镜像仓库通过 Secrets `REGISTRY`、`REGISTRY_USERNAME`、`REGISTRY_PASSWORD` 和仓库变量 `IMAGE_PREFIX` 配置；未配置时推送到 `ghcr.io/<owner>/`。
 
 ## 持续集成
 
@@ -94,3 +117,5 @@ PHP 读取配置时，**进程环境变量优先于 `.env` 文件**（compose �
 - 用 `install.sh --build` 完整安装，然后验证 `/health` 和 `/ready`，并依次演练重复安装、备份、恢复和升级；
 - 在开发栈中运行完整测试；
 - 在干净的 Ubuntu runner 上执行 `deploy/linux/install.sh`。
+
+`.github/workflows/tests.yml`：unit（PHP 8.2 / 8.3 / 8.4 矩阵）、admin-e2e（Playwright）、integration（MySQL + Redis，push 和 PR 必跑，含 APP 数据库测试）、rag-worker（pytest）、dependency-audit（`composer audit`、`pip-audit`）。

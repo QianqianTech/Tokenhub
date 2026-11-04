@@ -45,6 +45,7 @@ final class OAuthTestPdo extends PDO
 {
     public function prepare(string $query, array $options = []): PDOStatement|false
     {
+        $query = preg_replace('/\bFOR UPDATE(?: SKIP LOCKED)?\b/i', '', $query) ?? $query;
         $query = str_replace('INSERT IGNORE', 'INSERT OR IGNORE', $query);
         if (preg_match('/^SHOW COLUMNS FROM (\w+)$/', trim($query), $m) === 1) {
             $query = "SELECT name AS Field FROM pragma_table_info('{$m[1]}')";
@@ -59,6 +60,7 @@ final class OAuthTestPdo extends PDO
 
 $pdo = new OAuthTestPdo('sqlite::memory:', null, null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC, PDO::ATTR_EMULATE_PREPARES => false]);
 $pdo->sqliteCreateFunction('NOW', static fn (): string => date('Y-m-d H:i:s'));
+$pdo->sqliteCreateFunction('UTC_TIMESTAMP', static fn (): string => date('Y-m-d H:i:s'));
 foreach ([
     'CREATE TABLE departments (id INTEGER PRIMARY KEY, name TEXT, status TEXT DEFAULT "active")',
     'CREATE TABLE users (id INTEGER PRIMARY KEY, department_id INT, username TEXT, password_hash TEXT, role TEXT, status TEXT DEFAULT "active")',

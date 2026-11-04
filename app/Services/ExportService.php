@@ -34,7 +34,7 @@ final class ExportService
         $filters['_scope'] = $this->actorScope($actor);
         $exportId = Crypto::token('exp_');
         App::db()->execute(
-            'INSERT INTO export_tasks (export_id, requested_by, export_type, status, format, filters, expires_at) VALUES (?, ?, ?, "queued", ?, ?, DATE_ADD(NOW(), INTERVAL 1 DAY))',
+            'INSERT INTO export_tasks (export_id, requested_by, export_type, status, format, filters, expires_at) VALUES (?, ?, ?, "queued", ?, ?, DATE_ADD(UTC_TIMESTAMP(), INTERVAL 1 DAY))',
             [$exportId, $actor['id'] ?? null, $type, self::EXPORT_FORMAT, json_encode($filters, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)]
         );
         App::redis()->push((string) App::config()->get('queue.name', 'tokenhub:jobs'), ['type' => 'export', 'export_id' => $exportId]);
@@ -180,21 +180,65 @@ final class ExportService
         $path = $this->exportFilePath($exportId);
 
         try {
-            $rows = $this->rowsFor($task);
-            $this->writeCsv($path, $rows);
-            App::db()->execute('UPDATE export_tasks SET status = "succeeded", file_path = ?, finished_at = NOW() WHERE export_id = ?', [$path, $exportId]);
-            App::logger()->info('export', 'export completed', ['export_id' => $exportId, 'export_type' => $task['export_type']]);
+            $result = $this->writeCsv($path, $this->rowsFor($task), $this->maxRows());
+            // BIZ-002: a cut-off export is never silent. It still succeeds
+            // (the rows written are correct) but carries EXPORT_TRUNCATED and
+            // the row count, so a reconciliation sees that rows are missing.
+            $truncatedCode = $result['truncated'] ? 'EXPORT_TRUNCATED' : null;
+            if (\TokenHub\Support\SchemaInspector::hasColumn('export_tasks', 'row_count')) {
+                App::db()->execute('UPDATE export_tasks SET status = "succeeded", file_path = ?, error_code = ?, row_count = ?, truncated = ?, finished_at = UTC_TIMESTAMP() WHERE export_id = ?', [$path, $truncatedCode, $result['rows'], $result['truncated'] ? 1 : 0, $exportId]);
+            } else {
+                App::db()->execute('UPDATE export_tasks SET status = "succeeded", file_path = ?, error_code = ?, finished_at = UTC_TIMESTAMP() WHERE export_id = ?', [$path, $truncatedCode, $exportId]);
+            }
+            App::logger()->info('export', 'export completed', ['export_id' => $exportId, 'export_type' => $task['export_type'], 'rows' => $result['rows'], 'truncated' => $result['truncated']]);
         } catch (\Throwable $throwable) {
-            App::db()->execute('UPDATE export_tasks SET status = "failed", error_code = "EXPORT_WRITE_FAILED", finished_at = NOW() WHERE export_id = ?', [$exportId]);
+            App::db()->execute('UPDATE export_tasks SET status = "failed", error_code = "EXPORT_WRITE_FAILED", finished_at = UTC_TIMESTAMP() WHERE export_id = ?', [$exportId]);
             App::logger()->error('export', 'export failed', ['export_id' => $exportId, 'error' => $throwable->getMessage()]);
+        }
+    }
+
+    /** EXPORT_MAX_ROWS (default 200000): beyond it the export is marked truncated. */
+    public function maxRows(): int
+    {
+        return max(1, (int) env_value('EXPORT_MAX_ROWS', 200000));
+    }
+
+    /** Rows fetched per keyset page (EXPORT_PAGE_SIZE, default 2000). */
+    public function pageSize(): int
+    {
+        return max(100, min(20000, (int) env_value('EXPORT_PAGE_SIZE', 2000)));
+    }
+
+    /**
+     * Keyset pagination ("id < last id", newest first): constant cost per
+     * page however deep the export goes, unlike OFFSET.
+     *
+     * @param callable(int|null, int): list<array<string, mixed>> $fetchPage receives the last id (null = first page) and the page size
+     * @param callable(array<string, mixed>): array<string, mixed> $map
+     * @return \Generator<int, array<string, mixed>>
+     */
+    public function paginate(callable $fetchPage, callable $map, ?int $pageSize = null): \Generator
+    {
+        $pageSize ??= $this->pageSize();
+        $lastId = null;
+        while (true) {
+            $page = $fetchPage($lastId, $pageSize);
+            foreach ($page as $row) {
+                $lastId = (int) ($row['__cursor_id'] ?? $row['id'] ?? 0);
+                unset($row['__cursor_id']);
+                yield $map($row);
+            }
+            if (count($page) < $pageSize || $lastId === null || $lastId <= 0) {
+                return;
+            }
         }
     }
 
     /**
      * @param array<string, mixed> $task
-     * @return list<array<string, mixed>>
+     * @return iterable<array<string, mixed>>
      */
-    private function rowsFor(array $task): array
+    private function rowsFor(array $task): iterable
     {
         $filters = json_decode((string) ($task['filters'] ?? '{}'), true);
         $filters = is_array($filters) ? $filters : [];
@@ -208,59 +252,70 @@ final class ExportService
 
     /**
      * @param array<string, mixed> $filters
-     * @return list<array<string, mixed>>
+     * @return iterable<array<string, mixed>>
      */
-    private function usageRows(array $filters): array
+    private function usageRows(array $filters): iterable
     {
         [$where, $bindings] = $this->recordWhere($filters, 'r');
-        $rows = App::db()->select(
-            "SELECT r.request_id, r.trace_id, r.user_id, r.department_id, r.api_key_id, r.provider_id, r.model_id, r.model_name, r.capability, r.status, r.http_status, r.error_code, r.input_tokens, r.output_tokens, r.total_tokens, r.cost_amount, r.latency_ms, r.client_ip, r.created_at
-             FROM usage_records r
-             LEFT JOIN usage_contents c ON c.usage_record_id = r.id
-             {$where}
-             ORDER BY r.id DESC
-             LIMIT 10000",
-            $bindings
-        );
 
-        return array_map(fn (array $row): array => $this->sanitizeCsvRow($row), $rows);
+        return $this->paginate(
+            static function (?int $lastId, int $limit) use ($where, $bindings): array {
+                $cursor = $lastId === null ? '' : ($where === '' ? 'WHERE ' : ' AND ') . 'r.id < ?';
+                return App::db()->select(
+                    "SELECT r.id AS __cursor_id, r.request_id, r.trace_id, r.user_id, r.department_id, r.api_key_id, r.provider_id, r.model_id, r.model_name, r.capability, r.status, r.http_status, r.error_code, r.input_tokens, r.output_tokens, r.total_tokens, r.cost_amount, r.latency_ms, r.client_ip, r.created_at
+                     FROM usage_records r
+                     LEFT JOIN usage_contents c ON c.usage_record_id = r.id
+                     {$where}{$cursor}
+                     ORDER BY r.id DESC
+                     LIMIT {$limit}",
+                    $lastId === null ? $bindings : [...$bindings, $lastId]
+                );
+            },
+            fn (array $row): array => $this->sanitizeCsvRow($row),
+        );
     }
 
     /**
      * @param array<string, mixed> $filters
-     * @return list<array<string, mixed>>
+     * @return iterable<array<string, mixed>>
      */
-    private function sessionArchiveRows(array $filters): array
+    private function sessionArchiveRows(array $filters): iterable
     {
         [$where, $bindings] = $this->recordWhere($filters, 'r');
-        $rows = App::db()->select(
-            "SELECT c.session_id, r.request_id, r.created_at, r.user_id, r.department_id, r.api_key_id, r.provider_id, r.model_id, r.capability AS modality, r.status, r.input_tokens, r.output_tokens, r.total_tokens, r.cost_amount AS cost, c.summary AS prompt_summary, c.summary AS response_summary, c.redacted_input, c.redacted_output, c.encrypted_input, c.encrypted_output, c.retention_mode, c.cleaned_at, r.error_code
-             FROM usage_records r
-             LEFT JOIN usage_contents c ON c.usage_record_id = r.id
-             {$where}
-             ORDER BY r.id DESC
-             LIMIT 10000",
-            $bindings
-        );
-
         $includeRaw = (bool) ($filters['include_raw'] ?? false);
-        return array_map(function (array $row) use ($includeRaw): array {
-            $row['prompt_content'] = $includeRaw && empty($row['cleaned_at']) ? Crypto::decrypt((string) ($row['encrypted_input'] ?? '')) : ($row['redacted_input'] ?? null);
-            $row['response_content'] = $includeRaw && empty($row['cleaned_at']) ? Crypto::decrypt((string) ($row['encrypted_output'] ?? '')) : ($row['redacted_output'] ?? null);
-            $row['content_redacted'] = $includeRaw ? '0' : '1';
-            unset($row['redacted_input'], $row['redacted_output'], $row['encrypted_input'], $row['encrypted_output']);
-            return $this->sanitizeCsvRow($row);
-        }, $rows);
+
+        return $this->paginate(
+            static function (?int $lastId, int $limit) use ($where, $bindings): array {
+                $cursor = $lastId === null ? '' : ($where === '' ? 'WHERE ' : ' AND ') . 'r.id < ?';
+                return App::db()->select(
+                    "SELECT r.id AS __cursor_id, c.session_id, r.request_id, r.created_at, r.user_id, r.department_id, r.api_key_id, r.provider_id, r.model_id, r.capability AS modality, r.status, r.input_tokens, r.output_tokens, r.total_tokens, r.cost_amount AS cost, c.summary AS prompt_summary, c.summary AS response_summary, c.redacted_input, c.redacted_output, c.encrypted_input, c.encrypted_output, c.retention_mode, c.cleaned_at, r.error_code
+                     FROM usage_records r
+                     LEFT JOIN usage_contents c ON c.usage_record_id = r.id
+                     {$where}{$cursor}
+                     ORDER BY r.id DESC
+                     LIMIT {$limit}",
+                    $lastId === null ? $bindings : [...$bindings, $lastId]
+                );
+            },
+            function (array $row) use ($includeRaw): array {
+                $row['prompt_content'] = $includeRaw && empty($row['cleaned_at']) ? Crypto::decrypt((string) ($row['encrypted_input'] ?? '')) : ($row['redacted_input'] ?? null);
+                $row['response_content'] = $includeRaw && empty($row['cleaned_at']) ? Crypto::decrypt((string) ($row['encrypted_output'] ?? '')) : ($row['redacted_output'] ?? null);
+                $row['content_redacted'] = $includeRaw ? '0' : '1';
+                unset($row['redacted_input'], $row['redacted_output'], $row['encrypted_input'], $row['encrypted_output']);
+                return $this->sanitizeCsvRow($row);
+            },
+        );
     }
 
     /**
      * @param array<string, mixed> $filters
-     * @return list<array<string, mixed>>
+     * @return iterable<array<string, mixed>>
      */
-    private function logRows(array $filters): array
+    private function logRows(array $filters): iterable
     {
         if (isset($filters['log_type']) || isset($filters['request_id']) || isset($filters['trace_id']) || isset($filters['provider_id']) || isset($filters['model_id']) || isset($filters['error_code'])) {
-            return array_map(fn (array $row): array => $this->sanitizeCsvRow($row), (new LogService())->query($filters));
+            // File logs: LogService pages through the JSONL files itself.
+            return array_map(fn (array $row): array => $this->sanitizeCsvRow($row), (new LogService())->query([...$filters, 'limit' => 1000]));
         }
 
         $clauses = [];
@@ -281,13 +336,18 @@ final class ExportService
             $clauses[] = 'created_at <= ?';
             $bindings[] = $filters['to'];
         }
-        $where = $clauses === [] ? '' : 'WHERE ' . implode(' AND ', $clauses);
-        $rows = App::db()->select(
-            "SELECT id, actor_user_id, actor_type, action, target_type, target_id, request_id, trace_id, client_ip, created_at FROM audit_logs {$where} ORDER BY id DESC LIMIT 10000",
-            $bindings
-        );
 
-        return array_map(fn (array $row): array => $this->sanitizeCsvRow($row), $rows);
+        return $this->paginate(
+            static function (?int $lastId, int $limit) use ($clauses, $bindings): array {
+                $all = $lastId === null ? $clauses : [...$clauses, 'id < ?'];
+                $where = $all === [] ? '' : 'WHERE ' . implode(' AND ', $all);
+                return App::db()->select(
+                    "SELECT id, actor_user_id, actor_type, action, target_type, target_id, request_id, trace_id, client_ip, created_at FROM audit_logs {$where} ORDER BY id DESC LIMIT {$limit}",
+                    $lastId === null ? $bindings : [...$bindings, $lastId]
+                );
+            },
+            fn (array $row): array => $this->sanitizeCsvRow($row),
+        );
     }
 
     /**
@@ -302,25 +362,37 @@ final class ExportService
     }
 
     /**
-     * @param list<array<string, mixed>> $rows
+     * Streams rows into the CSV (rows are never all held as PHP arrays) and
+     * stops after $maxRows. The CSV goes through a disk-backed temp stream;
+     * the stored file stays one encrypted blob (DownloadController format).
+     *
+     * @param iterable<array<string, mixed>> $rows
+     * @return array{rows: int, truncated: bool}
      */
-    private function writeCsv(string $path, array $rows): void
+    public function writeCsv(string $path, iterable $rows, ?int $maxRows = null): array
     {
-        $out = fopen('php://temp', 'r+');
+        $maxRows ??= $this->maxRows();
+        $out = fopen('php://temp/maxmemory:' . (8 * 1024 * 1024), 'r+');
         if ($out === false) {
             throw new \RuntimeException('Unable to open export buffer');
         }
-        if ($rows === []) {
-            fwrite($out, "empty\n");
-            rewind($out);
-            file_put_contents($path, $this->encryptCsvForStorage(stream_get_contents($out) ?: ''));
-            fclose($out);
-            return;
-        }
-
-        fputcsv($out, array_keys($rows[0]));
+        $count = 0;
+        $truncated = false;
+        $header = false;
         foreach ($rows as $row) {
-            fputcsv($out, array_map(fn (mixed $value): string => is_scalar($value) || $value === null ? (string) $value : json_encode($value, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE), $row));
+            if ($count >= $maxRows) {
+                $truncated = true;
+                break;
+            }
+            if (!$header) {
+                fputcsv($out, array_keys($row));
+                $header = true;
+            }
+            fputcsv($out, array_map(fn (mixed $value): string => is_scalar($value) || $value === null ? (string) $value : (string) json_encode($value, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE), $row));
+            $count++;
+        }
+        if (!$header) {
+            fwrite($out, "empty\n");
         }
         rewind($out);
         $csv = stream_get_contents($out) ?: '';
@@ -328,6 +400,8 @@ final class ExportService
         if (file_put_contents($path, $this->encryptCsvForStorage($csv)) === false) {
             throw new \RuntimeException('Unable to write export file');
         }
+
+        return ['rows' => $count, 'truncated' => $truncated];
     }
 
     /**

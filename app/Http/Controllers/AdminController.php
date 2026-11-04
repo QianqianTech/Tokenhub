@@ -72,21 +72,34 @@ final class AdminController
 
     public function logout(Request $request): Response
     {
+        if (App::context()->adminChannel() === 'app') {
+            // Signing out in the APP signs the whole device out.
+            return (new AppAuthController())->logout($request);
+        }
         (new AuthService())->logout($_COOKIE['tokenhub_admin_session'] ?? '');
         return $this->withSessionCookie(Response::ok(['logged_out' => true]), '', time() - 3600);
     }
 
     public function me(Request $request): Response
     {
+        $auth = App::context()->adminAuth();
+        $app = ($auth['channel'] ?? '') === 'app';
         return Response::ok([
             'user' => App::context()->adminUser(),
-            'session_expires_at' => (new AuthService())->sessionExpiresAt((string) ($_COOKIE['tokenhub_admin_session'] ?? '')),
+            'session_expires_at' => $app
+                ? (string) ($auth['expires_at'] ?? '')
+                : (new AuthService())->sessionExpiresAt((string) ($_COOKIE['tokenhub_admin_session'] ?? '')),
+            'auth_channel' => $app ? 'app' : 'web',
+            'app_device_id' => $app ? (int) ($auth['device_id'] ?? 0) : null,
             'server_time' => date('Y-m-d H:i:s'),
         ]);
     }
 
     public function renewSession(Request $request): Response
     {
+        if (App::context()->adminChannel() === 'app') {
+            return Response::error('APP_USE_REFRESH', 'APP sessions renew through /admin-api/app-auth/refresh', 400);
+        }
         $expiresAt = (new AuthService())->renew((string) ($_COOKIE['tokenhub_admin_session'] ?? ''));
         if ($expiresAt === null) {
             return Response::error('ADMIN_UNAUTHENTICATED', 'Admin login required', 401);
@@ -103,6 +116,10 @@ final class AdminController
 
     public function csrf(Request $request): Response
     {
+        if (App::context()->adminChannel() === 'app') {
+            // Bearer requests need no CSRF token; return one so shared client code keeps working.
+            return Response::ok(['csrf_token' => '']);
+        }
         $csrf = Crypto::token('csrf_');
         App::db()->execute('UPDATE admin_sessions SET csrf_token_hash = ? WHERE session_hash = ?', [Crypto::hashKey($csrf), Crypto::hashKey($_COOKIE['tokenhub_admin_session'] ?? '')]);
         return Response::ok(['csrf_token' => $csrf]);
@@ -348,7 +365,7 @@ final class AdminController
         $this->requireUserScope($userId);
         $this->requireNonAdminUserTarget($userId);
         App::db()->execute('UPDATE users SET password_hash = ? WHERE id = ?', [password_hash($password, PASSWORD_DEFAULT), $userId]);
-        App::db()->execute('UPDATE admin_sessions SET revoked_at = COALESCE(revoked_at, NOW()) WHERE user_id = ?', [$userId]);
+        App::db()->execute('UPDATE admin_sessions SET revoked_at = COALESCE(revoked_at, UTC_TIMESTAMP()) WHERE user_id = ?', [$userId]);
         \TokenHub\Services\Mcp\OAuth\OAuthServer::revokeUserGrantsAfterPasswordChange($userId);
         (new ApiKeyService())->invalidateByUser($userId);
         (new \TokenHub\Services\AuditService())->write('user.password.reset', 'users', $userId);
@@ -370,7 +387,7 @@ final class AdminController
         App::db()->execute('UPDATE users SET department_id = ? WHERE id = ?', [$departmentId, $userId]);
         // Keys follow their user: RAG grants and quotas of the old department stop applying (RAG-005).
         App::db()->execute('UPDATE api_keys SET department_id = ? WHERE user_id = ?', [$departmentId, $userId]);
-        App::db()->execute('UPDATE admin_sessions SET revoked_at = COALESCE(revoked_at, NOW()) WHERE user_id = ?', [$userId]);
+        App::db()->execute('UPDATE admin_sessions SET revoked_at = COALESCE(revoked_at, UTC_TIMESTAMP()) WHERE user_id = ?', [$userId]);
         (new ApiKeyService())->invalidateByUser($userId);
         (new \TokenHub\Services\AuditService())->write('user.department.move', 'users', $userId, ['department_id' => $departmentId]);
 
@@ -387,7 +404,7 @@ final class AdminController
         $this->requireUserScope($userId);
         $this->requireNonAdminUserTarget($userId);
         App::db()->execute('UPDATE users SET status = ? WHERE id = ?', [$status, $userId]);
-        App::db()->execute('UPDATE admin_sessions SET revoked_at = COALESCE(revoked_at, NOW()) WHERE user_id = ?', [$userId]);
+        App::db()->execute('UPDATE admin_sessions SET revoked_at = COALESCE(revoked_at, UTC_TIMESTAMP()) WHERE user_id = ?', [$userId]);
         (new ApiKeyService())->invalidateByUser($userId);
         (new \TokenHub\Services\AuditService())->write('user.status.update', 'users', $userId, ['status' => $status]);
 

@@ -79,7 +79,7 @@ final class RagRetrievalEvaluationService
                 SUM(status = "draft") AS draft_cases
              FROM rag_eval_cases'
         ) ?? [];
-        $runWhere = 'created_at >= DATE_SUB(NOW(), INTERVAL ' . max(1, $windowHours) . ' HOUR)';
+        $runWhere = 'created_at >= DATE_SUB(UTC_TIMESTAMP(), INTERVAL ' . max(1, $windowHours) . ' HOUR)';
         $runParams = [];
         if ($runId !== null && $runId !== '') {
             $runWhere .= ' AND run_id = ?';
@@ -256,7 +256,7 @@ final class RagRetrievalEvaluationService
             $qualityGate = $this->qualityGate($gateMetrics, $options);
             $latencyMs = (int) ((microtime(true) - $started) * 1000);
             App::db()->execute(
-                'UPDATE rag_eval_runs SET recall_at_1 = ?, recall_at_5 = ?, recall_at_10 = ?, recall_at_20 = ?, mrr = ?, failed_cases = ?, status = "succeeded", latency_ms = ?, metadata = ?, completed_at = NOW() WHERE id = ?',
+                'UPDATE rag_eval_runs SET recall_at_1 = ?, recall_at_5 = ?, recall_at_10 = ?, recall_at_20 = ?, mrr = ?, failed_cases = ?, status = "succeeded", latency_ms = ?, metadata = ?, completed_at = UTC_TIMESTAMP() WHERE id = ?',
                 [
                     $this->databaseMetric($metrics['recall_at_1']),
                     $this->databaseMetric($metrics['recall_at_5']),
@@ -426,7 +426,7 @@ final class RagRetrievalEvaluationService
     {
         try {
             App::db()->execute(
-                'UPDATE rag_eval_runs SET status = "failed", latency_ms = ?, metadata = ?, completed_at = NOW() WHERE id = ?',
+                'UPDATE rag_eval_runs SET status = "failed", latency_ms = ?, metadata = ?, completed_at = UTC_TIMESTAMP() WHERE id = ?',
                 [
                     $latencyMs,
                     json_encode([

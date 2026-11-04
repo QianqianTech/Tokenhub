@@ -121,13 +121,7 @@ func Dial(rawURL string, headers http.Header, timeout time.Duration, maxMessage 
 			host += ":80"
 		}
 	}
-	dialer := &net.Dialer{Timeout: timeout}
-	var conn net.Conn
-	if secure {
-		conn, err = tls.DialWithDialer(dialer, "tcp", host, &tls.Config{ServerName: u.Hostname(), MinVersion: tls.VersionTLS12})
-	} else {
-		conn, err = dialer.Dial("tcp", host)
-	}
+	conn, err := dialUpstream(u, host, secure, timeout)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -341,4 +335,95 @@ func headerContains(h http.Header, name, token string) bool {
 		}
 	}
 	return false
+}
+
+// proxyForURL is the HTTP(S)_PROXY / NO_PROXY lookup; replaceable in tests.
+var proxyForURL = func(target *url.URL) (*url.URL, error) {
+	return http.ProxyFromEnvironment(&http.Request{URL: target})
+}
+
+// dialUpstream connects to host (host:port), through an HTTP CONNECT proxy
+// when HTTPS_PROXY / HTTP_PROXY applies (NO_PROXY honoured), then wraps the
+// connection in TLS for wss://.
+func dialUpstream(u *url.URL, host string, secure bool, timeout time.Duration) (net.Conn, error) {
+	dialer := &net.Dialer{Timeout: timeout}
+	lookup := &url.URL{Scheme: "http", Host: u.Host}
+	if secure {
+		lookup.Scheme = "https"
+	}
+	proxy, err := proxyForURL(lookup)
+	if err != nil {
+		return nil, err
+	}
+	var conn net.Conn
+	if proxy == nil {
+		conn, err = dialer.Dial("tcp", host)
+	} else {
+		conn, err = dialViaProxy(dialer, proxy, host, timeout)
+	}
+	if err != nil {
+		return nil, err
+	}
+	if !secure {
+		return conn, nil
+	}
+	tlsConn := tls.Client(conn, &tls.Config{ServerName: u.Hostname(), MinVersion: tls.VersionTLS12})
+	_ = tlsConn.SetDeadline(time.Now().Add(timeout))
+	if err := tlsConn.Handshake(); err != nil {
+		conn.Close()
+		return nil, err
+	}
+	_ = tlsConn.SetDeadline(time.Time{})
+	return tlsConn, nil
+}
+
+func dialViaProxy(dialer *net.Dialer, proxy *url.URL, target string, timeout time.Duration) (net.Conn, error) {
+	proxyHost := proxy.Host
+	if proxy.Port() == "" {
+		if proxy.Scheme == "https" {
+			proxyHost += ":443"
+		} else {
+			proxyHost += ":80"
+		}
+	}
+	var conn net.Conn
+	var err error
+	if proxy.Scheme == "https" {
+		conn, err = tls.DialWithDialer(dialer, "tcp", proxyHost, &tls.Config{ServerName: proxy.Hostname(), MinVersion: tls.VersionTLS12})
+	} else {
+		conn, err = dialer.Dial("tcp", proxyHost)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("proxy %s: %w", proxy.Host, err)
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "CONNECT %s HTTP/1.1\r\nHost: %s\r\n", target, target)
+	if proxy.User != nil {
+		password, _ := proxy.User.Password()
+		credentials := base64.StdEncoding.EncodeToString([]byte(proxy.User.Username() + ":" + password))
+		fmt.Fprintf(&b, "Proxy-Authorization: Basic %s\r\n", credentials)
+	}
+	b.WriteString("\r\n")
+	_ = conn.SetDeadline(time.Now().Add(timeout))
+	if _, err := io.WriteString(conn, b.String()); err != nil {
+		conn.Close()
+		return nil, err
+	}
+	reader := bufio.NewReader(conn)
+	resp, err := http.ReadResponse(reader, &http.Request{Method: http.MethodConnect})
+	if err != nil {
+		conn.Close()
+		return nil, fmt.Errorf("proxy %s: %w", proxy.Host, err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		conn.Close()
+		return nil, fmt.Errorf("proxy %s: CONNECT %s returned %d", proxy.Host, target, resp.StatusCode)
+	}
+	if reader.Buffered() > 0 {
+		conn.Close()
+		return nil, errors.New("proxy: unexpected data after CONNECT response")
+	}
+	_ = conn.SetDeadline(time.Time{})
+	return conn, nil
 }

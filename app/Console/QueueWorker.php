@@ -6,9 +6,11 @@ namespace TokenHub\Console;
 
 use TokenHub\Services\Gateway\ReservationLeaseStore;
 use TokenHub\Services\WorkerService;
+use TokenHub\Support\App;
 use TokenHub\Support\Config;
 use TokenHub\Support\ConfigVersion;
 use TokenHub\Support\Logger;
+use TokenHub\Support\QueueRouter;
 use TokenHub\Support\RedisClient;
 use Throwable;
 
@@ -17,10 +19,14 @@ use Throwable;
  * scripts/worker.php both run this loop).
  *
  * Contract
- * - reserve: RPOP + LPUSH processing in one Lua script (RedisClient::reserve).
+ * - queues: one worker consumes the sub-queues in queue.worker_queues
+ *   (usage, main, tasks, export, maintenance by default: all of them).
+ * - reserve: RPOP + LPUSH processing in one Lua script (RedisClient::reserve);
+ *   an idle worker blocks on the queues' wake-up lists instead of polling.
  * - success: LREM from processing (ack).
- * - failure: retry or dead-letter via one atomic LREM+LPUSH script, so a
- *   crash between "ack" and "push" can no longer lose the job.
+ * - failure: retry after an exponential back-off (delayed sorted set) or
+ *   dead-letter, each via one atomic script, so a crash between "ack" and
+ *   "push" can no longer lose the job.
  * - lease: reserved_at + max(queue.retry_after_seconds, job.lease_seconds).
  *   While a job runs, the lease is renewed every lease/3 seconds (SIGALRM
  *   when pcntl is available); an expired lease means the worker died and
@@ -41,23 +47,34 @@ final class QueueWorker
     ) {
     }
 
-    public function run(bool $once = false): void
+    public function run(bool $once = false, ?string $queuesSpec = null): void
     {
-        $queue = (string) $this->config->get('queue.name', 'tokenhub:jobs');
-        $this->processingQueue = $queue . ':processing';
+        $router = new QueueRouter($this->config);
+        $mainQueue = $router->mainQueue();
+        $queues = [];
+        foreach ($router->consumedQueues($queuesSpec) as $name) {
+            $queues[$name] = QueueRouter::processing($name);
+        }
         $failedQueue = (string) $this->config->get('queue.failed_name', 'tokenhub:failed-jobs');
         $maxAttempts = (int) $this->config->get('queue.max_attempts', 3);
         $retryAfterSeconds = (int) $this->config->get('queue.retry_after_seconds', 30);
+        $blockTimeout = max(1, (int) $this->config->get('queue.block_timeout_seconds', 5));
+        // PERF-022: the processing lists are scanned every 15-30 s, not on every job.
+        $requeueInterval = max(15, min(30, (int) $this->config->get('queue.requeue_interval_seconds', 20)));
         $workerId = gethostname() . ':' . getmypid();
         $ragRecoveryInterval = (int) $this->config->get('rag.embedding.recovery_interval_seconds', 5);
+        $consumesMain = array_key_exists($mainQueue, $queues);
         $lastRagRecoveryAt = 0;
         $lastLeaseSweepAt = 0;
         $lastMaintenanceAt = 0;
+        $lastRequeueAt = 0;
+        $lastPromoteAt = 0;
+        $this->logger->info('Queue worker started', ['queues' => array_keys($queues), 'worker_id' => $workerId]);
 
         do {
             ConfigVersion::refresh();
             $this->recordHeartbeat();
-            if (time() - $lastRagRecoveryAt >= $ragRecoveryInterval) {
+            if ($consumesMain && time() - $lastRagRecoveryAt >= $ragRecoveryInterval) {
                 $this->guard(fn () => ($this->worker ?? new WorkerService())->recoverRagProviderJobs());
                 $lastRagRecoveryAt = time();
             }
@@ -69,23 +86,53 @@ final class QueueWorker
                 // Periodic closure of open loops: async task polling/expiry,
                 // usage stage recovery, OpenRouter reconciliation, alerts.
                 foreach ([['type' => 'tasks.poll'], ['type' => 'tasks.expire'], ['type' => 'tasks.settle'], ['type' => 'usage.reconcile', 'minutes' => 120], ['type' => 'openrouter.reconcile'], ['type' => 'alerts.evaluate']] as $maintenanceJob) {
-                    $this->redis->push($queue, $maintenanceJob);
+                    $this->redis->push($mainQueue, $maintenanceJob);
                 }
                 $lastMaintenanceAt = time();
             }
-            $requeued = $this->redis->requeueExpired($this->processingQueue, $queue, $retryAfterSeconds);
-            if ($requeued > 0) {
-                $this->logger->warning('Queue expired jobs requeued', ['count' => $requeued]);
+            if (time() - $lastPromoteAt >= 1) {
+                // BIZ-005: retries whose back-off elapsed become ready again.
+                foreach (array_keys($queues) as $name) {
+                    $this->guard(fn () => $this->redis->promoteDelayed((string) $name));
+                }
+                $lastPromoteAt = time();
+            }
+            if ($once || time() - $lastRequeueAt >= $requeueInterval) {
+                foreach ($queues as $name => $processing) {
+                    $requeued = $this->redis->requeueExpired($processing, (string) $name, $retryAfterSeconds);
+                    if ($requeued > 0) {
+                        $this->logger->warning('Queue expired jobs requeued', ['count' => $requeued, 'queue' => $name]);
+                    }
+                }
+                $lastRequeueAt = time();
             }
 
-            $job = $this->redis->reserve($queue, $this->processingQueue, $once ? 0 : 5, $workerId);
+            $job = $this->redis->reserveAny($queues, $once ? 0 : $blockTimeout, $workerId);
             if ($job === null) {
-                $this->guard(fn () => ($this->worker ?? new WorkerService())->handle(['type' => 'webhook.enqueue-due']));
+                if ($consumesMain) {
+                    $this->guard(fn () => ($this->worker ?? new WorkerService())->handle(['type' => 'webhook.enqueue-due']));
+                }
                 continue;
             }
 
-            $this->process($job, $queue, $failedQueue, $maxAttempts, $retryAfterSeconds);
+            $source = (string) ($job['__queue'] ?? $mainQueue);
+            unset($job['__queue']);
+            $this->process($job, $source, $failedQueue, $maxAttempts, $retryAfterSeconds);
         } while (!$once);
+    }
+
+    /**
+     * Back-off before attempt n+1 (BIZ-005): base * 2^(attempts-1), capped.
+     */
+    public function backoffSeconds(int $attempts): int
+    {
+        $base = max(0, (int) $this->config->get('queue.backoff_base_seconds', 30));
+        $cap = max($base, (int) $this->config->get('queue.backoff_max_seconds', 3600));
+        if ($base === 0) {
+            return 0;
+        }
+
+        return (int) min($cap, $base * (2 ** max(0, min(20, $attempts - 1))));
     }
 
     /**
@@ -93,13 +140,20 @@ final class QueueWorker
      */
     public function process(array $job, string $queue, string $failedQueue, int $maxAttempts, int $retryAfterSeconds): void
     {
-        $this->processingQueue = $queue . ':processing';
+        $this->processingQueue = QueueRouter::processing($queue);
         $attempts = (int) ($job['attempts'] ?? 0) + 1;
         $job['attempts'] = $attempts;
         $this->currentReserved = (string) ($job['__reserved_payload'] ?? '');
-        unset($job['__reserved_payload']);
+        unset($job['__reserved_payload'], $job['__queue']);
         $lease = max($retryAfterSeconds, (int) ($job['lease_seconds'] ?? 0));
         $this->startLeaseRenewal($lease);
+        // BIZ-008: logs written while the job runs carry the ids of the
+        // request that queued it.
+        $carried = is_array($job['request_context'] ?? null) ? $job['request_context'] : [];
+        $previousContext = App::context()->adopt(
+            isset($carried['request_id']) ? (string) $carried['request_id'] : 'job_' . (string) ($job['job_id'] ?? ''),
+            isset($carried['trace_id']) ? (string) $carried['trace_id'] : null,
+        );
 
         try {
             ($this->worker ?? new WorkerService())->handle($job);
@@ -107,29 +161,40 @@ final class QueueWorker
             if ($this->currentReserved !== '') {
                 $this->redis->ackReserved($this->processingQueue, $this->currentReserved);
             }
-            $this->logger->info('Queue job processed', ['job_id' => $job['job_id'] ?? null, 'type' => $job['type'] ?? null, 'attempts' => $attempts]);
+            $this->logger->info('Queue job processed', ['job_id' => $job['job_id'] ?? null, 'type' => $job['type'] ?? null, 'attempts' => $attempts, 'queue' => $queue]);
         } catch (Throwable $throwable) {
             $this->stopLeaseRenewal();
+            $permanent = str_starts_with($throwable->getMessage(), 'Unsupported job type');
             $this->logger->error('Queue job failed', [
                 'job_id' => $job['job_id'] ?? null,
                 'type' => $job['type'] ?? null,
                 'attempts' => $attempts,
+                'queue' => $queue,
                 'error' => $throwable->getMessage(),
             ]);
 
-            if ($attempts < $maxAttempts) {
+            if ($attempts < $maxAttempts && !$permanent) {
                 $job['last_error'] = mb_substr($throwable->getMessage(), 0, 500);
-                $this->redis->releaseReserved($this->processingQueue, $this->currentReserved, $queue, $job);
+                $delay = $this->backoffSeconds($attempts);
+                if ($delay > 0) {
+                    $this->redis->delayReserved($this->processingQueue, $this->currentReserved, $queue, $job, $delay);
+                } else {
+                    $this->redis->releaseReserved($this->processingQueue, $this->currentReserved, $queue, $job);
+                }
             } else {
                 $this->redis->moveReserved($this->processingQueue, $this->currentReserved, $failedQueue, [
                     'job' => $job,
+                    'queue' => $queue,
                     'failed_at' => gmdate('c'),
                     'error' => mb_substr($throwable->getMessage(), 0, 1000),
                     'exception' => $throwable::class,
                 ]);
+                // Dead letters are alerted on (AlertService: queue_dead_letter).
+                $this->guard(fn () => $this->redis->increment('queue:dead-letter:total'));
             }
         } finally {
             $this->currentReserved = '';
+            App::context()->restore($previousContext);
         }
     }
 
@@ -144,6 +209,8 @@ final class QueueWorker
             if ($this->currentReserved === '') {
                 return;
             }
+            // A long job (export, large RAG upload) must not look like a dead worker.
+            $this->recordHeartbeat();
             try {
                 $renewed = $this->redis->renewReserved($this->processingQueue, $this->currentReserved);
                 if ($renewed !== null) {

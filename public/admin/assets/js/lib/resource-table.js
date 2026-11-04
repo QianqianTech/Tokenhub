@@ -7,18 +7,21 @@ import { copyButton, emptyState, errorState, loadingState, toast } from "../comp
 import { pager, PAGE_SIZES } from "../components/pager.js";
 import { button, clear, el, field, showModal } from "../dom.js";
 import { t } from "../i18n.js";
-import { showCreateModal, showEditModal } from "./forms.js";
-import { formatDateTime, isDateColumn, statusTone } from "./format.js";
+import { showCreateModal, showEditModal, showProviderSecretModal } from "./forms.js";
+import { formatDateTime, fromLocalInputValue, isDateColumn, parseServerTime, statusTone, toLocalInputValue } from "./format.js";
 import { clearLookupCache, COLUMN_LOOKUPS } from "./lookups.js";
 import { openAdminDownload, renderDataDetails, showOperationResult } from "./output.js";
 import { adminUserDepartmentLabels, adminUserPermissionLabels, apiKeyDepartmentLabel, apiKeyModelLabels, apiKeyUserLabel, departmentSelectOptions, modelQuotaApiKeyLabel, modelQuotaModelLabel, quotaPolicyLabel, quotaTargetLabel, referenceCellLabel, renderContext } from "./references.js";
-import { PAGE_DESCRIPTIONS } from "./page-meta.js";
+import { pageDescription } from "./page-meta.js";
 import { LIST_FILTERS, presetFor, presetRange, RANGE_PRESETS, VISIBLE_FILTERS } from "./list-filters.js";
 import { showAdminUserDepartmentGrant, showAdminUserSessionRevoke, showAllowClientIp, showShareLinkPasswordResetResult, showUsageContent, showUserDepartmentMove, showUserPasswordReset, showUserStatusUpdate } from "./row-actions.js";
 import { readPreference, writePreference } from "./preferences.js";
-import { adminViewerCanSyncCatalog, renderRequestDiagnosticsLookup, showProviderCatalogSync, showRequestDiagnostics } from "./ops-tools.js";
+import { getCurrentUser, hasCapability } from "../core/session.js";
+import { adminViewerCanSyncCatalog } from "./ops-common.js";
+import { showProviderCatalogSync } from "./provider-catalog.js";
+import { renderRequestDiagnosticsLookup, showRequestDiagnostics } from "./diagnostics.js";
 import { showApiKeyDetails } from "../pages/api-keys.js";
-import { modelPriceSummary, renderPriceCategoryChips, showModelPriceDetails, showModelProviderImport, showProviderModelImport } from "../pages/catalog.js";
+import { modelPriceSummary, providerSecretStatus, renderPriceCategoryChips, showModelPriceDetails, showModelProviderImport, showProviderModelImport } from "../pages/catalog.js";
 import { renderDepartmentTree } from "../pages/departments.js";
 import { contextCell, modelNameCell, modelPrices, modelSwitch, priceCell, providerCards } from "./model-list.js";
 import { compact, costText, latencyText, usageFailureDetails, usageSummary } from "./usage-list.js";
@@ -152,7 +155,7 @@ export async function renderGenericResourcePage(content, resourceKey, initialFil
   }
   const parts = [];
   if (context.pageHead !== false) {
-    parts.push(pageHead(config.label || resourceKey, PAGE_DESCRIPTIONS[resourceKey] || config.description || "", actions));
+    parts.push(pageHead(config.label || resourceKey, pageDescription(resourceKey) || config.description || "", actions));
   } else {
     toolbar.append(actions);
   }
@@ -183,7 +186,9 @@ export async function renderGenericResourcePage(content, resourceKey, initialFil
   await refreshRows();
   toolbar.refreshCounts?.();
   if (openCreate && config.form) {
-    await showCreateModal(resourceKey, config, refreshRows);
+    // Filters that are also form fields (e.g. model_id) prefill the dialog.
+    const prefill = Object.fromEntries(config.form.filter((item) => filterValues[item.name] !== undefined && filterValues[item.name] !== "").map((item) => [item.name, filterValues[item.name]]));
+    await showCreateModal(resourceKey, config, refreshRows, prefill);
   }
 }
 
@@ -286,16 +291,13 @@ export function filterSpecs(resourceKey) {
   return LIST_FILTERS[resourceKey] ? LIST_FILTERS[resourceKey] : legacyFilterSpecs(resourceKey);
 }
 
+// Filters hold UTC server timestamps; the pickers show the viewer's local time.
 export function toDateTimeLocal(value) {
-  const text = String(value || "").trim();
-  const match = text.match(/^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2})/);
-  return match ? `${match[1]}T${match[2]}` : text;
+  return toLocalInputValue(value);
 }
 
 function fromDateTimeLocal(value) {
-  const text = String(value || "").trim();
-  const match = text.match(/^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})(?::(\d{2}))?$/);
-  return match ? `${match[1]} ${match[2]}:${match[3] || "00"}` : text;
+  return fromLocalInputValue(value);
 }
 
 const SEARCH_ICON = "M11 18a7 7 0 1 1 0-14 7 7 0 0 1 0 14ZM20 20l-3.5-3.5";
@@ -634,6 +636,7 @@ function withDefaultsRemoved(filters) {
 // click away in “显示列”. A saved choice always wins over these defaults.
 const DEFAULT_HIDDEN_COLUMNS = {
   users: ["id", "created_at"],
+  providers: ["id", "timeout_ms", "retry_count", "created_at"],
   "usage-records": ["department_id", "api_key_id", "capability", "cache_read_tokens", "id"],
   logs: ["trace_id", "department_id", "api_key_id", "provider_id"],
   "dashboard-share-links": ["scope_ids", "allowed_metrics", "allow_drilldown", "allowed_ip_cidrs"],
@@ -819,7 +822,7 @@ export function pageHead(title, description = "", actions = null) {
 }
 
 // Actions that stay visible in a row; everything else moves into “更多”.
-const INLINE_ACTION_PRIORITY = ["展开失败原因", "编辑", "详情", "大屏1", "大屏2", "内容", "诊断", "下载", "价格明细", "拉取模型", "放行 IP"];
+const INLINE_ACTION_PRIORITY = ["展开失败原因", "编辑", "修改 Key", "配置 Key", "详情", "大屏1", "大屏2", "内容", "诊断", "下载", "价格明细", "拉取模型", "放行 IP"];
 
 export function arrangeRowActions(ops, { maxInline = 3, keep = 2 } = {}) {
   if (ops.length <= maxInline) {
@@ -1089,7 +1092,7 @@ function renderCell(resourceKey, column, row, context) {
     cell.textContent = text;
   }
   if (isDateColumn(column) && row[column]) {
-    cell.title = String(row[column]);
+    cell.title = `${row[column]} (UTC)`;
   }
   if (COPYABLE_COLUMNS.has(column) && text) {
     const copy = copyButton(String(row[column]), "复制");
@@ -1170,8 +1173,12 @@ function rowActions(resourceKey, config, row, onRefresh, context) {
     ops.push(button("授权部门", () => showAdminUserDepartmentGrant(row, onRefresh), "secondary"));
     ops.push(button("更新状态", () => showUserStatusUpdate(row, onRefresh, "admin-users"), "secondary"));
     ops.push(button("撤销会话", () => showAdminUserSessionRevoke(row, onRefresh), "danger"));
+    if (getCurrentUser()?.role === "super_admin") {
+      ops.push(button("APP 设备", () => import("../pages/app-devices.js").then((module) => module.openAppDevicesDialog({ adminUser: row })), "secondary"));
+    }
   }
   if (resourceKey === "providers" && row.id) {
+    ops.push(button(row.secret_status === "empty" ? "配置 Key" : "修改 Key", () => showProviderSecretModal(row, onRefresh), "secondary provider-key-edit"));
     ops.push(button("拉取模型", () => showProviderModelImport(row, onRefresh), "secondary"));
   }
   if (resourceKey === "providers" && row.id && adminViewerCanSyncCatalog()) {
@@ -1245,20 +1252,25 @@ const RELATIVE_TIME_COLUMNS = new Set(["last_login_at", "last_used_at", "last_ca
 // “今天 09:41 / 昨天 17:26 / 10-25 15:10 / 2025-12-01”: activity columns read
 // at a glance; the full timestamp stays in the tooltip.
 export function friendlyTime(value) {
-  const text = String(value || "");
-  const match = text.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/);
-  if (!match) {
+  const date = parseServerTime(value);
+  if (!date) {
     return formatDateTime(value);
   }
-  const [, year, month, day, hour, minute] = match;
-  const date = new Date(Number(year), Number(month) - 1, Number(day));
+  const hour = pad2(date.getHours());
+  const minute = pad2(date.getMinutes());
+  const day = new Date(date);
+  day.setHours(0, 0, 0, 0);
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  const days = Math.round((today - date) / 86_400_000);
+  const days = Math.round((today - day) / 86_400_000);
   if (days === 0) return `今天 ${hour}:${minute}`;
   if (days === 1) return `昨天 ${hour}:${minute}`;
-  if (Number(year) === today.getFullYear()) return `${month}-${day} ${hour}:${minute}`;
-  return `${year}-${month}-${day}`;
+  if (date.getFullYear() === today.getFullYear()) return `${pad2(date.getMonth() + 1)}-${pad2(date.getDate())} ${hour}:${minute}`;
+  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
+}
+
+function pad2(value) {
+  return String(value).padStart(2, "0");
 }
 
 function initialAvatar(name) {
@@ -1266,9 +1278,29 @@ function initialAvatar(name) {
 }
 
 export function renderTableCell(resourceKey, column, row, context) {
+  if (resourceKey === "providers" && column === "secret_status") {
+    return el("span", { className: `cell-tag ${row.secret_status === "empty" ? "is-warn" : ""}`.trim(), text: providerSecretStatus(row) });
+  }
+  if (resourceKey === "providers" && column === "base_url") {
+    return el("span", { className: "provider-base-url", text: row.base_url || "—", title: row.base_url || "" });
+  }
   if (resourceKey === "models") {
     if (column === "name") return modelNameCell(row);
-    if (column === "price") return priceCell(context.pricesByModel?.get(Number(row.id)));
+    if (column === "price") {
+      const price = context.pricesByModel?.get(Number(row.id));
+      if (!price && context.refresh && hasCapability("api_catalog.manage") && resources["model-prices"]?.form) {
+        // 未配置: open the price form for this model right here.
+        return el("button", {
+          type: "button",
+          className: "cell-link price-missing-button",
+          text: "未配置 · 添加",
+          title: `为 ${row.name || `#${row.id}`} 添加价格`,
+          dataset: { modelId: String(row.id) },
+          onClick: () => showCreateModal("model-prices", resources["model-prices"], context.refresh, { model_id: row.id })
+        });
+      }
+      return priceCell(price);
+    }
     if (column === "context_length") return contextCell(row.context_length);
     if (column === "capability") return el("span", { className: "cell-tag", text: formatResourceValue("capability", row.capability) });
     if (column === "status" && context.refresh) return modelSwitch(row, context.refresh);

@@ -4,14 +4,15 @@ declare(strict_types=1);
 
 require __DIR__ . '/../bootstrap.php';
 
-$resources = file_get_contents(__DIR__ . '/../../public/admin/assets/js/resources.js') ?: '';
+// Column/value labels moved to the i18n dictionary (UX-106).
+$resources = (string) file_get_contents(__DIR__ . '/../../public/admin/assets/js/resources.js') . "\n" . (string) file_get_contents(__DIR__ . '/../../public/admin/assets/js/i18n/zh-CN.js');
 $table = admin_js_bundle() ?: '';
 $app = file_get_contents(__DIR__ . '/../../public/admin/assets/js/app.js') ?: '';
 $index = file_get_contents(__DIR__ . '/../../public/admin/index.html') ?: '';
 $auth = file_get_contents(__DIR__ . '/../../app/Services/AuthService.php') ?: '';
 
 assert_true(str_contains($resources, '"admin-users"'), 'Super admin navigation should expose an administrator management page.');
-assert_true(str_contains((string) file_get_contents(__DIR__ . '/../../public/admin/assets/js/domains.js'), '{ key: "system", label: "系统运维"'), 'System settings should be a left sidebar section.');
+assert_true(str_contains((string) file_get_contents(__DIR__ . '/../../public/admin/assets/js/domains.js'), '{ key: "system", label: "系统设置"'), 'System settings should be a left sidebar section.');
 assert_true(str_contains((string) file_get_contents(__DIR__ . '/../../public/admin/assets/js/domains.js'), '"admin-users", "permission-config"'), 'Administrator management should remain available alongside the dedicated permission configuration page.');
 assert_true(str_contains($resources, 'label: "管理员管理"'), 'Administrator management page should have a dedicated Chinese label.');
 assert_true(str_contains($resources, 'reference: "departments"'), 'Administrator management form should use department references instead of raw department JSON only.');

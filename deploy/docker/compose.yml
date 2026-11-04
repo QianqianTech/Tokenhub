@@ -11,9 +11,24 @@ name: ${COMPOSE_PROJECT_NAME:-tokenhub}
 
 x-tokenhub-image: &tokenhub-php-image ${TOKENHUB_IMAGE_PREFIX:-}tokenhub-php:${TOKENHUB_IMAGE_TAG:?TOKENHUB_IMAGE_TAG must be set in .env}
 
+# Outbound proxy for intranet deployments (DEP-109): set HTTP_PROXY / HTTPS_PROXY /
+# NO_PROXY in .env or the shell. Lower-case copies are needed because curl reads only
+# http_proxy for http:// URLs. The internal service names are always exempt.
+x-proxy-env: &proxy-env
+  HTTP_PROXY: ${HTTP_PROXY:-}
+  HTTPS_PROXY: ${HTTPS_PROXY:-}
+  NO_PROXY: "localhost,127.0.0.1,::1,mysql,redis,qdrant,caddy,php,realtime-gateway,rag-worker,${NO_PROXY:-}"
+  http_proxy: ${HTTP_PROXY:-}
+  https_proxy: ${HTTPS_PROXY:-}
+  no_proxy: "localhost,127.0.0.1,::1,mysql,redis,qdrant,caddy,php,realtime-gateway,rag-worker,${NO_PROXY:-}"
+
 x-app: &app
   image: *tokenhub-php-image
   env_file: .env
+  environment:
+    <<: *proxy-env
+    # bin/doctor.php checks the gateway through this URL (DEP-108).
+    REALTIME_GATEWAY_HEALTH_URL: ${REALTIME_GATEWAY_HEALTH_URL:-http://realtime-gateway:8090/healthz}
   working_dir: /srv/app
   # tini as PID 1: forwards SIGTERM so workers finish the current job on stop/upgrade.
   init: true
@@ -41,6 +56,12 @@ services:
 
   php:
     <<: *app
+    # Resource limits (DEP-105); 0 CPUs = no limit. Override in .env.
+    deploy:
+      resources:
+        limits:
+          memory: ${PHP_MEMORY_LIMIT:-2g}
+          cpus: "${PHP_CPUS:-0}"
     healthcheck:
       test: ["CMD", "tokenhub-healthcheck", "fpm"]
       interval: 15s
@@ -73,6 +94,7 @@ services:
     <<: *app
     command: ["php", "bin/scheduler.php"]
     environment:
+      <<: *proxy-env
       TOKENHUB_WORKER_HEARTBEAT_FILE: /tmp/tokenhub-scheduler.heartbeat
     healthcheck:
       test: ["CMD", "tokenhub-healthcheck", "worker", "180"]
@@ -91,7 +113,13 @@ services:
     working_dir: /worker
     command: ["python", "-m", "tokenhub_rag_worker"]
     environment:
+      <<: *proxy-env
       RAG_WORKER_STORAGE_ROOT: /srv/app/storage
+    deploy:
+      resources:
+        limits:
+          memory: ${RAG_WORKER_MEMORY_LIMIT:-2g}
+          cpus: "${RAG_WORKER_CPUS:-0}"
     volumes:
       - tokenhub_storage:/srv/app/storage
     depends_on:
@@ -110,6 +138,7 @@ services:
   realtime-gateway:
     image: ${TOKENHUB_IMAGE_PREFIX:-}tokenhub-realtime-gateway:${TOKENHUB_IMAGE_TAG:?TOKENHUB_IMAGE_TAG must be set in .env}
     environment:
+      <<: *proxy-env
       REALTIME_INTERNAL_TOKEN: ${REALTIME_INTERNAL_TOKEN:-}
       TOKENHUB_INTERNAL_URL: http://caddy:8082
     restart: unless-stopped
@@ -118,9 +147,11 @@ services:
   caddy:
     image: ${TOKENHUB_IMAGE_PREFIX:-}tokenhub-caddy:${TOKENHUB_IMAGE_TAG:?TOKENHUB_IMAGE_TAG must be set in .env}
     environment:
+      <<: *proxy-env
       TOKENHUB_SITE_ADDRESS: ${TOKENHUB_SITE_ADDRESS:-:80}
       TOKENHUB_CADDY_TLS: ${TOKENHUB_CADDY_TLS:-}
       TOKENHUB_CADDY_GLOBAL: ${TOKENHUB_CADDY_GLOBAL:-}
+      TOKENHUB_HTTP_REDIRECT_URL: ${TOKENHUB_HTTP_REDIRECT_URL:-}
     ports:
       - "${TOKENHUB_BIND_ADDRESS:-0.0.0.0}:${TOKENHUB_HTTP_PORT:-80}:80"
       - "${TOKENHUB_BIND_ADDRESS:-0.0.0.0}:${TOKENHUB_HTTPS_PORT:-443}:443"
@@ -144,6 +175,11 @@ services:
       MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:?DB_ROOT_PASSWORD must be set}
     volumes:
       - mysql_97_data:/var/lib/mysql
+    deploy:
+      resources:
+        limits:
+          memory: ${MYSQL_MEMORY_LIMIT:-2g}
+          cpus: "${MYSQL_CPUS:-0}"
     healthcheck:
       test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p\"$$MYSQL_ROOT_PASSWORD\" --silent"]
       interval: 10s
@@ -176,6 +212,11 @@ services:
     volumes:
       - qdrant_data:/qdrant/storage
       - qdrant_snapshots:/qdrant/snapshots
+    deploy:
+      resources:
+        limits:
+          memory: ${QDRANT_MEMORY_LIMIT:-4g}
+          cpus: "${QDRANT_CPUS:-0}"
     healthcheck:
       test: ["CMD-SHELL", "timeout 5 bash -c '</dev/tcp/127.0.0.1/6333'"]
       interval: 10s

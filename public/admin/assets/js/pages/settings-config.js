@@ -1,4 +1,23 @@
 export const SETTINGS_SECTION_PAGES = {
+  "settings-smtp": {
+    title: "SMTP 邮件",
+    section: "smtp",
+    fields: [
+      { name: "enabled", label: "邮件服务", type: "select", options: [["false", "停用"], ["true", "启用"]] },
+      { name: "host", label: "SMTP 服务器", optional: true, placeholder: "smtp.example.com" },
+      { name: "port", label: "端口", type: "number", min: 1, max: 65535 },
+      { name: "encryption", label: "连接加密", type: "select", options: [["starttls", "STARTTLS（通常为 587）"], ["ssl", "SSL/TLS（通常为 465）"], ["none", "无加密（内网中继）"]] },
+      { name: "auth_enabled", label: "SMTP 认证", type: "select", options: [["true", "需要账号和密码"], ["false", "无需认证"]] },
+      { name: "username", label: "SMTP 账号", optional: true, autocomplete: "off" },
+      { name: "password", label: "SMTP 密码或授权码", type: "password", optional: true, autocomplete: "new-password" },
+      { name: "clear_password", label: "清除已保存的 SMTP 密码", type: "checkbox", optional: true },
+      { name: "from_address", label: "发件邮箱", type: "email", optional: true },
+      { name: "from_name", label: "发件人名称", optional: true },
+      { name: "public_url", label: "平台访问地址（重置邮件中的链接）", type: "url", optional: true, placeholder: "https://tokenhub.example.com" },
+      { name: "timeout_seconds", label: "连接超时（秒）", type: "number", min: 1, max: 30 },
+      { name: "reset_ttl_minutes", label: "重置链接有效期（分钟）", type: "number", min: 5, max: 60 }
+    ]
+  },
   "settings-brand-identity": {
     title: "标题与标识",
     section: "brand_identity",
@@ -99,7 +118,7 @@ export const SETTINGS_SECTION_PAGES = {
 
 
 export const SETTINGS_SECTION_CATEGORIES = [
-  { key: "base-entry", label: "基础入口", sections: ["settings-brand-identity", "settings-tls-certificates"] },
+  { key: "base-entry", label: "基础入口", sections: ["settings-brand-identity", "settings-tls-certificates", "settings-smtp"] },
   { key: "security", label: "安全防护", sections: ["settings-entry-security"] },
   { key: "governance", label: "治理告警", sections: ["settings-retention-export", "settings-alert-thresholds"] },
   { key: "rag", label: "RAG 设置", sections: ["settings-rag-upload-review", "settings-rag-package-upload", "settings-rag-ai-image-processing", "settings-rag-vectorization-monitoring"] }

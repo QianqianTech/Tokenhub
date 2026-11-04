@@ -1,0 +1,14 @@
+{
+  "name": "tokenhub-app-desktop",
+  "private": true,
+  "version": "0.1.0",
+  "description": "TokenHub APP for macOS and Windows (Tauri 2 shell).",
+  "scripts": {
+    "dev": "tauri dev",
+    "build": "tauri build",
+    "icon": "tauri icon ../../public/app/assets/icons/icon-512.png"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.0.0"
+  }
+}

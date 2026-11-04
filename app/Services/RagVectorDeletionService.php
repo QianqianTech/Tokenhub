@@ -83,7 +83,7 @@ final class RagVectorDeletionService
         }
 
         return App::db()->execute(
-            'UPDATE rag_vector_records SET index_status = "deleted", status = "deleted", deleted_at = NOW() WHERE chunk_id IN (' . $this->placeholders($chunkIds) . ') AND status <> "deleted"',
+            'UPDATE rag_vector_records SET index_status = "deleted", status = "deleted", deleted_at = UTC_TIMESTAMP() WHERE chunk_id IN (' . $this->placeholders($chunkIds) . ') AND status <> "deleted"',
             $chunkIds
         );
     }

@@ -1,0 +1,16 @@
+# Base image digests for the release images (DEP-101).
+#
+# One line per image: "<tag reference> <sha256 digest of the multi-arch index>".
+# scripts/release/build-images.sh appends the digest to the matching build
+# argument (for example PHP_BASE_IMAGE=php:8.4-fpm-bookworm@sha256:...), so a
+# rebuild of the same release uses byte-identical base layers.
+#
+# Refresh with:   scripts/release/pin-base-images.sh          (needs docker buildx and registry access)
+# A line without a digest builds from the floating tag and prints a warning.
+php:8.4-fpm-bookworm
+composer:2
+caddy:2.10
+python:3.12-slim
+docker:27-cli
+golang:1.24-alpine
+alpine:3.20

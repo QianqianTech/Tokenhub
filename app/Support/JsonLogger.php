@@ -34,14 +34,22 @@ final class JsonLogger
      */
     private function write(string $channel, string $level, string $message, array $context): void
     {
+        $correlation = Logger::correlation();
         $record = [
             'timestamp' => gmdate('c'),
             'level' => $level,
             'message' => $this->sanitize($message),
+            // BIZ-008: every record carries the ids of the request / job.
+            'request_id' => isset($context['request_id']) && is_scalar($context['request_id']) ? (string) $context['request_id'] : $correlation['request_id'],
+            'trace_id' => isset($context['trace_id']) && is_scalar($context['trace_id']) ? (string) $context['trace_id'] : $correlation['trace_id'],
+            'channel' => $channel,
             'context' => $this->sanitizeContext($context),
         ];
+        if (Logger::stdoutEnabled()) {
+            Logger::mirror($record);
+        }
 
-        file_put_contents(
+        @file_put_contents(
             $this->path . '/' . preg_replace('/[^a-z0-9_-]/i', '_', $channel) . '.jsonl',
             json_encode($record, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR) . PHP_EOL,
             FILE_APPEND | LOCK_EX,

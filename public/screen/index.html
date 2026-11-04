@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>白云区智慧政务 运营大屏</title>
+    <title>TokenHub 运营大屏</title>
     <link rel="icon" href="/screen/assets/brand/favicon.ico" sizes="any">
     <link rel="apple-touch-icon" href="/screen/assets/brand/apple-touch-icon.png">
     <link rel="stylesheet" href="/screen/assets/screen.css">
@@ -12,7 +12,7 @@
     <main class="screen-shell">
       <section id="login" class="login screen-login">
         <div class="login-brand">
-          <span class="brand-kicker">白云区智慧政务</span>
+          <span class="brand-kicker">TokenHub</span>
           <h1>运营大屏</h1>
           <p id="entry-status">正在进入大屏</p>
         </div>
@@ -30,12 +30,14 @@
             <img id="screen-logo" class="screen-logo" src="/screen/assets/brand/tokenhub-app-icon.svg" alt="">
             <div>
               <span class="screen-kicker">实时 Token 监测</span>
-              <h1 class="screen-title">白云区智慧政务 运营大屏</h1>
+              <h1 class="screen-title">TokenHub 运营大屏</h1>
               <p class="screen-subtitle">Token 消耗、调用、生成任务与性能状态一屏掌握</p>
             </div>
           </div>
           <div class="screen-toolbar">
+            <div id="screen-health" class="screen-health is-unknown" title="状态未知">状态未知</div>
             <div id="screen-status" class="screen-status">等待刷新</div>
+            <div id="screen-updated" class="screen-updated" aria-live="polite"></div>
             <div id="screen-clock" class="screen-clock">--:--:--</div>
             <button id="fullscreen-toggle" class="secondary-button" type="button">全屏</button>
             <button id="logout" class="secondary-button" type="button">退出</button>
@@ -99,6 +101,14 @@
 
         <section class="screen-view" data-screen-view="operations">
           <section class="screen-grid screen-primary-grid">
+            <article class="panel panel-wide">
+              <h2>实时 · 近 5 分钟</h2>
+              <div id="live-metrics" class="live-metrics"></div>
+            </article>
+            <article class="panel">
+              <h2>厂商 · 近 5 分钟</h2>
+              <div id="provider-health" class="rank-list"></div>
+            </article>
             <article class="panel panel-wide">
               <h2>调用趋势</h2>
               <div id="trends" class="trend-bars"></div>

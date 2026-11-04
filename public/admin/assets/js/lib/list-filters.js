@@ -11,6 +11,7 @@
 //   remote     – searchable picker backed by /admin-api/lookups
 //   range      – time range presets plus custom from/to (params `from`, `to`)
 import { valueLabel } from "../resources.js";
+import { utcStamp } from "./format.js";
 
 const values = (column, list) => list.map((value) => [value, valueLabel(column, value)]);
 const ACTIVE = values("status", ["active", "disabled"]);
@@ -31,7 +32,10 @@ const capability = {
 
 export const LIST_FILTERS = {
   users: [status(values("status", ["active", "disabled", "departed"])), department, user("用户名")],
-  "admin-users": [status()],
+  // AdminUserService::list filters department_id, status and role.
+  "admin-users": [status(), department, { name: "role", label: "角色", kind: "segmented", options: values("role", ["admin", "super_admin"]) }],
+  // CrudService: keyword matches name, key prefix/suffix and the owner's username.
+  "api-keys": [{ name: "keyword", label: "关键字", kind: "search", placeholder: "按名称、员工或密钥尾号搜索" }, status(), department],
   providers: [status(), { name: "protocol", label: "协议", kind: "select", options: values("protocol", ["openai", "anthropic", "native"]) }],
   models: [
     { name: "keyword", label: "模型名称", kind: "search", placeholder: "按模型名或上游模型名搜索" },
@@ -45,7 +49,8 @@ export const LIST_FILTERS = {
   "model-prices": [model],
   "api-key-model-quotas": [status(), apiKey, model],
   "quota-policies": [status()],
-  // quota_bindings has no status column: the old 状态 filter did nothing.
+  // quota_bindings has no status column and CrudService::filterColumns offers
+  // no filter for it yet, so the page shows none rather than dead controls.
   "quota-bindings": [],
   "usage-records": [
     range,
@@ -79,6 +84,8 @@ export const LIST_FILTERS = {
   "dashboard-share-access-logs": [range],
   "desensitization-policies": [status()],
   "desensitization-events": [range, { name: "status", label: "处置方式", kind: "select", options: values("action", ["redact", "block", "replace", "summary", "log", "allow", "remove_header"]) }],
+  // log_retention_policies has no status column and one row per log type
+  // (a handful of rows); CrudService offers no filter, so none is shown.
   "log-retention-policies": [],
   "log-archive-files": [range, { name: "status", label: "日志类型", kind: "select", options: values("log_type", ["app", "audit", "security", "worker"]) }],
   "audit-logs": [range],
@@ -107,13 +114,10 @@ export const RANGE_PRESETS = [
   ["custom", "自定义"]
 ];
 
-function pad(value) {
-  return String(value).padStart(2, "0");
-}
-
-// Server list filters compare against stored timestamps ("YYYY-MM-DD HH:MM:SS").
+// Server list filters compare against stored UTC timestamps ("YYYY-MM-DD HH:MM:SS"):
+// the viewer's local moment is converted to UTC before it is sent.
 export function serverStamp(date) {
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+  return utcStamp(date);
 }
 
 export function presetRange(preset, now = new Date()) {

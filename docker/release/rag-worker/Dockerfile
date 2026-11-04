@@ -1,4 +1,6 @@
-FROM python:3.12-slim
+# Pinned by digest through scripts/release/pin-base-images.sh (docker/release/base-images.env).
+ARG PYTHON_BASE_IMAGE=python:3.12-slim
+FROM ${PYTHON_BASE_IMAGE}
 
 WORKDIR /worker
 

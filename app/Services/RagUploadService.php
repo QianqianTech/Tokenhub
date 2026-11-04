@@ -270,7 +270,7 @@ final class RagUploadService
         $this->assertDatasetMatchesKnowledgeBase((int) $upload['kb_id'], $dataset);
 
         $confirmed = App::db()->execute(
-            'UPDATE rag_uploads SET dataset_id = ?, preview_status = "confirmed", vectorize_status = "queued", status = "vectorizing", confirmed_by_api_key_id = ?, confirmed_at = NOW(), current_stage = "chunking", stage = "chunking", progress_percent = 45, progress = 45 WHERE id = ? AND preview_status = "ready"',
+            'UPDATE rag_uploads SET dataset_id = ?, preview_status = "confirmed", vectorize_status = "queued", status = "vectorizing", confirmed_by_api_key_id = ?, confirmed_at = UTC_TIMESTAMP(), current_stage = "chunking", stage = "chunking", progress_percent = 45, progress = 45 WHERE id = ? AND preview_status = "ready"',
             [$dataset['id'], $apiKey['id'] ?? null, $upload['id']]
         );
         if ($confirmed === 0) {
@@ -352,12 +352,12 @@ final class RagUploadService
         $comment = substr(trim((string) ($data['comment'] ?? '')), 0, 500);
         if ($decision === 'approve') {
             App::db()->execute(
-                'UPDATE rag_uploads SET review_status = "approved", reviewed_by_user_id = ?, reviewed_at = NOW(), review_comment = ?, status = "waiting_confirm", current_stage = "waiting_confirm", stage = "waiting_confirm", progress_percent = 30, progress = 30 WHERE id = ?',
+                'UPDATE rag_uploads SET review_status = "approved", reviewed_by_user_id = ?, reviewed_at = UTC_TIMESTAMP(), review_comment = ?, status = "waiting_confirm", current_stage = "waiting_confirm", stage = "waiting_confirm", progress_percent = 30, progress = 30 WHERE id = ?',
                 [$admin['id'] ?? null, $comment, $upload['id']]
             );
         } elseif ($decision === 'reject') {
             App::db()->execute(
-                'UPDATE rag_uploads SET review_status = "rejected", reviewed_by_user_id = ?, reviewed_at = NOW(), review_comment = ?, status = "rejected", current_stage = "rejected", stage = "rejected" WHERE id = ?',
+                'UPDATE rag_uploads SET review_status = "rejected", reviewed_by_user_id = ?, reviewed_at = UTC_TIMESTAMP(), review_comment = ?, status = "rejected", current_stage = "rejected", stage = "rejected" WHERE id = ?',
                 [$admin['id'] ?? null, $comment, $upload['id']]
             );
         } else {
@@ -594,9 +594,10 @@ final class RagUploadService
     }
 
     /**
-     * PDF, Word, PowerPoint, Markdown, HTML and plain text are imported as
-     * documents (structure-preserving parse + p2 chunking). CSV/XLSX keep the
-     * template import unless processing.template = "document".
+     * PDF, Word (.docx/.doc/.wps/.rtf/.odt), PowerPoint (.pptx/.ppt/.dps/.odp),
+     * Markdown, HTML and plain text are imported as documents (structure-preserving
+     * parse + p2 chunking). Spreadsheets (CSV/XLSX/XLS/ET/ODS) keep the template
+     * import unless processing.template = "document".
      *
      * @param array<string, mixed> $data
      * @param array<string, mixed> $processing
@@ -609,12 +610,11 @@ final class RagUploadService
         if (($processing['template'] ?? null) === 'document' || ($data['content_type'] ?? null) === 'document') {
             return true;
         }
-        if (isset($processing['template']) || in_array($data['content_type'] ?? null, ['excel', 'text', 'qa', 'image'], true)) {
-            return false;
-        }
         $format = RagDocumentParserService::formatFor((string) ($data['filename'] ?? $fileName), (string) ($data['mime_type'] ?? ''));
-
-        return $format !== null && !in_array($format, ['csv', 'xlsx', 'xls'], true);
+        // The table templates (text / QA / image list) only read spreadsheets. A PDF, Word,
+        // PowerPoint, RTF, Markdown, HTML or plain-text file is always a document, even when
+        // the import type was left at its default, instead of failing in the spreadsheet reader.
+        return $format !== null && !in_array($format, RagDocumentParserService::SPREADSHEET_FORMATS, true);
     }
 
     /**

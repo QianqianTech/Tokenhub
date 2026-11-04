@@ -1,0 +1,16 @@
+[package]
+name = "tokenhub-desktop"
+version = "0.1.0"
+description = "TokenHub APP for macOS and Windows: a thin Tauri shell around the server's /app/ page"
+edition = "2021"
+publish = false
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-notification = "2"
+keyring = { version = "3", features = ["apple-native", "windows-native"] }
+url = "2"
+serde_json = "1"

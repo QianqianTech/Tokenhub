@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#151A21">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="TokenHub">
+    <meta name="referrer" content="no-referrer">
+    <title>TokenHub 管理端</title>
+    <link rel="manifest" href="/app/manifest.webmanifest">
+    <link rel="icon" href="/admin/assets/brand/favicon.svg" type="image/svg+xml">
+    <link rel="apple-touch-icon" href="/app/assets/icons/apple-touch-icon.png">
+    <link rel="stylesheet" href="/admin/assets/css/tokens.css">
+    <link rel="stylesheet" href="/admin/assets/css/app.css">
+    <link rel="stylesheet" href="/admin/assets/css/components.css">
+    <link rel="stylesheet" href="/admin/assets/css/redesign.css">
+    <link rel="stylesheet" href="/app/assets/app.css">
+  </head>
+  <body>
+    <main id="app" class="app-shell tha-app theme-light" data-state="booting">
+      <header class="tha-topbar">
+        <a class="tha-brand" href="#/overview" aria-label="TokenHub 首页"><img src="/admin/assets/brand/tokenhub-app-icon.svg" alt="" width="28" height="28"></a>
+        <h1 id="page-title" class="tha-title">TokenHub</h1>
+        <span id="tha-live" class="tha-live" hidden title="实时更新已连接"><span aria-hidden="true"></span>实时</span>
+        <span id="tha-net" class="tha-net" hidden>离线</span>
+      </header>
+      <div id="tha-banners" class="tha-banners"></div>
+      <section id="global-error" class="global-error" aria-live="polite"></section>
+      <section id="content" class="content tha-content" tabindex="-1">
+        <div class="tha-splash" role="status"><img src="/admin/assets/brand/tokenhub-app-icon.svg" alt="" width="72" height="72"><span>正在打开 TokenHub…</span></div>
+      </section>
+      <nav id="tha-tabbar" class="tha-tabbar" aria-label="主导航" hidden></nav>
+      <span id="request-id" hidden></span>
+      <div id="modal-root"></div>
+    </main>
+    <noscript>TokenHub 管理端需要启用 JavaScript。</noscript>
+    <script type="module" src="/app/assets/js/main.js"></script>
+  </body>
+</html>

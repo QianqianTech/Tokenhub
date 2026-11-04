@@ -1011,9 +1011,6 @@ textarea {
   background: color-mix(in srgb, var(--primary) 12%, var(--surface));
   color: var(--primary);
 }
-.certificate-request-type-select {
-  display: none;
-}
 .certificate-type-help {
   margin: 0;
 }
@@ -1681,9 +1678,7 @@ pre {
   margin: 0;
 }
 .provider-preset-picker {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
+  display: grid;
   gap: 8px;
   padding: 10px;
   border: 1px solid var(--border);
@@ -1699,6 +1694,93 @@ pre {
 .provider-preset-button {
   min-width: auto;
   padding: 7px 10px;
+}
+.provider-preset-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.provider-preset-grid .provider-preset-button {
+  white-space: normal;
+  text-align: left;
+}
+.app-shell .modal-dialog .provider-preset-button[aria-pressed="true"] {
+  color: var(--primary);
+  border-color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 8%, var(--surface));
+}
+.provider-preset-more > summary,
+details.provider-preset-picker > summary,
+.provider-form-advanced > summary {
+  cursor: pointer;
+  color: var(--muted);
+  padding: 6px 0;
+}
+.provider-preset-more[open] > .provider-preset-grid,
+details.provider-preset-picker[open] > .provider-preset-grid {
+  margin-top: 8px;
+}
+details.provider-preset-picker:not([open]) > :not(summary) { display: none; }
+.provider-form-section {
+  min-width: 0;
+  margin: 0;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.provider-form-section legend {
+  padding: 0 6px;
+  font-weight: 600;
+}
+.provider-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+.provider-config-form .field {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+  margin: 0;
+}
+.provider-form-grid [data-field="base_url"],
+.provider-form-grid [data-field="default_headers"] {
+  grid-column: 1 / -1;
+}
+.provider-config-form .provider-secret-field,
+.provider-key-form .provider-secret-field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+.provider-secret-field > .field-label,
+.provider-secret-field > small { grid-column: 1 / -1; }
+.provider-secret-field > input { min-width: 0; }
+.provider-secret-status,
+.provider-endpoint-guide {
+  margin: 0 0 10px;
+  font-size: var(--font-size-small);
+  color: var(--muted);
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+.provider-endpoint-guide { margin: 0; }
+.provider-form-advanced {
+  border-top: 1px solid var(--border-soft);
+  padding-top: 8px;
+}
+.provider-form-advanced[open] > .provider-form-grid { margin-top: 12px; }
+.provider-base-url {
+  display: block;
+  max-width: 360px;
+  overflow-wrap: anywhere;
+  font-size: var(--font-size-small);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+@media (max-width: 640px) {
+  .provider-form-grid { grid-template-columns: minmax(0, 1fr); }
+  .provider-form-section { padding: 12px; }
+  .provider-base-url { max-width: 240px; }
 }
 .provider-model-import {
   display: grid;
@@ -1802,7 +1884,7 @@ pre {
 .modal-body .edit-form > pre:empty {
   display: none;
 }
-@media (max-width: 820px) {
+@media (max-width: 900px) {
   .app-shell { grid-template-columns: 1fr; }
   .sidebar { position: static; }
   .topbar { height: auto; align-items: flex-start; gap: 12px; }
@@ -2041,7 +2123,7 @@ pre {
   border: 1px solid var(--border);
 }
 
-@media (max-width: 820px) {
+@media (max-width: 900px) {
   .dashboard-grid {
     grid-template-columns: 1fr;
   }
@@ -2550,7 +2632,7 @@ pre {
   overflow-wrap: anywhere;
 }
 
-@media (max-width: 820px) {
+@media (max-width: 900px) {
   .sidebar {
     gap: 8px;
     max-height: 42vh;
@@ -2876,13 +2958,13 @@ pre {
   overflow: hidden;
 }
 
-@media (max-width: 1023px) and (min-width: 821px) {
+@media (max-width: 1023px) and (min-width: 901px) {
   .app-shell.sidebar-expanded {
     grid-template-columns: 220px minmax(0, 1fr);
   }
 }
 
-@media (max-width: 820px) {
+@media (max-width: 900px) {
   .app-shell,
   .app-shell.sidebar-expanded,
   .app-shell.sidebar-compact {
@@ -3281,7 +3363,7 @@ pre {
   }
 }
 
-@media (max-width: 820px) {
+@media (max-width: 900px) {
   .dashboard-screen-page {
     margin: -14px;
     padding: 14px;
@@ -3606,7 +3688,7 @@ pre {
 .admin-chat-mode-hint[hidden] {
   display: none;
 }
-@media (max-width: 820px) {
+@media (max-width: 900px) {
   .catalog-sync-summary {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }

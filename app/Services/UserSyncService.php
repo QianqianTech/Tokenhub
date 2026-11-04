@@ -26,8 +26,8 @@ final class UserSyncService
 
         App::db()->execute(
             'INSERT INTO user_sync_devices (device_id, user_id, department_id, api_key_id, device_name, platform, client_version, last_seen_at, status)
-             VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), "active")
-             ON DUPLICATE KEY UPDATE device_name = VALUES(device_name), platform = VALUES(platform), client_version = VALUES(client_version), last_seen_at = NOW(), updated_at = NOW()',
+             VALUES (?, ?, ?, ?, ?, ?, ?, UTC_TIMESTAMP(), "active")
+             ON DUPLICATE KEY UPDATE device_name = VALUES(device_name), platform = VALUES(platform), client_version = VALUES(client_version), last_seen_at = UTC_TIMESTAMP(), updated_at = UTC_TIMESTAMP()',
             [$deviceId, $apiKey['user_id'], $apiKey['department_id'], $apiKey['id'] ?? null, $deviceName, $platform, $clientVersion]
         );
 
@@ -95,7 +95,7 @@ final class UserSyncService
             $nextVersion = $this->nextVersion((int) $apiKey['user_id']);
             App::db()->execute(
                 'UPDATE user_sync_records
-                 SET api_key_id = ?, device_id = ?, payload_json = ?, payload_hash = ?, sync_version = ?, client_updated_at = ?, deleted_at = NULL, updated_at = NOW()
+                 SET api_key_id = ?, device_id = ?, payload_json = ?, payload_hash = ?, sync_version = ?, client_updated_at = ?, deleted_at = NULL, updated_at = UTC_TIMESTAMP()
                  WHERE id = ? AND sync_version = ?',
                 [
                     $apiKey['id'] ?? null,
@@ -265,7 +265,7 @@ final class UserSyncService
     {
         $deviceId = $this->normalizeDeviceId($deviceId);
         $count = App::db()->execute(
-            'UPDATE user_sync_devices SET status = "disabled", updated_at = NOW() WHERE device_id = ? AND user_id = ?',
+            'UPDATE user_sync_devices SET status = "disabled", updated_at = UTC_TIMESTAMP() WHERE device_id = ? AND user_id = ?',
             [$deviceId, $apiKey['user_id']]
         );
         if ($count <= 0) {
@@ -358,7 +358,7 @@ final class UserSyncService
 
         $nextVersion = $this->nextVersion((int) $apiKey['user_id']);
         $updated = App::db()->execute(
-            'UPDATE user_sync_records SET api_key_id = ?, device_id = ?, sync_version = ?, deleted_at = NOW(), updated_at = NOW() WHERE id = ? AND sync_version = ?',
+            'UPDATE user_sync_records SET api_key_id = ?, device_id = ?, sync_version = ?, deleted_at = UTC_TIMESTAMP(), updated_at = UTC_TIMESTAMP() WHERE id = ? AND sync_version = ?',
             [$apiKey['id'] ?? null, $deviceId, $nextVersion, $existing['id'], $existing['sync_version']]
         );
         if ($updated <= 0) {
@@ -530,7 +530,7 @@ final class UserSyncService
         if ($deviceId === null) {
             return;
         }
-        App::db()->execute('UPDATE user_sync_devices SET last_seen_at = NOW(), updated_at = NOW() WHERE device_id = ? AND user_id = ?', [$deviceId, $apiKey['user_id']]);
+        App::db()->execute('UPDATE user_sync_devices SET last_seen_at = UTC_TIMESTAMP(), updated_at = UTC_TIMESTAMP() WHERE device_id = ? AND user_id = ?', [$deviceId, $apiKey['user_id']]);
     }
 
     /**

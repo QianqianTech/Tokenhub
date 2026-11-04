@@ -1,3 +1,5 @@
+import { columns, values } from "./i18n/zh-CN.js";
+import { translate } from "./i18n.js";
 export const adminPermissionOptions = [
   ["dashboard.read", "仪表盘查看"],
   ["departments.read", "部门查看"], ["departments.manage", "部门管理"],
@@ -20,6 +22,7 @@ const resourceCapability = (resourceKey) => {
   if (resourceKey === "departments") return "departments.read";
   if (resourceKey === "users") return "users.read";
   if (resourceKey === "admin-users") return "admins.manage";
+  if (resourceKey === "settings-smtp") return "admins.manage";
   if (resourceKey === "permission-config") return "admins.manage";
   if (["providers", "models", "model-prices"].includes(resourceKey)) return "api_catalog.read";
   if (resourceKey === "api-keys") return "api_keys.read";
@@ -34,114 +37,11 @@ const resourceCapability = (resourceKey) => {
   return null;
 };
 
-export const valueLabels = {
-  role: {
-    "user": "普通用户",
-    "admin": "管理员",
-    "super_admin": "超级管理员"
-  },
-  admin_type: {
-    full_admin: "全功能管理员",
-    user_admin: "用户管理员",
-    rag_admin: "RAG 管理员",
-    api_admin: "API 管理员",
-    custom: "自定义管理员"
-  },
-  admin_scope: {
-    global: "全局",
-    departments: "授权部门及子部门"
-  },
-  disabled_by: {
-    admin: "管理员",
-    management: "智能体（管理 API）"
-  },
-  status: {
-    "active": "启用",
-    "disabled": "停用",
-    "departed": "离职",
-    "queued": "排队中",
-    "processing": "处理中",
-    "succeeded": "成功",
-    "failed": "失败",
-    "success": "成功",
-    "blocked": "已拦截",
-    "timeout": "超时",
-    "deleted": "已删除",
-    "expired": "已过期"
-  },
-  capability: {
-    "text_generation": "文本生成",
-    "vision_understanding": "视觉理解",
-    "video_understanding": "视频理解",
-    "audio_understanding": "音频理解",
-    "embedding": "向量检索",
-    "asr": "语音识别",
-    "tts": "语音合成",
-    "image_generation": "文生图",
-    "video_generation": "文生视频",
-    "rerank": "检索重排",
-    "moderation": "内容审核"
-  },
-  protocol: {
-    "openai": "OpenAI",
-    "anthropic": "Anthropic",
-    "native": "原生"
-  },
-  target_type: {
-    "api_key": "API 密钥",
-    "user": "用户",
-    "department": "部门"
-  },
-  scope_type: {
-    "global": "全局",
-    "department": "部门",
-    "user": "用户",
-    "api_key": "API 密钥",
-    "system": "系统",
-    "model": "模型",
-    "provider": "厂商"
-  },
-  action: {
-    "block": "拦截",
-    "log": "记录",
-    "allow": "放行",
-    "redact": "脱敏",
-    "remove_header": "移除请求头",
-    "replace": "替换",
-    "summary": "摘要"
-  },
-  export_type: {
-    "usage": "用量明细",
-    "session_archive": "会话存档",
-    "logs": "日志"
-  },
-  period: {
-    "minute": "分钟",
-    "hour": "小时",
-    "day": "天",
-    "month": "月"
-  },
-  retention_mode: {
-    "summary": "摘要",
-    "redacted": "脱敏内容",
-    "raw": "原文",
-    "none": "不保存"
-  },
-  log_type: {
-    "app": "应用日志",
-    "audit": "审计日志",
-    "security": "安全日志",
-    "worker": "任务日志"
-  },
-  severity: {
-    "info": "提示",
-    "warning": "警告",
-    "critical": "严重"
-  }
-};
+// Enum value labels live in the i18n dictionary (i18n/zh-CN.js).
+export const valueLabels = values;
 
 export function valueLabel(column, value) {
-  return valueLabels[column]?.[value] || String(value);
+  return translate(`value.${column}.${value}`, String(value));
 }
 
 export function formatResourceValue(column, value) {
@@ -152,151 +52,21 @@ export function formatResourceValue(column, value) {
     return JSON.stringify(value);
   }
   const raw = String(value);
-  return valueLabels[column]?.[raw] || raw;
+  return translate(`value.${column}.${raw}`, raw);
 }
 
 const option = (column, value) => [value, valueLabel(column, value)];
 const statusOptions = [["", "全部状态"], ...["active", "disabled", "queued", "processing", "succeeded", "failed", "success", "blocked", "timeout"].map((value) => option("status", value))];
 // Metrics a shared screen may show; keys match DashboardService::screenMetric.
-const SCREEN_METRIC_OPTIONS = [["overview", "总览"], ["trends", "趋势"], ["rankings", "排行"], ["performance", "性能"], ["security", "安全"], ["multimodal", "多模态"]];
+const SCREEN_METRIC_OPTIONS = [["overview", "总览"], ["trends", "趋势"], ["rankings", "排行"], ["performance", "性能"], ["security", "安全"], ["live", "实时"]];
 const capabilityOptions = [["", "全部能力"], ...["text_generation", "vision_understanding", "video_understanding", "audio_understanding", "embedding", "asr", "tts", "image_generation", "video_generation", "rerank", "moderation", "music_generation", "realtime"].map((value) => option("capability", value))];
 
-export const columnLabels = {
-  "id": "编号",
-  "name": "名称",
-  "username": "用户名",
-  "department_id": "部门 ID",
-  "role": "角色",
-  "admin_type": "管理员类型",
-  "admin_scope": "数据范围",
-  "permissions": "权限",
-  "managed_department_ids": "授权管理部门",
-  "status": "状态",
-  "last_login_at": "最后登录时间",
-  "created_at": "创建时间",
-  "updated_at": "更新时间",
-  "parent_id": "父部门 ID",
-  "path": "路径",
-  "level": "层级",
-  "sort_order": "排序",
-  "provider_id": "厂商 ID",
-  "provider_name": "厂商",
-  "protocol": "协议",
-  "base_url": "基础地址",
-  "timeout_ms": "超时毫秒",
-  "retry_count": "重试次数",
-  "external_name": "上游模型名",
-  "capability": "能力",
-  "context_length": "上下文长度",
-  "route_priority": "路由优先级",
-  "model_id": "模型 ID",
-  "input_token_price": "输入 Token 单价",
-  "output_token_price": "输出 Token 单价",
-  "audio_second_price": "音频秒单价",
-  "tts_char_price": "TTS 字符单价",
-  "image_price": "图片单价",
-  "video_second_price": "视频秒单价",
-  "request_price": "请求单价",
-  "price_categories": "模态类型",
-  "price_summary": "价格摘要",
-  "currency": "币种",
-  "effective_at": "生效时间",
-  "user_id": "用户 ID",
-  "api_key_id": "API 密钥 ID",
-  "key_prefix": "密钥前缀",
-  "key_suffix": "密钥后缀",
-  "expires_at": "过期时间",
-  "last_used_at": "最后使用时间",
-  "disabled_by": "停用来源",
-  "gateway_support": "网关支持",
-  "period": "周期",
-  "request_limit": "请求限制",
-  "input_token_limit": "输入 Token 限制",
-  "output_token_limit": "输出 Token 限制",
-  "request_count": "请求数",
-  "success_count": "成功数",
-  "failed_count": "失败数",
-  "total_token_limit": "Token 限制",
-  "cost_limit": "成本限制",
-  "total_cost": "总成本",
-  "quota_policy_id": "策略 ID",
-  "target_type": "目标类型",
-  "target_id": "目标 ID",
-  "request_id": "请求 ID",
-  "trace_id": "链路 ID",
-  "model_name": "模型名称",
-  "input_tokens": "输入 Token",
-  "output_tokens": "输出 Token",
-  "cache_read_tokens": "缓存读取 Token",
-  "cache_write_tokens": "缓存写入 Token",
-  "cache_tokens": "缓存 Token",
-  "total_tokens": "总 Token",
-  "modal_count": "模态次数",
-  "error_count": "异常数",
-  "cost_amount": "成本",
-  "latency_ms": "延迟毫秒",
-  "avg_latency_ms": "平均延迟",
-  "p95_latency_ms": "P95 延迟",
-  "p99_latency_ms": "P99 延迟",
-  "task_id": "任务 ID",
-  "task_type": "任务类型",
-  "asset_id": "资产 ID",
-  "media_type": "媒体类型",
-  "owner_user_id": "所属用户 ID",
-  "mime_type": "MIME 类型",
-  "size_bytes": "大小字节",
-  "usage_record_id": "用量记录 ID",
-  "retention_mode": "留存模式",
-  "summary": "摘要",
-  "cleaned_at": "清理时间",
-  "content_id": "内容 ID",
-  "session_id": "会话 ID",
-  "export_id": "导出 ID",
-  "export_type": "导出类型",
-  "file_path": "文件路径",
-  "error_code": "错误码",
-  "share_code": "分享码",
-  "scope_type": "范围类型",
-  "scope_ids": "范围 ID",
-  "allowed_metrics": "允许指标",
-  "allow_drilldown": "允许下钻",
-  "allowed_ip_cidrs": "允许 IP 段",
-  "share_link_id": "分享链接 ID",
-  "event_type": "事件类型",
-  "client_ip": "客户端 IP",
-  "reason": "原因",
-  "scope": "范围",
-  "action": "动作",
-  "priority": "优先级",
-  "description": "说明",
-  "method": "方法",
-  "match_count": "命中数量",
-  "log_type": "日志类型",
-  "online_retention_days": "在线留存天数",
-  "archive_retention_days": "归档留存天数",
-  "min_retention_days": "最小留存天数",
-  "compress_enabled": "启用压缩",
-  "encrypt_enabled": "启用加密",
-  "archive_path": "归档路径",
-  "compressed": "已压缩",
-  "encrypted": "已加密",
-  "deleted_at": "删除时间",
-  "timestamp": "时间",
-  "level": "级别",
-  "actor_user_id": "操作用户 ID",
-  "actor_type": "操作方类型",
-  "setting_key": "设置键",
-  "setting_value": "设置值",
-  "bucket_at": "时间桶",
-  "event_count": "事件数",
-  "blocked_count": "拦截数",
-  "last_seen_at": "最后出现时间",
-  "severity": "严重级别",
-  "message": "消息"
-};
+// Column labels live in the i18n dictionary (i18n/zh-CN.js); this export is
+// kept for modules that read the whole map.
+export const columnLabels = columns;
 
 export function columnLabel(column) {
-  return columnLabels[column] || column;
+  return translate(`column.${column}`, column);
 }
 
 export const resources = {
@@ -324,10 +94,11 @@ export const resources = {
   },
   "admin-users": {
     label: "管理员管理", group: "系统设置",
-    columns: ["id", "username", "department_id", "role", "admin_type", "admin_scope", "permissions", "managed_department_ids", "status", "last_login_at", "created_at"],
+    columns: ["id", "username", "email", "department_id", "role", "admin_type", "admin_scope", "permissions", "managed_department_ids", "status", "last_login_at", "created_at"],
     form: [
       { name: "department_id", label: "所属部门", type: "select", coerce: "number", reference: "departments" },
       { name: "username", label: "管理员账号" },
+      { name: "email", label: "找回密码邮箱", type: "email", optional: true, emptyValue: null, hint: "绑定后可在登录页通过此邮箱重置密码，每个邮箱只能绑定一个账号。" },
       { name: "password", label: "初始密码", type: "password" },
       { name: "role", label: "角色", type: "select", options: ["admin", "super_admin"].map((value) => option("role", value)) },
       { name: "admin_type", label: "管理员类型", type: "select", options: [["full_admin", "普通管理员（全部业务能力）"], ["user_admin", "用户管理员"], ["rag_admin", "RAG 管理员"], ["api_admin", "API 管理员"], ["custom", "自定义管理员"]] },
@@ -339,22 +110,22 @@ export const resources = {
   "permission-config": { label: "权限配置", group: "系统设置", readOnly: true },
   "providers": {
     label: "厂商", group: "模型",
-    columns: ["id", "name", "protocol", "base_url", "status", "timeout_ms", "retry_count", "created_at"],
+    columns: ["id", "name", "protocol", "base_url", "secret_status", "status", "timeout_ms", "retry_count", "created_at"],
     form: [
-      { name: "name", label: "名称" },
+      { name: "name", label: "厂商名称", placeholder: "例如：千问 Token Plan / DeepSeek" },
       { name: "protocol", label: "协议", type: "select", options: ["openai", "anthropic", "gemini", "native"].map((value) => option("protocol", value)) },
-      { name: "base_url", label: "基础地址" },
-      { name: "secret", label: "密钥", type: "password", optional: true },
-      { name: "timeout_ms", label: "超时毫秒", type: "number", optional: true },
-      { name: "retry_count", label: "重试次数", type: "number", optional: true },
-      { name: "default_headers", label: "默认请求头 JSON", type: "json", optional: true }
+      { name: "base_url", label: "API 基础地址", placeholder: "粘贴厂商提供的 API 基础地址" },
+      { name: "secret", label: "API Key", type: "password", optional: true, hint: "编辑时留空保留已有 Key；无需鉴权的服务可留空。" },
+      { name: "timeout_ms", label: "请求超时（毫秒）", type: "number", optional: true, placeholder: "使用系统默认", hint: "范围 100–900000 毫秒" },
+      { name: "retry_count", label: "重试次数", type: "number", optional: true, placeholder: "使用系统默认", hint: "0–5 次，0 表示不重试" },
+      { name: "default_headers", label: "自定义请求头（JSON）", type: "json", optional: true, emptyValue: null, hint: "通常无需填写；使用 JSON 对象，例如 {\"X-Org\":\"team\"}。" }
     ]
   },
   "models": {
     label: "模型", group: "模型",
     columns: ["id", "provider_name", "name", "external_name", "capability", "context_length", "status", "route_priority", "gateway_support"],
     form: [
-      { name: "provider_id", label: "厂商 ID", type: "number" },
+      { name: "provider_id", label: "厂商", type: "select", coerce: "number", reference: "providers" },
       { name: "name", label: "内部模型名" },
       { name: "external_name", label: "上游模型名" },
       { name: "capability", label: "能力", type: "select", options: capabilityOptions.slice(1) },
@@ -366,7 +137,7 @@ export const resources = {
     label: "价格", group: "模型",
     columns: ["id", "model_id", "price_categories", "price_summary", "currency", "effective_at"],
     form: [
-      { name: "model_id", label: "模型 ID", type: "number" },
+      { name: "model_id", label: "模型", type: "select", coerce: "number", reference: "models" },
       { name: "input_token_price", label: "输入 Token 单价", optional: true },
       { name: "output_token_price", label: "输出 Token 单价", optional: true },
       { name: "audio_second_price", label: "音频秒单价", optional: true },
@@ -439,7 +210,7 @@ export const resources = {
   "usage-contents": { label: "内容留存", group: "日志", readOnly: true, columns: ["id", "usage_record_id", "retention_mode", "summary", "expires_at", "cleaned_at", "created_at"], exportType: "session_archive" },
   "content-archive": { label: "会话存档", group: "日志", readOnly: true, columns: ["content_id", "request_id", "session_id", "user_id", "department_id", "model_name", "status", "retention_mode", "created_at", "cleaned_at"], exportType: "session_archive" },
   "export-tasks": { label: "导出任务", group: "日志", readOnly: true, columns: ["id", "export_id", "export_type", "status", "file_path", "error_code", "expires_at", "created_at"] },
-  "dashboard-share-links": { label: "大屏分享", group: "运营", columns: ["id", "share_code", "name", "username", "scope_type", "scope_ids", "allowed_metrics", "allow_drilldown", "allowed_ip_cidrs", "expires_at", "status"], form: [{ name: "share_code", label: "链接码", optional: true }, { name: "name", label: "名称" }, { name: "scope_type", label: "范围", type: "select", options: ["global", "department", "user", "api_key"].map((value) => option("scope_type", value)) }, { name: "scope_ids", label: "范围对象", type: "remote-multiselect", lookup: "departments", coerce: "number", optional: true, scopeOf: "scope_type" }, { name: "allowed_metrics", label: "允许查看的指标（不选表示全部）", type: "multiselect", optional: true, options: SCREEN_METRIC_OPTIONS }, { name: "allow_drilldown", label: "允许下钻", type: "select", options: [[0, "否"], [1, "是"]] }, { name: "allowed_ip_cidrs", label: "允许 IP 网段（每行一个，留空不限）", type: "cidr-list", optional: true }, { name: "expires_at", label: "访问截止时间", optional: true }, { name: "status", label: "状态", type: "select", options: ["active", "disabled"].map((value) => option("status", value)) }] },
+  "dashboard-share-links": { label: "大屏分享", group: "运营", oneTimeSecret: true, createLabel: "创建并显示访问密码", columns: ["id", "share_code", "name", "username", "scope_type", "scope_ids", "allowed_metrics", "allow_drilldown", "allowed_ip_cidrs", "expires_at", "status"], form: [{ name: "share_code", label: "链接码", optional: true }, { name: "name", label: "名称" }, { name: "scope_type", label: "范围", type: "select", options: ["global", "department", "user", "api_key"].map((value) => option("scope_type", value)) }, { name: "scope_ids", label: "范围对象", type: "remote-multiselect", lookup: "departments", coerce: "number", optional: true, scopeOf: "scope_type" }, { name: "allowed_metrics", label: "允许查看的指标（不选表示全部）", type: "multiselect", optional: true, options: SCREEN_METRIC_OPTIONS }, { name: "allow_drilldown", label: "排行显示对象 ID", type: "select", options: [[0, "否"], [1, "是"]] }, { name: "allowed_ip_cidrs", label: "允许 IP 网段（每行一个，留空不限）", type: "cidr-list", optional: true }, { name: "expires_at", label: "访问截止时间", optional: true }, { name: "status", label: "状态", type: "select", options: ["active", "disabled"].map((value) => option("status", value)) }] },
   "dashboard-share-access-logs": { label: "大屏访问日志", group: "运营", readOnly: true, columns: ["id", "share_link_id", "event_type", "client_ip", "reason", "created_at"] },
   "desensitization-policies": { label: "脱敏策略", group: "安全", columns: ["id", "name", "scope_type", "scope_id", "action", "status"], form: [{ name: "name", label: "名称" }, { name: "scope_type", label: "范围类型", type: "select", options: ["system", "department", "api_key", "model", "provider"].map((value) => option("scope_type", value)) }, { name: "scope_id", label: "范围 ID", type: "number", optional: true }, { name: "parsers", label: "解析器 JSON", type: "json" }, { name: "action", label: "动作", type: "select", options: ["block", "replace", "summary"].map((value) => option("action", value)) }] },
   "desensitization-events": { label: "脱敏事件", group: "安全", readOnly: true, columns: ["id", "policy_id", "request_id", "target_type", "action", "match_count", "summary", "created_at"] },
@@ -447,10 +218,11 @@ export const resources = {
   "log-archive-files": { label: "日志归档", group: "日志", readOnly: true, columns: ["id", "log_type", "archive_path", "compressed", "encrypted", "size_bytes", "created_at", "deleted_at"] },
   "logs": { label: "日志中心", group: "日志", readOnly: true, columns: ["timestamp", "log_type", "level", "request_id", "trace_id", "user_id", "department_id", "api_key_id", "provider_id", "model_id", "client_ip", "status", "latency_ms", "error_code"], exportType: "logs" },
   "alert-events": { label: "告警事件", group: "日志", readOnly: true, columns: ["id", "event_type", "severity", "message", "status", "created_at"] },
-  "audit-logs": { label: "审计日志", group: "日志", readOnly: true, columns: ["id", "actor_user_id", "actor_type", "action", "target_type", "target_id", "request_id", "client_ip", "created_at"], exportType: "logs" },
+  "audit-logs": { label: "审计日志", group: "日志", readOnly: true, columns: ["id", "actor_user_id", "actor_type", "action", "target_type", "target_id", "channel", "device_id", "request_id", "client_ip", "created_at"], exportType: "logs" },
   "content-retention-policy": { label: "内容留存策略", group: "系统设置", readOnly: true },
   "settings-center": { label: "系统设置", group: "系统设置", readOnly: true },
   "settings-brand-identity": { label: "标题与标识", group: "系统设置", readOnly: true, settingsSection: "brand_identity" },
+  "settings-smtp": { label: "SMTP 邮件", group: "系统设置", readOnly: true, settingsSection: "smtp" },
   "settings-tls-certificates": { label: "证书与入口", group: "系统设置", readOnly: true, settingsSection: "tls_certificates" },
   "settings-entry-security": { label: "访问安全", group: "系统设置", readOnly: true, settingsSection: "entry_security" },
   "settings-retention-export": { label: "留存与导出", group: "系统设置", readOnly: true, settingsSection: "retention_export" },
@@ -532,7 +304,17 @@ const ragResourceDefinitions = {
       { name: "department_id", label: "所属部门", type: "number", optional: true },
       { name: "default_text_vector_config_id", label: "默认文本向量配置", type: "select", coerce: "number", reference: "vectorConfigs", optional: true },
       { name: "default_image_vector_config_id", label: "默认图片向量配置", type: "select", coerce: "number", reference: "vectorConfigs", optional: true },
-      { name: "default_multimodal_vector_config_id", label: "默认多模态向量配置", type: "select", coerce: "number", reference: "vectorConfigs", optional: true }
+      { name: "default_multimodal_vector_config_id", label: "默认多模态向量配置", type: "select", coerce: "number", reference: "vectorConfigs", optional: true },
+      // Stored in chunking_profile.redaction / retrieval_profile (see forms.js knowledgeBasePayload).
+      { name: "redaction_mode", label: "入库脱敏", type: "select", optional: true, options: [["", "使用系统默认（RAG_REDACTION_TYPES）"], ["off", "关闭脱敏"], ["custom", "按勾选的类型脱敏"]] },
+      { name: "redaction_types", label: "脱敏类型（选择“按勾选的类型脱敏”时生效）", type: "multiselect", optional: true, options: [["phone", "手机号"], ["email", "邮箱"], ["id_card", "身份证号"], ["bank_card", "银行卡号"], ["ipv4", "IPv4 地址"]] },
+      { name: "min_vector_score", label: "向量相似度下限（0–1，留空用默认 0.35）", type: "number", optional: true },
+      { name: "min_lexical_score", label: "关键词得分下限（0–1，留空用默认 0.08）", type: "number", optional: true },
+      { name: "min_hybrid_confidence", label: "混合检索置信度下限（0–1，留空用默认 0.20）", type: "number", optional: true },
+      { name: "exact_match_discount", label: "精确匹配折扣（0–0.25，留空用默认 0.10）", type: "number", optional: true },
+      { name: "rerank_model_id", label: "重排模型（可选）", type: "select", coerce: "number", reference: "models", optional: true },
+      { name: "rerank_top_n", label: "重排候选数（可选）", type: "number", optional: true },
+      { name: "rerank_min_score", label: "重排得分下限（可选）", type: "number", optional: true }
     ]
   },
   "rag-knowledge-base-bindings": { label: "知识库授权（原始表，只读；请在“知识集权限”中修改）", group: "RAG知识库", readOnly: true, columns: ["id", "kb_id", "subject_type", "subject_id", "permission", "is_default", "include_descendants", "expires_at", "created_at"] },
@@ -564,7 +346,7 @@ const ragResourceDefinitions = {
       { name: "model_name", label: "本地模型名称", optional: true },
       { name: "dimension", label: "向量维度", type: "number" },
       { name: "distance_metric", label: "距离度量", type: "select", options: [["cosine", "余弦相似度"], ["dot", "点积"], ["euclidean", "欧氏距离"]] },
-      { name: "vector_store", label: "向量库", type: "select", options: [["qdrant", "Qdrant"], ["milvus", "Milvus"], ["pgvector", "pgvector"], ["mysql_fallback", "MySQL 回退"]] },
+      { name: "vector_store", label: "向量库", type: "select", options: [["qdrant", "Qdrant"], ["mysql_fallback", "MySQL 回退（仅适合少量数据）"]] },
       { name: "collection_name", label: "集合名称" },
       { name: "batch_size", label: "批处理大小", type: "number", optional: true },
       { name: "config_json", label: "扩展配置 JSON", type: "json", optional: true },
@@ -639,6 +421,16 @@ export function filterFields(resourceKey) {
       { name: "provider_id", label: "厂商 ID", type: "number", optional: true },
       { name: "model_id", label: "模型 ID", type: "number", optional: true },
       { name: "error_code", label: "错误码", optional: true },
+      { name: "from", label: "开始时间", optional: true },
+      { name: "to", label: "结束时间", optional: true }
+    ];
+  }
+  if (resourceKey === "audit-logs") {
+    return [
+      { name: "action", label: "操作", optional: true },
+      { name: "actor_user_id", label: "操作人 ID", type: "number", optional: true },
+      { name: "channel", label: "渠道", type: "select", options: [["", "全部渠道"], ["web", "Web 后台"], ["app", "TokenHub APP"]] },
+      { name: "device_id", label: "APP 设备 ID", type: "number", optional: true },
       { name: "from", label: "开始时间", optional: true },
       { name: "to", label: "结束时间", optional: true }
     ];

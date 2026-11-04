@@ -1,4 +1,5 @@
 # TokenHub realtime gateway (Go WebSocket relay, standard library only).
+# Pinned by digest through scripts/release/pin-base-images.sh (docker/release/base-images.env).
 ARG GO_IMAGE=golang:1.24-alpine
 ARG RUNTIME_IMAGE=alpine:3.20
 

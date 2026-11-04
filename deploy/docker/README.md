@@ -66,10 +66,23 @@ docker compose exec php php bin/install.php admin --username=admin   # 重置管
 ## 升级、备份与恢复
 
 ```sh
-./upgrade.sh --tag 1.1.0               # 先自动备份，再切换镜像版本、执行迁移并检查健康状态
-./backup.sh                            # 备份到 ./backups/<时间>/：MySQL、Qdrant、存储卷、Redis、证书和 .env
-CONFIRM_RESTORE=1 ./restore.sh ./backups/20261028-023000
+./upgrade.sh --tag 1.1.0               # 打印版本变更，自动备份，切换镜像版本、执行迁移并检查健康状态
+./backup.sh                            # 备份到 /var/backups/tokenhub/<时间>/（非 root 为 ~/tokenhub-backups/，可用 BACKUP_DIR 指定）
+CONFIRM_RESTORE=1 ./restore.sh /var/backups/tokenhub/20261028-023000
 ```
+
+升级失败时（拉取 / 构建失败、迁移失败、服务不健康），`upgrade.sh` 自动把镜像 tag 改回原版本并重新启动；如果迁移已经执行过一部分，会提示用升级前的备份恢复（迁移不可逆）。加 `--no-rollback` 可保留失败现场排查。
+
+资源上限与代理（写在 `.env` 中）：
+
+| 变量 | 默认 | 说明 |
+| --- | --- | --- |
+| `PHP_MEMORY_LIMIT` / `PHP_CPUS` | `2g` / `0` | php 容器（`0` = 不限 CPU） |
+| `MYSQL_MEMORY_LIMIT` / `MYSQL_CPUS` | `2g` / `0` | |
+| `QDRANT_MEMORY_LIMIT` / `QDRANT_CPUS` | `4g` / `0` | |
+| `RAG_WORKER_MEMORY_LIMIT` / `RAG_WORKER_CPUS` | `2g` / `0` | 开启 OCR 时建议调高 |
+| `HTTP_PROXY` / `HTTPS_PROXY` / `NO_PROXY` | 空 | 内网经代理访问模型供应商、推送服务和 ACME；容器名（mysql、redis、qdrant、caddy 等）始终直连。SMTP 不走 HTTP 代理 |
+| `BACKUP_DIR` | 见上 | 备份目录 |
 
 建议用 cron 每天备份一次：
 

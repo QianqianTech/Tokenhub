@@ -25,11 +25,26 @@ const TOKENHUB_SCHEDULE = [
     'cleanup.media' => 600,
     'cleanup.external-events' => 3600,
     'cleanup.mcp-oauth' => 3600,
+    // Expired TokenHub APP devices and old sign-in link codes.
+    'cleanup.app-devices' => 3600,
+    'cleanup.admin-password-resets' => 3600,
     // RAG retention policies, document versions and vector-store reconciliation (RAG-007, RAG-025, RAG-030).
     'rag.cleanup' => 3600,
     // Supersedes older document versions once the Python worker finished indexing the new one (RAG-025).
     'rag.publish-versions' => 60,
     'rag.reconcile' => 86400,
+    // BIZ-004: log rotation / archive / archive cleanup (the jobs existed but were never scheduled).
+    'logs.rotate' => 3600,
+    'logs.archive' => 86400,
+    'logs.cleanup' => 86400,
+    // BIZ-009: batched retention purges of high-volume tables (config/retention.php).
+    'retention.purge' => 3600,
+    // BIZ-009: optional archive-then-delete of usage_records / audit_logs (off unless RETENTION_ARCHIVE_ENABLED).
+    'retention.archive' => 86400,
+    // BIZ-018: dry-run model catalog / price sync for every provider; alerts on drift.
+    'catalog.dry-run' => 86400,
+    // BIZ-010: usage cost drift between detail rows and aggregates (alerts on drift).
+    'usage.drift-check' => 3600,
 ];
 
 $config = new Config($basePath . '/config', $basePath . '/.env');
@@ -66,6 +81,11 @@ do {
         }
     }
     @touch(sys_get_temp_dir() . '/tokenhub-scheduler.heartbeat');
+    try {
+        // Cluster-visible heartbeat for /ready and the scheduler_down alert (BIZ-003, BIZ-017).
+        $redis->set('operations:worker:scheduler', gmdate('c'), 180);
+    } catch (Throwable) {
+    }
     if ($once) {
         break;
     }

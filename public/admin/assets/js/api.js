@@ -1,52 +1,18 @@
+import { translate } from "./i18n.js";
 let csrfToken = "";
 let authRequiredHandler = () => {};
 let errorHandler = () => {};
 let routeSignal = null;
 let lastRequestId = "";
 
-const adminErrorMessages = {
-  ADMIN_UNAUTHENTICATED: "登录状态已失效，请重新登录",
-  ADMIN_CSRF_INVALID: "页面安全校验失效，请刷新后重试",
-  ADMIN_PERMISSION_DENIED: "当前账号没有权限执行此操作",
-  ADMIN_INVALID_PAYLOAD: "提交内容不完整或格式不正确",
-  ADMIN_INVALID_DEPARTMENT_MOVE: "不能把部门移动到自身下级",
-  ADMIN_INVALID_SETTING_SECTION: "未知的设置分区",
-  ADMIN_NOT_FOUND: "记录不存在或已被删除",
-  CONTENT_FORBIDDEN: "无权访问该内容或内容已失效",
-  DESENSITIZATION_BLOCKED: "内容命中了阻断型脱敏策略",
-  ADMIN_CHAT_INVALID_PAYLOAD: "会话内容不完整",
-  ADMIN_CHAT_MODEL_NOT_FOUND: "当前模型不可用或不支持会话测试",
-  ADMIN_CHAT_KEY_NOT_FOUND: "所选 API 密钥不存在或不在管理范围内",
-  ADMIN_WRITE_CONFLICT: "记录已被他人修改，请关闭后刷新列表再修改",
-  ADMIN_VALIDATION_FAILED: "配置校验未通过，请检查输入内容",
-  QUOTA_ADJUSTMENT_INVALID: "额度调整无效：需选择指标、填写非零调整量和原因",
-  QUOTA_POLICY_NOT_FOUND: "该额度策略未绑定到所选对象",
-  API_KEY_INVALID: "API 密钥无效、已停用，或其员工/部门已停用",
-  API_KEY_EXPIRED: "API 密钥已过期",
-  MODEL_FORBIDDEN: "该 API 密钥未被授权使用此模型",
-  MODEL_NOT_FOUND: "模型不存在",
-  MODEL_UNAVAILABLE: "模型当前没有可用通道",
-  MODEL_CAPABILITY_UNSUPPORTED: "没有支持该请求功能的可用通道",
-  QUOTA_EXCEEDED: "额度已用尽",
-  MODEL_QUOTA_EXCEEDED: "该密钥的模型限额已用尽",
-  CONCURRENCY_EXCEEDED: "并发请求过多，请稍后重试",
-  PROVIDER_RATE_LIMITED: "上游模型限流，请稍后重试",
-  PROVIDER_REJECTED: "上游模型拒绝了请求，请检查模型参数或厂商限制",
-  PROVIDER_ERROR: "上游模型服务异常",
-  PROVIDER_TIMEOUT: "上游模型请求超时",
-  PROVIDER_INVALID_RESPONSE: "上游模型返回格式异常",
-  BAD_RESPONSE: "服务返回格式异常",
-  BAD_INPUT: "输入内容格式不正确",
-  NETWORK_ERROR: "网络连接失败，请检查网络后重试",
-  FORM_INVALID: "请先修正标出的字段",
-  REQUEST_FAILED: "请求失败，请稍后重试",
-  NOT_FOUND: "请求的资源不存在",
-  INTERNAL_ERROR: "服务内部异常，请稍后重试"
-};
+// Error messages live in the i18n dictionary (i18n/zh-CN.js: errors).
+function errorText(code, fallback = undefined) {
+  return code ? translate(`error.${code}`, fallback) : fallback;
+}
 
 export function adminErrorMessage(error, fallback = "请求失败，请稍后重试") {
   const code = error?.code || "";
-  const message = adminErrorMessages[code] || fallback;
+  const message = errorText(code) || fallback;
   const requestId = error?.requestId;
   return requestId ? `${message}（请求编号：${requestId}）` : message;
 }
@@ -62,6 +28,16 @@ export function configureApi({ onAuthRequired, onError } = {}) {
 
 export function setCsrf(token) {
   csrfToken = token || "";
+}
+
+// TokenHub APP: requests authenticate with a bearer access token instead of the
+// console cookie. The provider supplies the header, renews an expired token
+// (one retry per request) and handles step-up verification for sensitive
+// operations. The console never sets a provider.
+let authProvider = null;
+
+export function setAuthProvider(provider) {
+  authProvider = provider || null;
 }
 
 // Read requests made while a page is shown are tied to that page: when the
@@ -100,6 +76,7 @@ function requestHeaders(fetchOptions, accept) {
     "Accept": accept,
     ...(fetchOptions.body && !(fetchOptions.body instanceof FormData) ? { "Content-Type": "application/json" } : {}),
     ...(csrfToken ? { "X-CSRF-Token": csrfToken } : {}),
+    ...(authProvider?.headers?.() || {}),
     ...(fetchOptions.headers || {})
   };
 }
@@ -119,7 +96,7 @@ function resolveSignal(fetchOptions) {
 const never = () => new Promise(() => {});
 
 function buildError(payload, response, requestId) {
-  const error = new Error(payload?.error?.message || adminErrorMessages.REQUEST_FAILED);
+  const error = new Error(payload?.error?.message || errorText("REQUEST_FAILED"));
   error.code = payload?.error?.code || (response?.status === 404 ? "NOT_FOUND" : "REQUEST_FAILED");
   error.status = response?.status || 0;
   error.requestId = payload?.request_id || requestId;
@@ -135,9 +112,28 @@ function dispatchFailure(error) {
   }
 }
 
+// Lets the APP auth provider recover from an expired token (401) or a
+// step-up challenge (403 ADMIN_STEP_UP_REQUIRED) and replay the request once.
+async function recoverAuth(error, retried) {
+  if (!authProvider || retried) {
+    return false;
+  }
+  try {
+    if (error.status === 401 && typeof authProvider.refresh === "function") {
+      return Boolean(await authProvider.refresh());
+    }
+    if (error.code === "ADMIN_STEP_UP_REQUIRED" && typeof authProvider.stepUp === "function") {
+      return Boolean(await authProvider.stepUp(error));
+    }
+  } catch {
+    return false;
+  }
+  return false;
+}
+
 export async function api(path, options = {}) {
   // silent: the caller handles failures itself (no global error banner).
-  const { query, silent = false, ...fetchOptions } = options;
+  const { query, silent = false, __authRetried = false, ...fetchOptions } = options;
   const { signal, routeBound } = resolveSignal(fetchOptions);
   let response;
   try {
@@ -154,7 +150,7 @@ export async function api(path, options = {}) {
       }
       throw cause;
     }
-    const error = new Error(adminErrorMessages.NETWORK_ERROR);
+    const error = new Error(errorText("NETWORK_ERROR"));
     error.code = "NETWORK_ERROR";
     error.status = 0;
     throw error;
@@ -172,6 +168,9 @@ export async function api(path, options = {}) {
   rememberRequestId(payload?.request_id || requestId);
   if (!response.ok || payload.ok === false) {
     const error = buildError(payload, response, requestId);
+    if (await recoverAuth(error, __authRetried)) {
+      return api(path, { ...options, __authRetried: true });
+    }
     if (!silent || error.status === 401) {
       dispatchFailure(error);
     }
@@ -183,7 +182,7 @@ export async function api(path, options = {}) {
 }
 
 export async function streamApi(path, options = {}, onEvent = () => {}) {
-  const { query, ...fetchOptions } = options;
+  const { query, __authRetried = false, ...fetchOptions } = options;
   const response = await fetch(`${path}${queryString(query)}`, {
     credentials: "same-origin",
     ...fetchOptions,
@@ -197,6 +196,9 @@ export async function streamApi(path, options = {}, onEvent = () => {}) {
       request_id: requestId
     }));
     const error = buildError(payload, response, requestId);
+    if (await recoverAuth(error, __authRetried)) {
+      return streamApi(path, { ...options, __authRetried: true }, onEvent);
+    }
     dispatchFailure(error);
     throw error;
   }
@@ -232,10 +234,32 @@ export async function streamApi(path, options = {}, onEvent = () => {}) {
 }
 
 export async function login(username, password) {
-  const result = await api("/admin-api/login", {
-    method: "POST",
-    body: JSON.stringify({ username, password })
-  });
-  setCsrf(result.data.csrf_token);
-  return result;
+  const controller = new AbortController();
+  let timedOut = false;
+  const timer = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, 10000);
+  try {
+    const result = await api("/admin-api/login", {
+      method: "POST",
+      body: JSON.stringify({ username, password }),
+      signal: controller.signal
+    });
+    setCsrf(result.data.csrf_token);
+    return result;
+  } catch (error) {
+    if (timedOut) {
+      const timeout = new Error("Login request timed out");
+      timeout.code = "ADMIN_LOGIN_TIMEOUT";
+      timeout.status = 0;
+      throw timeout;
+    }
+    if (error.code === "ADMIN_UNAUTHENTICATED" && error.status === 401) {
+      error.code = "ADMIN_LOGIN_INVALID";
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
 }

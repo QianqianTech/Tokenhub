@@ -50,7 +50,7 @@ foreach ([[$passingCaseId, [$chunkId]], [$failingCaseId, ['missing_evalgatecli_'
 $run = static function (array $arguments): array {
     $command = array_merge(['php', 'bin/rag-eval-gate.php'], $arguments);
     $pipes = [];
-    $process = proc_open($command, [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes, '/srv/app');
+    $process = proc_open($command, [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes, dirname(__DIR__, 2));
     assert_true(is_resource($process), 'RAG evaluation gate CLI child process must start.');
     $stdout = stream_get_contents($pipes[1]);
     $stderr = stream_get_contents($pipes[2]);
@@ -99,7 +99,7 @@ assert_true(!str_contains($noCasesOutput, 'PASSWORD'), 'A no-cases CLI error mus
 
 $runnerCompatibilityPipes = [];
 $runnerCompatibilityCode = 'require "tests/bootstrap.php"; $failed = 0; require "tests/Services/RagRetrievalQualityGateTest.php"; $failed++; echo json_encode(["failed" => $failed]);';
-$runnerCompatibilityProcess = proc_open(['php', '-r', $runnerCompatibilityCode], [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $runnerCompatibilityPipes, '/srv/app');
+$runnerCompatibilityProcess = proc_open(['php', '-r', $runnerCompatibilityCode], [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $runnerCompatibilityPipes, dirname(__DIR__, 2));
 assert_true(is_resource($runnerCompatibilityProcess), 'Quality gate runner-compatibility child process must start.');
 $runnerCompatibilityOutput = stream_get_contents($runnerCompatibilityPipes[1]);
 $runnerCompatibilityError = stream_get_contents($runnerCompatibilityPipes[2]);

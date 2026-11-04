@@ -16,7 +16,12 @@ final class RagExcelImportService
             return $this->parseCsv($path, $template);
         }
 
-        $spreadsheet = \PhpOffice\PhpSpreadsheet\IOFactory::load($path);
+        try {
+            $spreadsheet = \PhpOffice\PhpSpreadsheet\IOFactory::load($path);
+        } catch (\Throwable $exception) {
+            \TokenHub\Support\HttpAbortException::rethrowIfAbort($exception);
+            abort_json('RAG_EXCEL_UNREADABLE', 'The file is not a readable spreadsheet (CSV, XLSX, XLS, ET or ODS); choose the "document" import type for PDF, Word or PowerPoint files', 422);
+        }
         $sheet = $spreadsheet->getActiveSheet();
         $rows = $sheet->toArray(null, true, true, true);
         if ($rows === []) {

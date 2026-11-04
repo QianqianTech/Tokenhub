@@ -5,6 +5,10 @@ declare(strict_types=1);
 namespace TokenHub\Services;
 
 use TokenHub\Services\Gateway\GatewayRequest;
+use TokenHub\Services\Gateway\OutboundHeaders;
+use TokenHub\Services\Providers\AnthropicAdapter;
+use TokenHub\Services\Providers\CurlHandlePool;
+use TokenHub\Services\Providers\OpenAIAdapter;
 use TokenHub\Services\Providers\ProviderAdapterInterface;
 use TokenHub\Services\Providers\ProviderAuth;
 use TokenHub\Services\Providers\ProviderEndpointResolver;
@@ -13,8 +17,39 @@ use TokenHub\Support\Crypto;
 
 final class ProviderHttpClient
 {
+    /** @var null|\Closure(): void called at most once per second while a transfer runs */
+    private ?\Closure $tick = null;
+    /** @var null|\Closure(): void called when an open 2xx stream was idle for $idleSeconds */
+    private ?\Closure $idleBeat = null;
+    private float $idleSeconds = 0.0;
+
     public function __construct(private readonly ?OutboundUrlPolicy $outboundPolicy = null)
     {
+    }
+
+    /**
+     * Periodic callback while an upstream transfer is in progress (at most
+     * once per second, also while no byte arrives). The gateway renews its
+     * reservation lease from here (MT-002).
+     */
+    public function onTick(callable $tick): self
+    {
+        $this->tick = \Closure::fromCallable($tick);
+
+        return $this;
+    }
+
+    /**
+     * Callback for an open (2xx) stream that delivered nothing for $seconds;
+     * the gateway writes an SSE keep-alive comment (PERF-013b). Disabled when
+     * $seconds <= 0.
+     */
+    public function onIdle(callable $beat, float $seconds): self
+    {
+        $this->idleBeat = $seconds > 0 ? \Closure::fromCallable($beat) : null;
+        $this->idleSeconds = max(0.0, $seconds);
+
+        return $this;
     }
 
     public function endpointFor(string $path): string
@@ -51,9 +86,22 @@ final class ProviderHttpClient
             $headers[$name] = $value;
         }
         $headers = $this->publicHeaders($headers);
+        // BIZ-008: request id and W3C trace context on every upstream call,
+        // unless the channel configuration already sets them.
+        $present = array_map('strtolower', array_keys($headers));
+        foreach (OutboundHeaders::trace() as $name => $value) {
+            if (!in_array(strtolower($name), $present, true)) {
+                $headers[$name] = $value;
+            }
+        }
 
         $method = strtoupper((string) ($request['method'] ?? 'POST'));
         $body = $method === 'GET' ? '' : ($request['body'] ?? json_encode($request['json'] ?? new \stdClass(), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
+        if ($method !== 'GET' && !array_key_exists('body', $request) && !in_array('content-type', $present, true)) {
+            // cURL otherwise labels its JSON string as a form body. Some
+            // providers then report an absent model rather than a parse error.
+            $headers['Content-Type'] = 'application/json';
+        }
         $target = $this->target($route, $endpoint, false);
         $url = (string) ($target['url'] ?? '');
 
@@ -189,7 +237,7 @@ final class ProviderHttpClient
             'body' => is_string($body) && $status !== 0 ? $body : '',
             'json' => is_array($decoded) ? $decoded : null,
             'headers' => $this->headerMap($responseHeaders),
-            ...($transport['error'] !== null ? ['transport_error' => $transport['error']] : []),
+            ...($transport['error'] !== null ? ['transport_error' => $transport['error'], 'request_sent' => (bool) ($transport['request_sent'] ?? false)] : []),
         ];
     }
 
@@ -231,17 +279,24 @@ final class ProviderHttpClient
     /**
      * Non-streaming upstream call with bounded retries.
      *
-     * Retries connection failures, 429 and 5xx up to route.retry_count total
-     * attempts. Policy refusals (OUTBOUND_BLOCKED, PROVIDER_ENDPOINT_UNSUPPORTED)
-     * are never retried. Every attempt is returned in attempt_log so the gateway
-     * can record what actually happened upstream.
+     * Retries on the same channel, up to route.retry_count total attempts:
+     * connection failures (the request never left), 408 and 5xx. Not retried
+     * on the same channel:
+     * - 429: the caller fails over and cools the channel down (QUAL-004);
+     * - a read timeout after the request was sent: replaying a POST could run
+     *   (and bill) it twice upstream (QUAL-005), reported as request_sent;
+     * - 5xx whose Retry-After exceeds PROVIDER_RETRY_MAX_BACKOFF_MS (the wait
+     *   is not shortened any more, the caller fails over instead);
+     * - policy refusals (OUTBOUND_BLOCKED, PROVIDER_ENDPOINT_UNSUPPORTED).
+     * Every attempt is returned in attempt_log so the gateway can record what
+     * actually happened upstream.
      *
      * @param array<string, mixed> $route
      * @return array{ok: bool, status: int, body: string, json: array<string, mixed>|null, attempts: int, attempt_log: list<array<string, mixed>>, headers?: array<string, string>, error_code?: string, retry_after?: int|null}
      */
     public function sendJson(array $route, GatewayRequest $gatewayRequest, ProviderAdapterInterface $adapter, ?string $idempotencyKey = null): array
     {
-        $request = $adapter->buildRequest($gatewayRequest, $route);
+        $request = $this->withClientHeaders($adapter->buildRequest($gatewayRequest, $route), $gatewayRequest, $adapter, $route);
         if ($idempotencyKey !== null && $idempotencyKey !== '') {
             $request['headers'] = [...($request['headers'] ?? []), 'Idempotency-Key' => $idempotencyKey];
         }
@@ -267,15 +322,16 @@ final class ProviderHttpClient
                 'latency_ms' => $latency,
             ]);
 
-            if (!$this->retryable($last['status'], $last['error_code'] ?? null) || $attempt === $attempts) {
+            $retryAfter = $this->retryAfter($last['headers'] ?? []);
+            if (!$this->retryInChannel($last['status'], $last['error_code'] ?? null, $retryAfter, (bool) ($last['request_sent'] ?? false)) || $attempt === $attempts) {
                 break;
             }
-            $this->backoff($attempt, $this->retryAfter($last['headers'] ?? []));
+            $this->backoff($attempt, $retryAfter);
         }
         $attemptsUsed = min($attempt, $attempts);
 
         if ($last['status'] === 0) {
-            return ['ok' => false, ...$last, 'attempts' => $attemptsUsed, 'attempt_log' => $log, 'error_code' => $last['error_code'] ?? 'PROVIDER_TIMEOUT'];
+            return ['ok' => false, ...$last, 'attempts' => $attemptsUsed, 'attempt_log' => $log, 'error_code' => $last['error_code'] ?? 'PROVIDER_TIMEOUT', 'request_sent' => (bool) ($last['request_sent'] ?? false)];
         }
 
         if ($last['status'] >= 400) {
@@ -308,7 +364,7 @@ final class ProviderHttpClient
      */
     public function stream(array $route, GatewayRequest $gatewayRequest, ProviderAdapterInterface $adapter, callable $onChunk, ?callable $clientAborted = null): array
     {
-        $request = $adapter->buildRequest($gatewayRequest, $route);
+        $request = $this->withClientHeaders($adapter->buildRequest($gatewayRequest, $route), $gatewayRequest, $adapter, $route);
         $endpoint = isset($request['endpoint']) && is_string($request['endpoint'])
             ? $request['endpoint']
             : $this->endpointFor($gatewayRequest->endpoint);
@@ -362,7 +418,9 @@ final class ProviderHttpClient
             if ($lastStatus >= 400 || $lastStatus === 0) {
                 $lastBody = $opened['error_body'];
                 $lastError = $lastStatus === 0 ? 'PROVIDER_TIMEOUT' : $this->errorCodeForStatus($lastStatus);
-                if ($this->retryable($lastStatus, null) && $attempt < $attempts) {
+                // Nothing reached the client yet, so a 5xx may be retried
+                // here; 429 fails over instead (QUAL-004).
+                if ($this->retryInChannel($lastStatus, null, $retryAfter, false) && $attempt < $attempts) {
                     $this->backoff($attempt, $retryAfter);
                     continue;
                 }
@@ -455,7 +513,8 @@ final class ProviderHttpClient
             // Same egress path as before: ignore http(s)_proxy environment
             // variables unless the operator opts in explicitly.
             CURLOPT_PROXY => (string) env_value('GATEWAY_UPSTREAM_PROXY', ''),
-            CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
+            // HTTP/2 over TLS when available (PERF-003), HTTP/1.1 otherwise.
+            CURLOPT_HTTP_VERSION => CurlHandlePool::httpVersion(),
             CURLOPT_NOSIGNAL => true,
             CURLOPT_TCP_NODELAY => true,
         ];
@@ -490,9 +549,13 @@ final class ProviderHttpClient
 
         $headerLines = [];
         $idle = ['timed_out' => false];
-        $handle = curl_init();
+        $handle = CurlHandlePool::acquire($prepared['url']);
+        $tick = $this->ticker();
         curl_setopt_array($handle, $this->curlOptions($prepared) + [
-            CURLOPT_XFERINFOFUNCTION => $this->idleWatch((float) $prepared['timeout'], $idle),
+            CURLOPT_XFERINFOFUNCTION => $this->idleWatch((float) $prepared['timeout'], $idle, $tick === null ? null : static function () use ($tick): bool {
+                $tick();
+                return false;
+            }),
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_HEADERFUNCTION => function ($handle, string $line) use (&$headerLines): int {
                 $this->collectHeader($headerLines, $line);
@@ -502,9 +565,13 @@ final class ProviderHttpClient
         $body = curl_exec($handle);
         $errno = curl_errno($handle);
         $error = $errno !== 0 ? 'curl_' . $errno . ':' . curl_error($handle) : null;
+        // The request left once the connection was set up (pre-transfer done):
+        // a later failure is a read failure, not a connect failure.
+        $requestSent = $errno !== 0 && $this->requestSent($handle, $errno);
+        CurlHandlePool::release($prepared['url'], $handle);
         unset($handle);
 
-        return ['header_lines' => $headerLines, 'body' => is_string($body) ? $body : false, 'error' => $error];
+        return ['header_lines' => $headerLines, 'body' => is_string($body) ? $body : false, 'error' => $error, 'request_sent' => $requestSent];
     }
 
     /**
@@ -524,8 +591,11 @@ final class ProviderHttpClient
         }
 
         $headerLines = [];
-        $state = ['status' => null, 'bytes' => 0, 'first_byte_ms' => null, 'open_ms' => null, 'error_body' => '', 'aborted' => false, 'error_body_full' => false];
-        $handle = curl_init();
+        $state = ['status' => null, 'bytes' => 0, 'first_byte_ms' => null, 'open_ms' => null, 'error_body' => '', 'aborted' => false, 'error_body_full' => false, 'last_write' => microtime(true)];
+        $handle = CurlHandlePool::acquire($prepared['url']);
+        $tick = $this->ticker();
+        $idleBeat = $this->idleBeat;
+        $idleSeconds = $this->idleSeconds;
         curl_setopt_array($handle, $this->curlOptions($prepared) + [
             CURLOPT_RETURNTRANSFER => false,
             CURLOPT_HEADERFUNCTION => function ($handle, string $line) use (&$headerLines, &$state, $started): int {
@@ -554,6 +624,7 @@ final class ProviderHttpClient
                 }
                 $state['first_byte_ms'] ??= (int) ((microtime(true) - $started) * 1000);
                 $state['bytes'] += strlen($chunk);
+                $state['last_write'] = microtime(true);
                 $onChunk($chunk);
                 if (function_exists('ob_flush')) {
                     @ob_flush();
@@ -561,10 +632,29 @@ final class ProviderHttpClient
                 flush();
                 return strlen($chunk);
             },
-            CURLOPT_XFERINFOFUNCTION => $this->idleWatch((float) $prepared['timeout'], $state, static function () use (&$state, $clientAborted): bool {
+            CURLOPT_XFERINFOFUNCTION => $this->idleWatch((float) $prepared['timeout'], $state, static function () use (&$state, $clientAborted, $tick, $idleBeat, $idleSeconds): bool {
                 if ($clientAborted()) {
                     $state['aborted'] = true;
                     return true;
+                }
+                if ($tick !== null) {
+                    $tick();
+                }
+                $status = (int) ($state['status'] ?? 0);
+                if ($idleBeat !== null && $status >= 200 && $status < 300 && microtime(true) - (float) $state['last_write'] >= $idleSeconds) {
+                    // Keep proxies and clients from timing out an idle but
+                    // healthy stream; a failed write also reveals a client
+                    // that went away (connection_aborted()).
+                    $state['last_write'] = microtime(true);
+                    $idleBeat();
+                    if (function_exists('ob_flush')) {
+                        @ob_flush();
+                    }
+                    flush();
+                    if ($clientAborted()) {
+                        $state['aborted'] = true;
+                        return true;
+                    }
                 }
                 return false;
             }),
@@ -572,6 +662,7 @@ final class ProviderHttpClient
         curl_exec($handle);
         $errno = curl_errno($handle);
         $error = $errno !== 0 ? 'curl_' . $errno . ':' . curl_error($handle) : null;
+        CurlHandlePool::release($prepared['url'], $handle);
         unset($handle);
 
         $opened = $state['status'] !== null && (int) $state['status'] > 0;
@@ -688,10 +779,14 @@ final class ProviderHttpClient
 
         $maxSeconds = $this->timeouts((float) $prepared['timeout'])['max_s'];
         stream_set_timeout($stream, (int) ceil((float) $prepared['timeout']));
+        $tick = $this->ticker();
         while (!feof($stream)) {
             if ($clientAborted()) {
                 $result['outcome'] = 'client_aborted';
                 break;
+            }
+            if ($tick !== null) {
+                $tick();
             }
             if ($maxSeconds > 0 && microtime(true) - $started > $maxSeconds) {
                 $result['outcome'] = 'timeout';
@@ -754,6 +849,9 @@ final class ProviderHttpClient
         };
     }
 
+    /**
+     * Transient upstream failure (connection, 408, 429, 5xx).
+     */
     public function retryable(int $status, ?string $errorCode): bool
     {
         if (in_array($errorCode, ['OUTBOUND_BLOCKED', 'PROVIDER_ENDPOINT_UNSUPPORTED'], true)) {
@@ -763,8 +861,132 @@ final class ProviderHttpClient
         return $status === 0 || $status === 429 || $status === 408 || $status >= 500;
     }
 
+    /**
+     * Whether the gateway should try the next channel after this failure.
+     * Transient failures, plus 401/402/403 (QUAL-003): an invalid, unpaid or
+     * revoked channel credential says nothing about the request, another
+     * channel may serve it. A non-streaming read timeout after the request
+     * was sent is only failed over when GATEWAY_FAILOVER_AFTER_READ_TIMEOUT
+     * is true (QUAL-005: the first upstream may still execute it).
+     *
+     * @param array<string, mixed> $result sendJson()/stream() result
+     */
+    public function failoverable(array $result): bool
+    {
+        $status = (int) ($result['status'] ?? 0);
+        $code = $result['error_code'] ?? null;
+        if (in_array($code, ['OUTBOUND_BLOCKED', 'PROVIDER_ENDPOINT_UNSUPPORTED'], true)) {
+            return false;
+        }
+        if ($status === 0 && ($result['request_sent'] ?? false) === true
+            && !filter_var(env_value('GATEWAY_FAILOVER_AFTER_READ_TIMEOUT', false), FILTER_VALIDATE_BOOL)) {
+            return false;
+        }
+
+        return $this->retryable($status, is_string($code) ? $code : null) || self::credentialFailure($status);
+    }
+
+    public static function credentialFailure(int $status): bool
+    {
+        return in_array($status, [401, 402, 403], true);
+    }
+
+    /**
+     * Same-channel retry: connection failures before the request left, 408
+     * and 5xx (unless the upstream asks to wait longer than the backoff cap).
+     */
+    private function retryInChannel(int $status, ?string $errorCode, ?int $retryAfter, bool $requestSent): bool
+    {
+        if (in_array($errorCode, ['OUTBOUND_BLOCKED', 'PROVIDER_ENDPOINT_UNSUPPORTED', 'PROVIDER_AUTH_FAILED'], true)) {
+            return false;
+        }
+        if ($status === 0) {
+            return !$requestSent;
+        }
+        if ($status === 408 || $status >= 500) {
+            $maxMs = (int) env_value('PROVIDER_RETRY_MAX_BACKOFF_MS', 2000);
+            return $retryAfter === null || $retryAfter * 1000 <= $maxMs;
+        }
+
+        return false;
+    }
+
+    private function requestSent(\CurlHandle $handle, int $errno): bool
+    {
+        // Resolve/connect/TLS failures: the request never left.
+        if (in_array($errno, [5, 6, 7, 35, 60], true)) {
+            return false;
+        }
+        $pretransfer = defined('CURLINFO_PRETRANSFER_TIME_T')
+            ? (int) curl_getinfo($handle, CURLINFO_PRETRANSFER_TIME_T)
+            : (int) ((float) curl_getinfo($handle, CURLINFO_PRETRANSFER_TIME) * 1000000);
+
+        return $pretransfer > 0;
+    }
+
+    /**
+     * Client protocol headers (PROTO-001) for the official OpenAI/Anthropic
+     * adapters of the client's own protocol.
+     *
+     * @param array<string, mixed> $request
+     * @param array<string, mixed> $route
+     * @return array<string, mixed>
+     */
+    private function withClientHeaders(array $request, GatewayRequest $gatewayRequest, ProviderAdapterInterface $adapter, array $route): array
+    {
+        $forward = $gatewayRequest->options['forward_headers'] ?? [];
+        if (!is_array($forward) || $forward === []) {
+            return $request;
+        }
+        $protocol = match (true) {
+            $adapter instanceof AnthropicAdapter => 'anthropic',
+            $adapter instanceof OpenAIAdapter => 'openai',
+            default => '',
+        };
+        if ($protocol === '' || $protocol !== $gatewayRequest->protocol || $protocol !== (string) ($route['protocol'] ?? 'openai')) {
+            return $request;
+        }
+        $headers = is_array($request['headers'] ?? null) ? $request['headers'] : [];
+        foreach (OutboundHeaders::forProtocol($forward, $protocol) as $name => $value) {
+            foreach (array_keys($headers) as $existing) {
+                if (strcasecmp((string) $existing, $name) === 0) {
+                    unset($headers[$existing]);
+                }
+            }
+            $headers[$name] = $value;
+        }
+        $request['headers'] = $headers;
+
+        return $request;
+    }
+
+    /**
+     * @return null|\Closure(): void throttled to once per second
+     */
+    private function ticker(): ?\Closure
+    {
+        $tick = $this->tick;
+        if ($tick === null) {
+            return null;
+        }
+        $last = 0.0;
+
+        return static function () use ($tick, &$last): void {
+            $now = microtime(true);
+            if ($now - $last < 1.0) {
+                return;
+            }
+            $last = $now;
+            try {
+                $tick();
+            } catch (\Throwable) {
+            }
+        };
+    }
+
     private function backoff(int $attempt, ?int $retryAfterSeconds): void
     {
+
         $maxMs = (int) env_value('PROVIDER_RETRY_MAX_BACKOFF_MS', 2000);
         $delayMs = $retryAfterSeconds !== null ? $retryAfterSeconds * 1000 : 200 * (2 ** ($attempt - 1));
         $delayMs = max(0, min($maxMs, $delayMs));

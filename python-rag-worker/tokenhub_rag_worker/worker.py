@@ -4,14 +4,11 @@ import time
 
 import redis
 
+from . import logging_json as log
 from .config import Config
 from .db import Database
-from .tasks import (
-    RAG_IMAGE_EMBEDDING_FAILED,
-    RAG_MODEL_NOT_CONFIGURED,
-    RAG_MULTIMODAL_EMBEDDING_FAILED,
-    TaskProcessor,
-)
+from .errors import error_code_for
+from .tasks import TaskProcessor
 
 
 class Worker:
@@ -26,11 +23,16 @@ class Worker:
         self.redis.ping()
 
     def run_forever(self) -> None:
+        log.info("rag worker started", batch_size=self.config.batch_size, poll_interval_seconds=self.config.poll_interval_seconds)
         while True:
             self.record_heartbeat()
             processed = 0
             for _ in range(max(1, self.config.batch_size)):
-                job = self.database.claim_next_job()
+                try:
+                    job = self.database.claim_next_job()
+                except Exception as exc:  # database down: log, back off, retry
+                    log.error("rag job claim failed", error_code=error_code_for({}, exc), error=str(exc)[:500])
+                    break
                 if not job:
                     break
                 processed += 1
@@ -46,19 +48,37 @@ class Worker:
             pass
 
     def run_job(self, job: dict) -> None:
-        try:
-            self.processor.process(job)
-            self.database.mark_job_succeeded(int(job["id"]), str(job["lock_token"]))
-        except Exception as exc:
-            self.database.mark_job_failed(int(job["id"]), str(job["lock_token"]), error_code_for(job), str(exc))
-        finally:
-            self.database.refresh_upload_status(job.get("upload_id"))
-
-
-def error_code_for(job: dict) -> str:
-    job_type = str(job.get("job_type") or "")
-    if job_type == "image_embedding":
-        return RAG_IMAGE_EMBEDDING_FAILED
-    if job_type == "multimodal_embedding":
-        return RAG_MULTIMODAL_EMBEDDING_FAILED
-    return RAG_MODEL_NOT_CONFIGURED
+        # BIZ-008: lines of one job carry its id as request_id (and the id of
+        # the request that queued it when the job row has one).
+        request_id = str(job.get("request_id") or job.get("job_id") or f"ragjob_{job.get('id')}")
+        with log.correlation(request_id, str(job.get("trace_id") or "") or None):
+            started = time.monotonic()
+            context = {
+                "job_id": job.get("job_id"),
+                "job_type": job.get("job_type"),
+                "upload_id": job.get("upload_id"),
+                "attempt": job.get("attempts"),
+            }
+            try:
+                self.processor.process(job)
+                self.database.mark_job_succeeded(int(job["id"]), str(job["lock_token"]))
+                log.info("rag job succeeded", latency_ms=int((time.monotonic() - started) * 1000), **context)
+            except Exception as exc:
+                code = error_code_for(job, exc)
+                log.error(
+                    "rag job failed",
+                    error_code=code,
+                    exception=type(exc).__name__,
+                    error=str(exc)[:500],
+                    latency_ms=int((time.monotonic() - started) * 1000),
+                    **context,
+                )
+                try:
+                    self.database.mark_job_failed(int(job["id"]), str(job["lock_token"]), code, str(exc))
+                except Exception as mark_exc:
+                    log.error("rag job failure could not be recorded", error=str(mark_exc)[:500], **context)
+            finally:
+                try:
+                    self.database.refresh_upload_status(job.get("upload_id"))
+                except Exception as refresh_exc:
+                    log.warning("rag upload status refresh failed", error=str(refresh_exc)[:500], **context)

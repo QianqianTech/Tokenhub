@@ -96,8 +96,9 @@ fi
 
 # ---------------------------------------------------------------- optional backup / restore drill
 if [ "$DRILL" = 1 ]; then
-  if BACKUP_DIR="$KIT_DIR/backups" KEEP=0 "$KIT_DIR/backup.sh" >>"$REPORT" 2>&1; then
-    latest="$(ls -1d "$KIT_DIR"/backups/20* | sort | tail -n1)"
+  drill_root="$(backup_root)/verify-drill"
+  if BACKUP_DIR="$drill_root" KEEP=0 "$KIT_DIR/backup.sh" >>"$REPORT" 2>&1; then
+    latest="$(ls -1d "$drill_root"/20* | sort | tail -n1)"
     record PASS "backup.sh" "$latest"
     start=$(date +%s)
     if CONFIRM_RESTORE=1 "$KIT_DIR/restore.sh" "$latest" >>"$REPORT" 2>&1; then

@@ -16,7 +16,8 @@ $adminCss = file_get_contents(__DIR__ . '/../../public/admin/assets/css/app.css'
 $apiJs = file_get_contents(__DIR__ . '/../../public/admin/assets/js/api.js');
 $appJs = file_get_contents(__DIR__ . '/../../public/admin/assets/js/app.js');
 $dashboardSource = file_get_contents(__DIR__ . '/../../public/admin/assets/js/dashboard.js');
-$resources = file_get_contents(__DIR__ . '/../../public/admin/assets/js/resources.js');
+// Column/value labels moved to the i18n dictionary (UX-106).
+$resources = (string) file_get_contents(__DIR__ . '/../../public/admin/assets/js/resources.js') . "\n" . (string) file_get_contents(__DIR__ . '/../../public/admin/assets/js/i18n/zh-CN.js');
 $tableSource = admin_js_bundle();
 $caddyfile = file_get_contents(__DIR__ . '/../../docker/caddy/Caddyfile');
 
@@ -163,7 +164,8 @@ assert_true(str_contains($adminCss, '.brand-logo'), 'Admin CSS should style conf
 assert_true(str_contains($apiJs, 'ADMIN_UNAUTHENTICATED'), 'API wrapper should normalize unauthenticated handling.');
 assert_true(str_contains($apiJs, 'ADMIN_CSRF_INVALID'), 'API wrapper should normalize CSRF handling.');
 assert_true(str_contains($apiJs, 'adminErrorMessage'), 'API wrapper should expose localized admin error messages.');
-assert_true(str_contains($apiJs, '登录状态已失效'), 'Admin auth errors should be localized Chinese.');
+// Error messages live in the i18n dictionary (UX-106).
+assert_true(str_contains((string) file_get_contents(__DIR__ . '/../../public/admin/assets/js/i18n/zh-CN.js'), '登录状态已失效') && str_contains($apiJs, 'translate(`error.${code}`'), 'Admin auth errors should be localized Chinese.');
 assert_true(str_contains($appJs, 'adminErrorMessage(error'), 'Admin shell should render localized error messages.');
 assert_true(str_contains($tableSource, 'adminErrorMessage(error'), 'Admin resource pages should render localized error messages.');
 assert_true(str_contains($dashboardSource, 'adminErrorMessage(error'), 'Dashboard should render localized error messages.');
@@ -196,7 +198,7 @@ assert_true(str_contains($resources, '"settings-rag-upload-review"'), 'Admin res
 assert_true(str_contains($resources, '"settings-rag-package-upload"'), 'Admin resources should expose RAG image package upload settings.');
 assert_true(str_contains($resources, '"settings-rag-ai-image-processing"'), 'Admin resources should expose RAG AI image processing settings.');
 assert_true(str_contains($resources, '"settings-rag-vectorization-monitoring"'), 'Admin resources should expose RAG vectorization monitoring settings.');
-assert_true(str_contains((string) file_get_contents(__DIR__ . '/../../public/admin/assets/js/domains.js'), '{ key: "system", label: "系统运维"'), 'System settings should be a left sidebar section.');
+assert_true(str_contains((string) file_get_contents(__DIR__ . '/../../public/admin/assets/js/domains.js'), '{ key: "system", label: "系统设置"'), 'System settings should be a left sidebar section.');
 assert_true(str_contains($resources, '"system-settings": { label: "高级设置"'), 'Advanced settings should remain a dedicated form page.');
 assert_true(!str_contains($resources, 'label: "设置值JSON"'), 'Advanced settings should not expose a raw JSON input.');
 assert_true(str_contains($resources, 'readOnly: true'), 'Read-only resources should be marked in resource metadata.');
@@ -235,11 +237,11 @@ assert_true(!str_contains($moveSource, 'type: "number"'), 'User department move 
 assert_true(str_contains($moveSource, 'Number(values.department_id)'), 'User department move should still submit department_id as a number.');
 assert_true(str_contains($tableSource, 'config.readOnly !== true'), 'Read-only resources should not render destructive generic actions.');
 
-// Admin/screen static files: compressed and revalidated on every load, since
-// ES module imports carry no cache-busting version query.
+// Admin/screen/APP static files: compressed and revalidated on every load,
+// since ES module imports carry no cache-busting version query.
 foreach (['docker/caddy/Caddyfile', 'docker/release/caddy/Caddyfile'] as $caddyPath) {
     $caddySource = (string) file_get_contents(__DIR__ . '/../../' . $caddyPath);
-    assert_true(substr_count($caddySource, 'encode zstd gzip') === 2, $caddyPath . ' should compress the admin and screen UIs.');
-    assert_true(substr_count($caddySource, 'header Cache-Control "no-cache"') === 2, $caddyPath . ' should make the admin and screen UIs revalidate.');
+    assert_true(substr_count($caddySource, 'encode zstd gzip') === 3, $caddyPath . ' should compress the admin, screen and APP UIs.');
+    assert_true(substr_count($caddySource, 'header Cache-Control "no-cache"') === 3, $caddyPath . ' should make the admin, screen and APP UIs revalidate.');
 }
-assert_true(substr_count((string) file_get_contents(__DIR__ . '/../../Caddyfile.example'), 'header Cache-Control "no-cache"') === 2, 'Caddyfile.example should make the admin and screen UIs revalidate.');
+assert_true(substr_count((string) file_get_contents(__DIR__ . '/../../Caddyfile.example'), 'header Cache-Control "no-cache"') === 3, 'Caddyfile.example should make the admin, screen and APP UIs revalidate.');

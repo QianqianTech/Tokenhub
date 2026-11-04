@@ -1,0 +1,9 @@
+**/node_modules/
+**/target/
+**/Pods/
+**/build/
+**/DerivedData/
+**/xcuserdata/
+**/*.xcuserstate
+tauri/src-tauri/gen/
+capacitor/.podspecs/

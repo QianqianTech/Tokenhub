@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace TokenHub\Services;
 
+use TokenHub\Services\Gateway\DeferredWork;
 use TokenHub\Services\Gateway\MediaPayload;
 use TokenHub\Support\App;
 use TokenHub\Support\ConfigVersion;
@@ -39,16 +40,7 @@ final class DesensitizationService
 
         $policy = $policies[0];
         $result = $this->applyPolicy($payload, $policy);
-        App::db()->execute(
-            'INSERT INTO desensitization_events (policy_id, request_id, target_type, action, match_count, summary) VALUES (?, ?, "outbound", ?, ?, ?)',
-            [
-                $policy['id'],
-                App::context()->requestId(),
-                $result['action'],
-                $result['match_count'],
-                json_encode(['route_model' => $route['name'] ?? null, ...($result['summary'] ?? [])], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
-            ]
-        );
+        $this->recordEvent($policy, $result, ['route_model' => $route['name'] ?? null]);
 
         if ($result['blocked']) {
             abort_json('DESENSITIZATION_BLOCKED', 'Outbound content matched a blocking desensitization policy', 422);
@@ -85,16 +77,7 @@ final class DesensitizationService
 
         $policy = $policies[0];
         $result = $this->applyPolicy(['query' => $text], $policy);
-        App::db()->execute(
-            'INSERT INTO desensitization_events (policy_id, request_id, target_type, action, match_count, summary) VALUES (?, ?, "outbound", ?, ?, ?)',
-            [
-                $policy['id'],
-                App::context()->requestId(),
-                $result['action'],
-                $result['match_count'],
-                json_encode(['purpose' => $purpose, ...($result['summary'] ?? [])], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
-            ]
-        );
+        $this->recordEvent($policy, $result, ['purpose' => $purpose]);
 
         if ($result['blocked'] || $result['action'] === 'summary') {
             abort_json('DESENSITIZATION_BLOCKED', 'The query matched a desensitization policy that does not allow sending it', 422);
@@ -148,6 +131,62 @@ final class DesensitizationService
     }
 
     private int $lastMatchCount = 0;
+
+    /** @var list<list<mixed>> event rows waiting for the post-response flush */
+    private static array $pendingEvents = [];
+
+    /**
+     * PERF-020: an audit row only when the policy actually did something
+     * (matches, a block or a summary replacement); a clean request writes
+     * nothing. Under php-fpm the rows of one request are written in one
+     * INSERT after the response was sent (DeferredWork), otherwise inline.
+     *
+     * @param array<string, mixed> $policy
+     * @param array<string, mixed> $result
+     * @param array<string, mixed> $context
+     */
+    private function recordEvent(array $policy, array $result, array $context): void
+    {
+        if ((int) ($result['match_count'] ?? 0) === 0 && ($result['blocked'] ?? false) !== true && ($result['action'] ?? '') !== 'summary') {
+            return;
+        }
+        $row = [
+            $policy['id'],
+            App::context()->requestId(),
+            $result['action'],
+            $result['match_count'],
+            json_encode([...$context, ...($result['summary'] ?? [])], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
+        ];
+        if (!DeferredWork::enabled()) {
+            self::writeEvents([$row]);
+            return;
+        }
+        DeferredWork::arm();
+        $first = self::$pendingEvents === [];
+        self::$pendingEvents[] = $row;
+        if ($first) {
+            DeferredWork::add(static function (): void {
+                $rows = self::$pendingEvents;
+                self::$pendingEvents = [];
+                self::writeEvents($rows);
+            });
+        }
+    }
+
+    /**
+     * @param list<list<mixed>> $rows
+     */
+    private static function writeEvents(array $rows): void
+    {
+        if ($rows === []) {
+            return;
+        }
+        App::db()->execute(
+            'INSERT INTO desensitization_events (policy_id, request_id, target_type, action, match_count, summary) VALUES '
+            . implode(', ', array_fill(0, count($rows), '(?, ?, "outbound", ?, ?, ?)')),
+            array_merge(...$rows)
+        );
+    }
 
     /**
      * @param array<string, mixed> $policy

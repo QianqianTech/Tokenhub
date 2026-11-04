@@ -5,13 +5,14 @@ declare(strict_types=1);
 namespace TokenHub\Services;
 
 use TokenHub\Support\App;
+use TokenHub\Support\Crypto;
 
 /**
  * Vendor task callbacks (MM-014).
  *
  * TokenHub hands vendors a per-task URL
  *   {APP_URL}/v1/task-callbacks/{task_id}/{signature}
- * signed with APP_KEY. A callback never carries trusted results: it only
+ * signed with a key derived from APP_KEY. A callback never carries trusted results: it only
  * proves "something changed" and makes TokenHub poll the vendor with its own
  * credential, so forged or replayed callbacks cannot inject media, and a
  * repeated callback is harmless (terminal tasks are not refreshed again; the
@@ -39,7 +40,22 @@ final class TaskCallbackService
         return $base . '/v1/task-callbacks/' . rawurlencode($taskId) . '/' . $this->signature($taskId);
     }
 
+    /**
+     * Signature under a callback-only key derived from APP_KEY with HKDF
+     * (SEC-112), so the raw APP_KEY is not used as an HMAC key here.
+     */
     public function signature(string $taskId): string
+    {
+        return substr(Crypto::hmac('task-callback', 'task-callback|' . $taskId), 0, 40);
+    }
+
+    /**
+     * Signature format used before SEC-112 (HMAC keyed with the raw APP_KEY).
+     * Accepted while TASK_CALLBACK_ACCEPT_LEGACY_SIGNATURES is on (default),
+     * so callback URLs handed to vendors before the upgrade keep working until
+     * those tasks finish; turn it off once no older task is still running.
+     */
+    public function legacySignature(string $taskId): string
     {
         $key = (string) (App::config()->get('app.key') ?: env_value('APP_KEY', ''));
 
@@ -48,7 +64,15 @@ final class TaskCallbackService
 
     public function verify(string $taskId, string $signature): bool
     {
-        return $taskId !== '' && $signature !== '' && hash_equals($this->signature($taskId), $signature);
+        if ($taskId === '' || $signature === '') {
+            return false;
+        }
+        if (hash_equals($this->signature($taskId), $signature)) {
+            return true;
+        }
+        $acceptLegacy = filter_var(env_value('TASK_CALLBACK_ACCEPT_LEGACY_SIGNATURES', true), FILTER_VALIDATE_BOOL);
+
+        return $acceptLegacy && hash_equals($this->legacySignature($taskId), $signature);
     }
 
     /**

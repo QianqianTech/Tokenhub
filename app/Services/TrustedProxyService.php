@@ -45,6 +45,21 @@ final class TrustedProxyService
         return $hops[0] ?? $peer;
     }
 
+    /**
+     * True when a trusted proxy in front of TokenHub reports that the client
+     * connected over HTTPS (X-Forwarded-Proto). Ignored from untrusted peers.
+     */
+    public function forwardedHttps(Request $request): bool
+    {
+        $peer = trim((string) ($request->server['REMOTE_ADDR'] ?? ''));
+        if ($peer === '' || !$this->isTrusted($peer)) {
+            return false;
+        }
+        $proto = strtolower(trim(explode(',', (string) $request->header('x-forwarded-proto', ''))[0]));
+
+        return $proto === 'https';
+    }
+
     private function isTrusted(string $ip): bool
     {
         foreach ($this->trustedCidrs() as $cidr) {

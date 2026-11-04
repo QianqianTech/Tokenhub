@@ -23,6 +23,9 @@ foreach ([
     'gemini' => 'https://generativelanguage.googleapis.com/v1beta/openai',
     'moonshot' => 'https://api.moonshot.cn/v1',
     'kimi_code' => 'https://api.kimi.com/coding/v1',
+    'qwen' => 'https://token-plan.maas.qianwenaiapi.com/compatible-mode/v1',
+    'qwen_payg' => 'https://maas.qianwenaiapi.com/compatible-mode/v1',
+    'bailian_compatible' => 'https://dashscope.aliyuncs.com/compatible-mode/v1',
 ] as $vendor => $url) {
     assert_true(
         str_contains($tableJs, "\"{$vendor}\": \"{$url}\""),
@@ -66,6 +69,8 @@ foreach ([
     '兼容 OpenAI',
     'Kimi API / Moonshot',
     'Kimi Code',
+    '千问 Token Plan',
+    '千问（按量计费）',
 ] as $displayName) {
     assert_true(
         str_contains($tableJs, "name: \"{$displayName}\""),

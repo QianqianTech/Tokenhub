@@ -6,6 +6,7 @@ namespace TokenHub\Services;
 
 use TokenHub\Support\App;
 use TokenHub\Support\Logger;
+use TokenHub\Support\QueueRouter;
 use TokenHub\Support\SchemaInspector;
 
 final class AlertService
@@ -238,15 +239,46 @@ final class AlertService
         return $events;
     }
 
+    /** Alert types decided by evaluate(); open ones that did not fire again are auto-resolved. */
+    public const EVALUATED_TYPES = [
+        'provider_error_rate_high', 'queue_backlog_high', 'queue_metrics_unavailable', 'certificate_expiring',
+        'rag_embedding_model_missing', 'rag_embedding_jobs_failed', 'rag_index_drift', 'rag_vector_retrieval_degraded',
+        // BIZ-003
+        'queue_dead_letter', 'worker_heartbeat_missing', 'usage_aggregation_backlog', 'webhook_delivery_dead', 'quota_nearly_exhausted',
+    ];
+
     public function evaluate(): void
     {
         $this->raised = [];
         $this->providerErrors();
         $this->queueBacklog();
+        $this->deadLetters();
+        $this->heartbeats();
+        $this->usageAggregationBacklog();
+        $this->webhookDeadDeliveries();
+        $this->quotaNearlyExhausted();
         $this->configuredCertificateExpiry();
         $this->ragIndexHealth();
-        $this->resolveCleared(['provider_error_rate_high', 'queue_backlog_high', 'queue_metrics_unavailable', 'certificate_expiring', 'rag_embedding_model_missing', 'rag_embedding_jobs_failed', 'rag_index_drift']);
+        $this->resolveCleared(self::EVALUATED_TYPES);
         (new AlertNotifier())->deliverDue();
+    }
+
+    /**
+     * Local rejections (quota, rate limit, permissions, client cancel) are
+     * not vendor failures and must not raise provider_error_rate_high (BIZ-016).
+     */
+    public const LOCAL_ERROR_CODES = [
+        'QUOTA_EXCEEDED', 'MODEL_QUOTA_EXCEEDED', 'CONCURRENCY_EXCEEDED', 'RATE_LIMITED', 'RATE_LIMIT_EXCEEDED',
+        'MODEL_FORBIDDEN', 'CONTENT_FORBIDDEN', 'CLIENT_CANCELLED', 'PRICE_UNKNOWN', 'CAPABILITY_UNAVAILABLE',
+        'OUTBOUND_BLOCKED', 'PROVIDER_REJECTED', 'BUDGET_EXCEEDED', 'ROUTING_PARAMETER_FORBIDDEN',
+    ];
+
+    /** SQL condition: the usage row is a vendor-side failure. */
+    public static function providerFailureCondition(): string
+    {
+        $codes = implode(', ', array_map(static fn (string $code): string => "'" . $code . "'", self::LOCAL_ERROR_CODES));
+
+        return "status IN ('failed','timeout') AND (error_code IS NULL OR (error_code NOT IN ({$codes}) AND error_code NOT LIKE 'QUOTA%' AND error_code NOT LIKE 'API_KEY%'))";
     }
 
     /**
@@ -276,16 +308,26 @@ final class AlertService
 
     private function providerErrors(): void
     {
+        $thresholds = $this->alertThresholds();
+        $window = max(1, (int) ($thresholds['provider_error_window_minutes'] ?? 5));
+        $minRequests = max(1, (int) ($thresholds['provider_min_requests'] ?? 5));
+        $threshold = (float) ($thresholds['provider_error_rate'] ?? 0.3);
+        // Only requests that reached a vendor count: locally rejected rows
+        // have no provider or carry a local error code (BIZ-016).
         $rows = App::db()->select(
-            'SELECT provider_id, COUNT(*) total_count, SUM(CASE WHEN status != "success" THEN 1 ELSE 0 END) error_count FROM usage_records WHERE created_at >= DATE_SUB(NOW(), INTERVAL 5 MINUTE) GROUP BY provider_id HAVING total_count >= 5'
+            'SELECT provider_id, COUNT(*) total_count, SUM(CASE WHEN ' . self::providerFailureCondition() . ' THEN 1 ELSE 0 END) error_count
+             FROM usage_records
+             WHERE created_at >= DATE_SUB(UTC_TIMESTAMP(), INTERVAL ' . $window . ' MINUTE) AND provider_id IS NOT NULL
+               AND (error_code IS NULL OR (error_code NOT IN (' . implode(', ', array_map(static fn (string $code): string => "'" . $code . "'", self::LOCAL_ERROR_CODES)) . ") AND error_code NOT LIKE 'QUOTA%' AND error_code NOT LIKE 'API_KEY%'))
+             GROUP BY provider_id HAVING total_count >= " . $minRequests
         );
         foreach ($rows as $row) {
             $rate = ((int) $row['error_count']) / max(1, (int) $row['total_count']);
-            if ($rate >= 0.3) {
+            if ($rate >= $threshold) {
                 $this->record('provider_error_rate_high', 'warning', 'Provider error rate is high', [
                     'provider_id' => $row['provider_id'],
                     'error_rate' => $rate,
-                    'window_minutes' => 5,
+                    'window_minutes' => $window,
                 ]);
             }
         }
@@ -293,15 +335,136 @@ final class AlertService
 
     private function queueBacklog(): void
     {
+        $queue = null;
         try {
-            $queue = (string) App::config()->get('queue.name', 'tokenhub:jobs');
-            $count = (int) App::redis()->connection()->lLen($queue);
-            if ($count >= 1000) {
-                $this->record('queue_backlog_high', 'warning', 'Queue backlog is high', ['queue' => $queue, 'count' => $count]);
+            $threshold = max(1, (int) ($this->alertThresholds()['queue_backlog_count'] ?? 1000));
+            // PERF-015: every routed sub-queue is checked, not only the main one.
+            foreach ((new QueueRouter(App::config()))->allQueues() as $queue) {
+                $count = (int) App::redis()->connection()->lLen($queue);
+                if ($count >= $threshold) {
+                    $this->record('queue_backlog_high', 'warning', 'Queue backlog is high', ['queue' => $queue, 'count' => $count]);
+                }
             }
         } catch (\Throwable $throwable) {
             // Unknown is not "zero backlog": surface the monitoring gap itself.
-            $this->record('queue_metrics_unavailable', 'warning', 'Queue length could not be read', ['queue' => $queue ?? null, 'error' => mb_substr($throwable->getMessage(), 0, 200)]);
+            $this->record('queue_metrics_unavailable', 'warning', 'Queue length could not be read', ['queue' => $queue, 'error' => mb_substr($throwable->getMessage(), 0, 200)]);
+        }
+    }
+
+    /**
+     * BIZ-003 / BIZ-005: the dead-letter list grew since the last round.
+     * The alert stays open (and is re-raised) while it keeps growing.
+     */
+    private function deadLetters(): void
+    {
+        try {
+            $failedQueue = (string) App::config()->get('queue.failed_name', 'tokenhub:failed-jobs');
+            $count = (int) App::redis()->connection()->lLen($failedQueue);
+            $previous = App::redis()->get('alerts:dead-letter:last-length');
+            App::redis()->set('alerts:dead-letter:last-length', (string) $count, 7 * 86400);
+            $grown = $previous === null ? 0 : $count - (int) $previous;
+            if ($grown > 0) {
+                $this->record('queue_dead_letter', $grown >= 10 ? 'critical' : 'warning', 'Jobs were moved to the dead-letter queue', ['queue' => $failedQueue, 'count' => $count, 'new' => $grown]);
+            }
+        } catch (\Throwable) {
+        }
+    }
+
+    /**
+     * BIZ-003: queue worker and scheduler must publish heartbeats; the RAG
+     * worker only when Python-backed RAG jobs are waiting for it.
+     */
+    private function heartbeats(): void
+    {
+        try {
+            $redis = App::redis();
+            foreach (['queue-worker', 'scheduler'] as $name) {
+                if ($redis->get('operations:worker:' . $name) === null) {
+                    $this->record('worker_heartbeat_missing', 'critical', 'Background process heartbeat is missing', ['name' => $name]);
+                }
+            }
+            if ($redis->get('operations:worker:rag-worker') === null && $this->pythonRagJobsWaiting()) {
+                $this->record('worker_heartbeat_missing', 'critical', 'Background process heartbeat is missing', ['name' => 'rag-worker']);
+            }
+        } catch (\Throwable) {
+        }
+    }
+
+    private function pythonRagJobsWaiting(): bool
+    {
+        try {
+            $row = App::db()->first('SELECT COUNT(*) AS c FROM rag_embedding_jobs WHERE execution_backend <> "php_provider" AND status IN ("queued","retrying") AND created_at <= DATE_SUB(UTC_TIMESTAMP(), INTERVAL 5 MINUTE)');
+            return (int) ($row['c'] ?? 0) > 0;
+        } catch (\Throwable) {
+            return false;
+        }
+    }
+
+    /** BIZ-003: usage rows that were written but not folded into the aggregates. */
+    private function usageAggregationBacklog(): void
+    {
+        try {
+            if (!SchemaInspector::hasColumn('usage_records', 'aggregated_at')) {
+                return;
+            }
+            $row = App::db()->first('SELECT COUNT(*) AS c FROM usage_records WHERE aggregated_at IS NULL AND created_at <= DATE_SUB(UTC_TIMESTAMP(), INTERVAL 10 MINUTE)');
+            $count = (int) ($row['c'] ?? 0);
+            if ($count >= max(1, (int) env_value('ALERT_USAGE_BACKLOG_COUNT', 100))) {
+                $this->record('usage_aggregation_backlog', 'warning', 'Usage records are waiting to be aggregated', ['count' => $count]);
+            }
+        } catch (\Throwable) {
+        }
+    }
+
+    /** BIZ-003: webhook deliveries that exhausted their retries in the last day. */
+    private function webhookDeadDeliveries(): void
+    {
+        try {
+            $row = App::db()->first('SELECT COUNT(*) AS c FROM external_webhook_deliveries WHERE status = "dead" AND updated_at >= DATE_SUB(UTC_TIMESTAMP(), INTERVAL 24 HOUR)');
+            $count = (int) ($row['c'] ?? 0);
+            if ($count > 0) {
+                $this->record('webhook_delivery_dead', 'warning', 'Webhook deliveries failed permanently', ['count' => $count]);
+            }
+        } catch (\Throwable) {
+        }
+    }
+
+    /**
+     * BIZ-003: day / week / month quota bindings that used at least
+     * ALERT_QUOTA_RATIO (default 0.9) of a token, request or cost limit.
+     */
+    private function quotaNearlyExhausted(): void
+    {
+        try {
+            $ratio = (float) env_value('ALERT_QUOTA_RATIO', 0.9);
+            if ($ratio <= 0 || $ratio > 1) {
+                return;
+            }
+            $rows = App::db()->select(
+                'SELECT p.id, p.name, p.period, p.request_limit, p.total_token_limit, p.cost_limit, b.target_type, b.target_id
+                 FROM quota_policies p JOIN quota_bindings b ON b.quota_policy_id = p.id
+                 WHERE p.status = "active" AND p.period IN ("day","week","month")
+                 ORDER BY p.id LIMIT 500'
+            );
+            $quota = new QuotaService();
+            foreach ($rows as $row) {
+                foreach (['total_token_limit' => 'total_tokens', 'request_limit' => 'request_count', 'cost_limit' => 'cost_amount'] as $limitColumn => $metric) {
+                    $limit = (float) ($row[$limitColumn] ?? 0);
+                    if ($limit <= 0) {
+                        continue;
+                    }
+                    $counter = $quota->usageCounter((int) $row['id'], (string) $row['target_type'], (int) $row['target_id'], (string) $row['period'], $metric);
+                    $used = (float) (App::redis()->get($counter['key']) ?? 0) / max(1, (int) $counter['scale']);
+                    if ($used >= $limit * $ratio) {
+                        $this->record('quota_nearly_exhausted', $used >= $limit ? 'critical' : 'warning', 'Quota is nearly exhausted', [
+                            'name' => (string) $row['name'] . ':' . $row['target_type'] . ':' . $row['target_id'] . ':' . $metric,
+                            'used' => $used,
+                            'limit' => $limit,
+                        ]);
+                    }
+                }
+            }
+        } catch (\Throwable) {
         }
     }
 
@@ -313,9 +476,16 @@ final class AlertService
             if ($unbound > 0) {
                 $this->record('rag_embedding_model_missing', 'warning', 'RAG vector configs without an embedding model', ['count' => $unbound]);
             }
-            $failed = (int) (App::db()->first('SELECT COUNT(*) AS c FROM rag_embedding_jobs WHERE status = "failed" AND updated_at >= DATE_SUB(NOW(), INTERVAL 60 MINUTE)')['c'] ?? 0);
+            $failed = (int) (App::db()->first('SELECT COUNT(*) AS c FROM rag_embedding_jobs WHERE status = "failed" AND updated_at >= DATE_SUB(UTC_TIMESTAMP(), INTERVAL 60 MINUTE)')['c'] ?? 0);
             if ($failed > 0) {
                 $this->record('rag_embedding_jobs_failed', 'warning', 'RAG vectorization jobs failed in the last hour', ['count' => $failed]);
+            }
+            if (\TokenHub\Support\SchemaInspector::hasColumn('rag_retrieval_logs', 'vector_status')) {
+                // V-04: the embedding model or vector store failed during retrieval; answers fell back to keywords.
+                $degraded = (int) (App::db()->first('SELECT COUNT(*) AS c FROM rag_retrieval_logs WHERE vector_status IN ("degraded","error") AND created_at >= DATE_SUB(UTC_TIMESTAMP(), INTERVAL 60 MINUTE)')['c'] ?? 0);
+                if ($degraded > 0) {
+                    $this->record('rag_vector_retrieval_degraded', 'warning', 'RAG retrievals ran without vector results in the last hour (embedding model or vector store failing)', ['count' => $degraded]);
+                }
             }
             $report = storage_path('rag' . DIRECTORY_SEPARATOR . 'maintenance' . DIRECTORY_SEPARATOR . 'last-reconcile.json');
             if (is_file($report)) {

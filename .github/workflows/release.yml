@@ -1,0 +1,217 @@
+name: release
+
+# Tag v<VERSION> (for example v1.0.0) to publish a release:
+#   1. checks that the tag matches VERSION and CHANGELOG.md has a section for it;
+#   2. builds the five TokenHub images for linux/amd64 and linux/arm64 and pushes them
+#      (scripts/release/build-images.sh --push), base images pinned by digest;
+#   3. smoke-tests the pushed images on both architectures (arm64 through QEMU);
+#   4. builds one offline bundle per architecture (scripts/package-offline-release.sh);
+#   5. creates a GitHub Release with the bundles, the base image pins and SHA256SUMS.
+#
+# Registry: secrets REGISTRY (e.g. registry.example.com), REGISTRY_USERNAME, REGISTRY_PASSWORD and
+# repository variable IMAGE_PREFIX (e.g. registry.example.com/tokenhub/). Without them the images go
+# to ghcr.io/<owner>/ with the workflow token.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to (re)publish, e.g. v1.0.0"
+        required: true
+
+permissions:
+  contents: write
+  packages: write
+
+concurrency:
+  group: release-${{ github.event.inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  TAG_NAME: ${{ github.event.inputs.tag || github.ref_name }}
+
+jobs:
+  prepare:
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      prefix: ${{ steps.meta.outputs.prefix }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG_NAME }}
+      - id: meta
+        name: Version, changelog and registry
+        env:
+          IMAGE_PREFIX: ${{ vars.IMAGE_PREFIX }}
+        run: |
+          set -euo pipefail
+          version="${TAG_NAME#v}"
+          file_version="$(tr -d '[:space:]' < VERSION)"
+          if [ "$version" != "$file_version" ]; then
+            echo "::error::Tag $TAG_NAME does not match VERSION ($file_version)"; exit 1
+          fi
+          grep -q "^## \[$version\]" CHANGELOG.md || { echo "::error::CHANGELOG.md has no section for $version"; exit 1; }
+          prefix="${IMAGE_PREFIX:-ghcr.io/$(echo "$GITHUB_REPOSITORY_OWNER" | tr '[:upper:]' '[:lower:]')/}"
+          case "$prefix" in */) ;; *) prefix="$prefix/" ;; esac
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "prefix=$prefix" >> "$GITHUB_OUTPUT"
+
+  images:
+    needs: prepare
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG_NAME }}
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - name: Log in to the registry
+        env:
+          REGISTRY: ${{ secrets.REGISTRY }}
+          REGISTRY_USERNAME: ${{ secrets.REGISTRY_USERNAME }}
+          REGISTRY_PASSWORD: ${{ secrets.REGISTRY_PASSWORD }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -n "${REGISTRY:-}" ]; then
+            printf '%s' "$REGISTRY_PASSWORD" | docker login "$REGISTRY" -u "$REGISTRY_USERNAME" --password-stdin
+          else
+            printf '%s' "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          fi
+      - name: Pin base images by digest
+        # Committed digests are used as they are; missing ones are resolved now and published
+        # with the release (base-images.lock) so the build can be reproduced.
+        run: scripts/release/pin-base-images.sh --check || scripts/release/pin-base-images.sh
+      - name: Build and push multi-arch images
+        run: scripts/release/build-images.sh --tag "${{ needs.prepare.outputs.version }}" --push --image-prefix "${{ needs.prepare.outputs.prefix }}" --platforms linux/amd64,linux/arm64
+      - uses: actions/upload-artifact@v4
+        with:
+          name: base-images-lock
+          path: docker/release/base-images.lock
+
+  smoke:
+    # Runs the pushed images on each architecture; arm64 runs under QEMU (DEP-110).
+    needs: [prepare, images]
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [linux/amd64, linux/arm64]
+    env:
+      P: ${{ needs.prepare.outputs.prefix }}
+      V: ${{ needs.prepare.outputs.version }}
+    steps:
+      - uses: docker/setup-qemu-action@v3
+      - name: Log in to the registry
+        env:
+          REGISTRY: ${{ secrets.REGISTRY }}
+          REGISTRY_USERNAME: ${{ secrets.REGISTRY_USERNAME }}
+          REGISTRY_PASSWORD: ${{ secrets.REGISTRY_PASSWORD }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -n "${REGISTRY:-}" ]; then
+            printf '%s' "$REGISTRY_PASSWORD" | docker login "$REGISTRY" -u "$REGISTRY_USERNAME" --password-stdin
+          else
+            printf '%s' "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          fi
+      - name: PHP image
+        run: |
+          set -euo pipefail
+          img="${P}tokenhub-php:$V"
+          docker run --rm --platform "${{ matrix.platform }}" --entrypoint php "$img" -r 'foreach (["pdo_mysql","redis","gd","zip","Zend OPcache","pcntl"] as $e) { if (!extension_loaded($e)) { fwrite(STDERR, "missing $e\n"); exit(1); } } echo PHP_VERSION, " ", php_uname("m"), "\n";'
+          docker run --rm --platform "${{ matrix.platform }}" --entrypoint php "$img" -l /srv/app/bin/doctor.php
+          # SEC-008: no build tools in the runtime image.
+          docker run --rm --platform "${{ matrix.platform }}" --entrypoint sh "$img" -c '! command -v git && ! command -v unzip && ! command -v composer'
+          # APP-106: the service worker carries a build id.
+          docker run --rm --platform "${{ matrix.platform }}" --entrypoint sh "$img" -c '! grep -q __TOKENHUB_APP_BUILD__ /srv/app/public/app/sw.js'
+      - name: Caddy image
+        run: |
+          docker run --rm --platform "${{ matrix.platform }}" --entrypoint sh "${P}tokenhub-caddy:$V" -c \
+            'mkdir -p /srv/app/storage/caddy && touch /srv/app/storage/caddy/tls-current.caddy && caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile'
+      - name: RAG worker, realtime gateway, autoscaler images
+        run: |
+          set -euo pipefail
+          docker run --rm --platform "${{ matrix.platform }}" "${P}tokenhub-rag-worker:$V" python -c 'import tokenhub_rag_worker, platform; print(platform.machine())'
+          docker run --rm --platform "${{ matrix.platform }}" --entrypoint sh "${P}tokenhub-realtime-gateway:$V" -c 'test -x /usr/local/bin/realtime-gateway && uname -m'
+          docker run --rm --platform "${{ matrix.platform }}" --entrypoint sh "${P}tokenhub-worker-autoscaler:$V" -c 'test -x /usr/local/bin/worker-autoscaler && docker --version'
+
+  offline:
+    needs: [prepare, smoke]
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [amd64, arm64]
+    steps:
+      - name: Free disk space for the image archives
+        run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL || true
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG_NAME }}
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: actions/download-artifact@v4
+        with:
+          name: base-images-lock
+          path: docker/release
+      - name: Offline bundle
+        run: scripts/package-offline-release.sh --output dist --platforms "linux/${{ matrix.arch }}" --tag "${{ needs.prepare.outputs.version }}"
+      - name: Archive
+        run: |
+          set -euo pipefail
+          v="${{ needs.prepare.outputs.version }}"
+          name="TokenHub-$v-offline-${{ matrix.arch }}.tar.gz"
+          mkdir -p release
+          tar -C dist -czf "release/$name" "TokenHub-$v-offline"
+          rm -rf dist
+          # GitHub release assets are limited to 2 GiB each.
+          if [ "$(stat -c %s "release/$name")" -gt 2000000000 ]; then
+            (cd release && split -b 1900m -d "$name" "$name.part-" && rm "$name")
+          fi
+          ls -l release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: offline-${{ matrix.arch }}
+          path: release/*
+          compression-level: 0
+
+  publish:
+    needs: [prepare, images, smoke, offline]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG_NAME }}
+      - uses: actions/download-artifact@v4
+        with:
+          path: assets
+          merge-multiple: true
+      - name: SHA256SUMS and release notes
+        run: |
+          set -euo pipefail
+          v="${{ needs.prepare.outputs.version }}"
+          (cd assets && sha256sum -- * > SHA256SUMS && cat SHA256SUMS)
+          awk -v v="$v" '/^## \[/ { show = index($0, "## [" v "]") == 1 } show' CHANGELOG.md > notes.md
+          {
+            echo
+            echo "### Images"
+            for image in tokenhub-php tokenhub-caddy tokenhub-rag-worker tokenhub-realtime-gateway tokenhub-worker-autoscaler; do
+              echo "- \`${{ needs.prepare.outputs.prefix }}$image:$v\` (linux/amd64, linux/arm64)"
+            done
+            echo
+            echo "Offline bundles: verify with \`sha256sum -c SHA256SUMS\` (split archives: \`cat *.part-* > bundle.tar.gz\`)."
+          } >> notes.md
+      - name: Create the GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG_NAME" >/dev/null 2>&1; then
+            gh release upload "$TAG_NAME" assets/* --clobber
+            gh release edit "$TAG_NAME" --notes-file notes.md
+          else
+            gh release create "$TAG_NAME" assets/* --title "TokenHub ${{ needs.prepare.outputs.version }}" --notes-file notes.md --verify-tag
+          fi

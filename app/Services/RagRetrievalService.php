@@ -26,6 +26,20 @@ final class RagRetrievalService
      * @param array<string, mixed> $payload
      * @return array<string, mixed>
      */
+    /**
+     * Outcome of the vector searches of the last searchSourcesForDatasets() call (V-04):
+     * "ok", "degraded" (some failed), "error" (all failed), "none" (nothing to search).
+     *
+     * @var array{status: string, attempted: int, failed: int, errors: list<string>}
+     */
+    private array $vectorStatus = ['status' => 'none', 'attempted' => 0, 'failed' => 0, 'errors' => []];
+
+    /** @return array{status: string, attempted: int, failed: int, errors: list<string>} */
+    public function lastVectorStatus(): array
+    {
+        return $this->vectorStatus;
+    }
+
     public function retrieve(array $apiKey, array $payload): array
     {
         $rag = is_array($payload['rag'] ?? null) ? $payload['rag'] : [];
@@ -33,6 +47,7 @@ final class RagRetrievalService
             return ['enabled' => false, 'payload' => $payload, 'sources' => []];
         }
         $started = microtime(true);
+        $this->vectorStatus = ['status' => 'none', 'attempted' => 0, 'failed' => 0, 'errors' => []];
         $required = (bool) ($rag['required'] ?? false);
         $topK = $this->normalizeTopK($rag['top_k'] ?? 8);
         $queryModality = $this->queryModality($payload, $rag);
@@ -84,6 +99,7 @@ final class RagRetrievalService
                 'sources' => $sources,
                 'retrieval_id' => $retrievalId,
                 'fallback_used' => false,
+                'vector_status' => $this->vectorStatus['status'],
             ];
         } catch (Throwable $throwable) {
             HttpAbortException::rethrowIfAbort($throwable);
@@ -110,17 +126,24 @@ final class RagRetrievalService
             'lexical' => $this->lexicalSourcesForDatasets($datasets, $queryProfile, $candidateK, $queryModality),
         ];
         $queryVectors = [];
+        $vectorStatus = ['status' => 'none', 'attempted' => 0, 'failed' => 0, 'errors' => []];
         foreach ($datasets as $dataset) {
             foreach ($this->retrievalConfigs($configService, $dataset, $queryModality) as $retrieval) {
                 $config = $retrieval['config'];
                 $modality = $retrieval['modality'];
                 $collection = $retrieval['collection'];
+                $vectorStatus['attempted']++;
                 try {
                     // One query embedding per model/config, not per dataset (RAG-031).
                     $vectorKey = $modality . ':' . (string) ($config['id'] ?? $config['config_id'] ?? '') . ':' . (string) ($config['model_name'] ?? '') . ':' . (string) ($config['dimension'] ?? '');
                     $vector = $queryVectors[$vectorKey] ??= ($this->embeddingProvider ?? new RagEmbeddingProviderService())->embed($modality, ['text' => $query, 'modality' => $modality, 'purpose' => 'query'], $config);
                     $hits = $configService->store($config)->search($collection, $vector, $candidateK, ['dataset_id' => $dataset['dataset_id'], 'modality' => $modality]);
                 } catch (Throwable $throwable) {
+                    $vectorStatus['failed']++;
+                    $error = substr((string) $throwable->getMessage(), 0, 120);
+                    if (!in_array($error, $vectorStatus['errors'], true) && count($vectorStatus['errors']) < 5) {
+                        $vectorStatus['errors'][] = $error;
+                    }
                     App::logger()->warning('rag', 'rag vector retrieval skipped', ['error' => $throwable->getMessage(), 'dataset_id' => $dataset['dataset_id'] ?? null, 'modality' => $modality]);
                     continue;
                 }
@@ -149,6 +172,8 @@ final class RagRetrievalService
             }
         }
 
+        $vectorStatus['status'] = $vectorStatus['attempted'] === 0 ? 'none' : ($vectorStatus['failed'] === 0 ? 'ok' : ($vectorStatus['failed'] < $vectorStatus['attempted'] ? 'degraded' : 'error'));
+        $this->vectorStatus = $vectorStatus;
         usort($rankedLists['vector'], static fn (array $a, array $b): int => $b['score'] <=> $a['score']);
         $rankedLists['vector'] = $this->rehydrateVectorHits($rankedLists['vector'], $datasets);
         $sources = $this->rrfFuse($rankedLists);
@@ -187,6 +212,7 @@ final class RagRetrievalService
             abort_json('RAG_QUERY_REQUIRED', 'query is required', 422);
         }
         $started = microtime(true);
+        $this->vectorStatus = ['status' => 'none', 'attempted' => 0, 'failed' => 0, 'errors' => []];
         $topK = $this->normalizeTopK($options['top_k'] ?? 5);
         $datasets = (new RagPermissionService())->resolveDatasets(
             $apiKey,
@@ -207,7 +233,7 @@ final class RagRetrievalService
             $retrievalId = null;
         }
 
-        return ['retrieval_id' => $retrievalId, 'dataset_count' => count($datasets), 'sources' => $sources];
+        return ['retrieval_id' => $retrievalId, 'dataset_count' => count($datasets), 'sources' => $sources, 'vector_status' => $this->vectorStatus['status']];
     }
 
     public function findRetrieval(string $retrievalId, array $apiKey): array
@@ -236,8 +262,9 @@ final class RagRetrievalService
             ($this->beforeRecord)();
         }
         $retrievalId = 'rtr_' . bin2hex(random_bytes(12));
+        $withVectorStatus = \TokenHub\Support\SchemaInspector::hasColumn('rag_retrieval_logs', 'vector_status');
         App::db()->execute(
-            'INSERT INTO rag_retrieval_logs (retrieval_id, request_id, api_key_id, user_id, department_id, kb_ids, dataset_ids, query, query_modality, top_k, hit_count, max_score, sources, latency_ms, fallback_used) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            'INSERT INTO rag_retrieval_logs (retrieval_id, request_id, api_key_id, user_id, department_id, kb_ids, dataset_ids, query, query_modality, top_k, hit_count, max_score, sources, latency_ms, fallback_used' . ($withVectorStatus ? ', vector_status' : '') . ') VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?' . ($withVectorStatus ? ', ?' : '') . ')',
             [
                 $retrievalId,
                 App::context()->requestId(),
@@ -254,8 +281,12 @@ final class RagRetrievalService
                 json_encode($sources, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
                 $latencyMs,
                 $fallback ? 1 : 0,
+                ...($withVectorStatus ? [$this->vectorStatus['status']] : []),
             ]
         );
+        if ($this->vectorStatus['status'] === 'degraded' || $this->vectorStatus['status'] === 'error') {
+            App::logger()->warning('rag', 'rag retrieval ran without (some) vector results', ['retrieval_id' => $retrievalId, ...$this->vectorStatus]);
+        }
         return $retrievalId;
     }
 
@@ -290,6 +321,7 @@ final class RagRetrievalService
             'sources' => [],
             'retrieval_id' => $retrievalId,
             'fallback_used' => true,
+            'vector_status' => $this->vectorStatus['status'],
         ];
     }
 
@@ -576,7 +608,7 @@ final class RagRetrievalService
                  JOIN rag_vector_datasets d ON d.id = COALESCE(c.dataset_id, doc.dataset_id, u.dataset_id)
                  JOIN rag_knowledge_bases k ON k.id = c.kb_id
                  LEFT JOIN rag_image_assets i ON i.id = c.image_asset_id
-                 WHERE d.dataset_id = ? AND c.enabled = 1 AND c.lifecycle_status = "active" AND (c.expires_at IS NULL OR c.expires_at > NOW()) AND doc.deleted_at IS NULL' . $candidateFilter
+                 WHERE d.dataset_id = ? AND c.enabled = 1 AND c.lifecycle_status = "active" AND (c.expires_at IS NULL OR c.expires_at > UTC_TIMESTAMP()) AND doc.deleted_at IS NULL' . $candidateFilter
                  . ($candidates['chunk_ids'] === null ? ' ORDER BY c.id DESC LIMIT ' . RagLexicalIndexService::scanLimit() : ''),
                 $params
             );
@@ -703,18 +735,26 @@ final class RagRetrievalService
         $fused = [];
         $rrfK = 60.0;
         foreach ($rankedLists as $strategy => $sources) {
-            foreach ($sources as $rank => $source) {
+            // V-03: a chunk can have several vectors (QA similar questions) and so several
+            // hits; only its best hit counts, and ranks are positions among distinct chunks.
+            $seen = [];
+            $rank = 0;
+            foreach ($sources as $source) {
                 $chunkId = (string) ($source['chunk_id'] ?? '');
                 if ($chunkId === '') {
                     continue;
                 }
                 $key = $chunkId . ':' . (string) ($source['modality'] ?? 'text');
+                if (isset($seen[$key])) {
+                    continue;
+                }
+                $seen[$key] = true;
                 if (!isset($fused[$key])) {
                     $fused[$key] = $source;
                     $fused[$key]['score'] = 0.0;
                     $fused[$key]['rank_signals'] = [];
                 }
-                $rankValue = $rank + 1;
+                $rankValue = ++$rank;
                 $fused[$key]['score'] += 1.0 / ($rrfK + $rankValue);
                 $fused[$key]['rank_signals'][$strategy . '_rank'] = $rankValue;
                 $fused[$key]['rank_signals'][$strategy . '_score'] = (float) ($source['raw_score'] ?? $source['score'] ?? 0);

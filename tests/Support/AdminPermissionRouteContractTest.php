@@ -28,7 +28,7 @@ assert_same('unknown', $permissions->capabilityForAdminRequest($request('GET', '
 // Every registered /admin-api route behind the admin session must map to a
 // real capability: an 'unknown' mapping denies the route to every admin,
 // super admins included, so the page silently breaks.
-$public = ['GET /admin-api/health', 'POST /admin-api/login'];
+$public = ['GET /admin-api/health', 'GET /admin-api/auth/options', 'POST /admin-api/login', 'POST /admin-api/forgot-password', 'POST /admin-api/reset-password'];
 $unmapped = [];
 foreach (\TokenHub\Bootstrap\Kernel::router()->routes() as $route) {
     $name = $route['method'] . ' ' . $route['path'];

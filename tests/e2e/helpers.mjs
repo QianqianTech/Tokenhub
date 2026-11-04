@@ -3,7 +3,13 @@ import { startMockServer } from "./mock-server.mjs";
 
 export async function setup() {
   const mock = await startMockServer(0);
-  const browser = await chromium.launch();
+  let browser;
+  try {
+    browser = await chromium.launch({ executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH || undefined });
+  } catch (error) {
+    await new Promise((resolve) => mock.server.close(resolve));
+    throw error;
+  }
   return {
     mock,
     browser,

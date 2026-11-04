@@ -99,6 +99,29 @@ test("retrieval evaluation shows ranking and answer-level metrics and can reques
   await context.close();
 });
 
+test("upload workbench switches PDF and Word files to the document import type", async () => {
+  const { page, errors, context } = await openPage(env);
+  await login(page, env.mock.baseUrl, { hash: "#/rag/rag-build?tab=rag-import-task" });
+  const form = page.locator(".rag-upload-workbench");
+  await form.waitFor();
+  const accept = await form.locator('input[name="rag_file"]').getAttribute("accept");
+  for (const ext of [".pdf", ".doc", ".docx", ".wps", ".rtf", ".ppt", ".dps", ".xls", ".et", ".odt"]) {
+    assert.ok(accept.split(",").includes(ext), `the file picker should accept ${ext}`);
+  }
+  assert.equal(await form.locator('[name="template"]').inputValue(), "text");
+  await form.locator('input[name="rag_file"]').setInputFiles({ name: "差旅管理办法.doc", mimeType: "application/msword", buffer: Buffer.from("doc") });
+  assert.equal(await form.locator('[name="template"]').inputValue(), "document", "a Word file selects the document import type");
+  await form.getByRole("button", { name: "上传并生成预览" }).click();
+  await settle(page);
+  const posted = requests("POST", /^\/admin-api\/rag\/knowledge-bases\/[^/]+\/uploads$/).at(-1);
+  assert.ok(posted, "the upload should be posted");
+  assert.equal(posted.body.content_type, "document");
+  assert.equal(posted.body.processing.template, "document");
+  assert.equal(posted.body.filename, "差旅管理办法.doc");
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
 test("upload workbench sends documents with the selected redaction types", async () => {
   const { page, errors, context } = await openPage(env);
   await login(page, env.mock.baseUrl, { hash: "#/rag/rag-build?tab=rag-import-task" });

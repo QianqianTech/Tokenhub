@@ -16,9 +16,19 @@ use TokenHub\Support\SchemaInspector;
  * level, not name level) are eligible. A model name shared by several
  * providers therefore can never route to a channel the key was not granted.
  *
- * Ordering: requested protocol first, then route_priority, then id; open
- * circuits (RouteHealth) are moved to the end. Candidates whose capability
- * contract explicitly lacks a required feature are dropped.
+ * Ordering: requested protocol first, then route_priority; open circuits
+ * (RouteHealth) are moved to the end. Candidates whose capability contract
+ * explicitly lacks a required feature are dropped.
+ *
+ * MT-003: channels of the same protocol rank and route_priority share load
+ * instead of the lowest id always winning. GATEWAY_ROUTE_BALANCE:
+ *   weighted (default)  random order weighted by models.route_weight
+ *                       (default 100; 0 = only when the others fail)
+ *   least_inflight      fewest in-flight upstream requests first
+ *                       (ChannelLimiter), weighted random among ties
+ *   priority            previous behaviour: lowest id first
+ * Channel capacity limits (max_in_flight, rpm_limit, tpm_limit) are enforced
+ * per attempt by ChannelLimiter.
  */
 final class ModelRouter
 {
@@ -70,7 +80,55 @@ final class ModelRouter
             }
         }
 
-        return ($this->health ?? new RouteHealth())->order($eligible);
+        return ($this->health ?? new RouteHealth())->order($this->balance($eligible, $request->protocol));
+    }
+
+    /**
+     * Reorders channels inside each group of equal (protocol rank,
+     * route_priority); the groups keep their order.
+     *
+     * @param list<array<string, mixed>> $rows
+     * @param null|callable(): float $random uniform (0, 1], for tests
+     * @return list<array<string, mixed>>
+     */
+    public function balance(array $rows, string $protocol, ?string $strategy = null, ?callable $random = null): array
+    {
+        $strategy ??= strtolower((string) env_value('GATEWAY_ROUTE_BALANCE', 'weighted'));
+        if (count($rows) < 2 || $strategy === 'priority') {
+            return $rows;
+        }
+        $random ??= static fn (): float => (mt_rand(1, mt_getrandmax()) / mt_getrandmax());
+        $groups = [];
+        foreach ($rows as $row) {
+            $rank = ((string) ($row['protocol'] ?? '') === $protocol ? '0' : '1') . ':' . (int) ($row['route_priority'] ?? 100);
+            $groups[$rank][] = $row;
+        }
+        if (count($groups) === count($rows)) {
+            return $rows;
+        }
+        $inFlight = $strategy === 'least_inflight'
+            ? ChannelLimiter::inFlight(array_map(static fn (array $row): int => (int) ($row['id'] ?? 0), $rows))
+            : [];
+        $out = [];
+        foreach ($groups as $group) {
+            if (count($group) === 1) {
+                $out[] = $group[0];
+                continue;
+            }
+            $keyed = [];
+            foreach ($group as $index => $row) {
+                $weight = array_key_exists('route_weight', $row) && $row['route_weight'] !== null ? max(0, (int) $row['route_weight']) : 100;
+                // Efraimidis-Spirakis: u^(1/w), larger first; weight 0 last.
+                $score = $weight > 0 ? $random() ** (1 / $weight) : -1.0 + $index / 1000000;
+                $keyed[] = ['row' => $row, 'score' => $score, 'load' => $inFlight[(int) ($row['id'] ?? 0)] ?? 0];
+            }
+            usort($keyed, static fn (array $a, array $b): int => [$a['load'], -$a['score']] <=> [$b['load'], -$b['score']]);
+            foreach ($keyed as $item) {
+                $out[] = $item['row'];
+            }
+        }
+
+        return $out;
     }
 
     /**

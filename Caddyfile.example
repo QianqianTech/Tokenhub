@@ -47,12 +47,29 @@
 
 	redir /admin /admin/
 	redir /screen /screen/
+	redir /app /app/
 
 	handle_path /admin/* {
 		root * {$TOKENHUB_APP_DIR:/var/www/tokenhub}/public/admin
 		encode zstd gzip
 		# ES modules carry no version query: always revalidate (ETag).
 		header Cache-Control "no-cache"
+		try_files {path} /index.html
+		file_server
+	}
+
+	# TokenHub APP (installable PWA); /app/link#c=… falls back to index.html.
+	handle_path /app/* {
+		root * {$TOKENHUB_APP_DIR:/var/www/tokenhub}/public/app
+		encode zstd gzip
+		header Cache-Control "no-cache"
+		# Scanning sign-in QR codes needs the camera on /app/ only (APP-101).
+		header Permissions-Policy "geolocation=(), microphone=(), camera=(self)"
+		header /sw.js Service-Worker-Allowed "/app/"
+		header /manifest.webmanifest {
+			Content-Type "application/manifest+json"
+			defer
+		}
 		try_files {path} /index.html
 		file_server
 	}
@@ -120,6 +137,12 @@
 	}
 
 	handle /ready {
+		php_fastcgi {$TOKENHUB_PHP_FASTCGI:unix//run/php/php8.2-fpm-tokenhub.sock} {
+			root {$TOKENHUB_APP_DIR:/var/www/tokenhub}/public
+		}
+	}
+
+	handle /metrics {
 		php_fastcgi {$TOKENHUB_PHP_FASTCGI:unix//run/php/php8.2-fpm-tokenhub.sock} {
 			root {$TOKENHUB_APP_DIR:/var/www/tokenhub}/public
 		}
