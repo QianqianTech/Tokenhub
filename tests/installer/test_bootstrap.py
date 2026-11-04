@@ -210,10 +210,11 @@ exit 0
         args = (["-Site", "http://localhost", "-HttpPort", "8080", "-NoStart", "-Yes"] if self.powershell else ["--site", "http://localhost", "--http-port", "8080", "--no-start", "--yes"])
         self.assert_ok(self.run_installer(*args))
         contents = (self.destination / "deploy/docker/.env").read_text()
-        self.assertIn("APP_URL=http://localhost:8080", contents)
-        self.assertIn("SESSION_SECURE=false", contents)
-        self.assertNotIn("APP_KEY=change-me", contents)
-        self.assertIn("TOKENHUB_IMAGE_TAG=source-", contents)
+        # Never include a generated .env (and its random credentials) in failure logs.
+        for expected in ("APP_URL=http://localhost:8080", "SESSION_SECURE=false", "TOKENHUB_IMAGE_TAG=source-", "DB_PASSWORD=", "TOKENHUB_ADMIN_PASSWORD=", "我的设备"):
+            self.assertTrue(expected in contents, "Generated config lost a required setting or its UTF-8 comments")
+        self.assertTrue("APP_KEY=change-me" not in contents, "Template APP_KEY was not replaced")
+        self.assertLess(len(contents), len((ROOT / ".env.example").read_text()) * 2, "UTF-8 comments expanded during repeated writes")
         calls = (self.base / "docker-calls").read_text()
         self.assertNotIn("build", calls)
         self.assertNotIn(" up ", calls)

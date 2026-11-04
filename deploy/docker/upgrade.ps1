@@ -24,7 +24,7 @@ function Invoke-Compose {
     if ($LASTEXITCODE -ne 0) { throw ('docker compose ' + ($Arguments -join ' ') + ' failed') }
 }
 
-$lines = Get-Content $EnvFile
+$lines = Get-Content -LiteralPath $EnvFile -Encoding UTF8 -ErrorAction Stop
 $previous = (($lines | Where-Object { $_ -like 'TOKENHUB_IMAGE_TAG=*' } | Select-Object -Last 1) -replace '^TOKENHUB_IMAGE_TAG=', '')
 if (-not $Tag -and $Build -and (Test-Path (Join-Path $KitDir '..\..\VERSION'))) { $Tag = (Get-Content (Join-Path $KitDir '..\..\VERSION') -Raw).Trim() }
 if (-not $Tag) { $Tag = $previous }
@@ -37,7 +37,7 @@ function Get-AppliedMigrations {
 }
 
 function Set-ImageTag([string]$Value) {
-    $current = Get-Content $EnvFile
+    $current = Get-Content -LiteralPath $EnvFile -Encoding UTF8 -ErrorAction Stop
     $current = $current | ForEach-Object { if ($_ -like 'TOKENHUB_IMAGE_TAG=*') { "TOKENHUB_IMAGE_TAG=$Value" } else { $_ } }
     [System.IO.File]::WriteAllLines($EnvFile, $current, (New-Object System.Text.UTF8Encoding($false)))
 }
@@ -48,7 +48,7 @@ if (-not $SkipBackup) {
     Write-Host '==> Backing up before the upgrade...'
     & (Join-Path $KitDir 'backup.ps1')
     $backupRoot = $null
-    $fromEnv = (Get-Content $EnvFile | Where-Object { $_ -match '^BACKUP_DIR=.+' } | Select-Object -Last 1) -replace '^BACKUP_DIR=', ''
+    $fromEnv = (Get-Content -LiteralPath $EnvFile -Encoding UTF8 -ErrorAction Stop | Where-Object { $_ -match '^BACKUP_DIR=.+' } | Select-Object -Last 1) -replace '^BACKUP_DIR=', ''
     if ($fromEnv) { $backupRoot = $fromEnv.Trim('"') } elseif ($env:ProgramData) { $backupRoot = Join-Path $env:ProgramData 'TokenHub\backups' } else { $backupRoot = Join-Path $env:USERPROFILE 'tokenhub-backups' }
     if (Test-Path $backupRoot) { $backupPath = (Get-ChildItem -Directory $backupRoot -Filter '20*' | Sort-Object Name | Select-Object -Last 1).FullName }
 }

@@ -56,13 +56,13 @@ function New-Secret([int]$Length = 32) {
 
 function Get-EnvValue([string]$Key) {
     if (-not (Test-Path $EnvFile)) { return '' }
-    $line = Get-Content $EnvFile | Where-Object { $_ -match ('^' + [regex]::Escape($Key) + '=') } | Select-Object -Last 1
+    $line = Get-Content -LiteralPath $EnvFile -Encoding UTF8 -ErrorAction Stop | Where-Object { $_ -match ('^' + [regex]::Escape($Key) + '=') } | Select-Object -Last 1
     if ($null -eq $line) { return '' }
     return ($line -replace ('^' + [regex]::Escape($Key) + '='), '').Trim('"')
 }
 
 function Set-EnvValue([string]$Key, [string]$Value) {
-    $lines = [System.Collections.Generic.List[string]](Get-Content $EnvFile)
+    $lines = [System.Collections.Generic.List[string]](Get-Content -LiteralPath $EnvFile -Encoding UTF8 -ErrorAction Stop)
     $found = $false
     for ($i = 0; $i -lt $lines.Count; $i++) {
         if ($lines[$i] -match ('^' + [regex]::Escape($Key) + '=')) { $lines[$i] = "$Key=$Value"; $found = $true }
