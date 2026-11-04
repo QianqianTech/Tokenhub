@@ -7,7 +7,7 @@ namespace TokenHub\Services;
 final class RagRetrievalProfileService
 {
     /**
-     * @return array{min_vector_score: float, min_lexical_score: float, min_hybrid_confidence: float, exact_match_discount: float, warnings: list<string>, name: string}
+     * @return array{min_vector_score: float, min_lexical_score: float, min_hybrid_confidence: float, exact_match_discount: float, explicit: list<string>, rerank_prefilter_factor: float, warnings: list<string>, name: string}
      */
     public function resolve(array|string|null $profile): array
     {
@@ -58,8 +58,14 @@ final class RagRetrievalProfileService
             $resolved[$key] = $clamped;
         }
 
+        $factor = $values['rerank_prefilter_factor'] ?? 0.5;
+
         return [
             ...$resolved,
+            // Which thresholds the knowledge base set itself; the rest may come from the vector config.
+            'explicit' => array_values(array_intersect(array_keys($defaults), array_keys($values))),
+            // With a rerank model gating results, vector/keyword thresholds only pre-filter at this share.
+            'rerank_prefilter_factor' => is_numeric($factor) ? max(0.0, min(1.0, (float) $factor)) : 0.5,
             'warnings' => $warnings,
             'name' => $hasOverride ? 'kb_override' : 'default',
         ];

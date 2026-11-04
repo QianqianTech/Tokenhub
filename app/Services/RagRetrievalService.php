@@ -17,6 +17,7 @@ final class RagRetrievalService
         private readonly ?\Closure $beforeRecord = null,
         private readonly ?RagRerankService $reranker = null,
         private readonly ?RagVectorConfigService $vectorConfigs = null,
+        private readonly ?RagQueryRewriteService $queryRewriter = null,
     )
     {
     }
@@ -79,7 +80,23 @@ final class RagRetrievalService
 
         try {
             $query = $this->query($payload);
-            $sources = trim($query) === '' ? [] : $this->searchSourcesForDatasets($datasets, $query, $topK, $queryModality);
+            $rewrite = ['query' => $query, 'method' => 'none', 'original' => $query];
+            if (!is_string($rag['query'] ?? null) || trim((string) $rag['query']) === '') {
+                // Multi-turn: "那个怎么报？" becomes a standalone question before searching.
+                $rewriter = $this->queryRewriter ?? new RagQueryRewriteService();
+                $rewriteSettings = $rewriter->settings($datasets);
+                if ($rewriteSettings !== null) {
+                    try {
+                        $rewrite = $rewriter->rewrite($payload, $query, $rewriteSettings);
+                        $query = $rewrite['query'];
+                    } catch (Throwable $throwable) {
+                        HttpAbortException::rethrowIfAbort($throwable);
+                        App::logger()->warning('rag', 'rag query rewrite skipped', ['error' => $throwable->getMessage()]);
+                    }
+                }
+            }
+            $queryImage = $queryModality === 'text' ? null : RagMultimodalEmbedding::queryImage($payload);
+            $sources = trim($query) === '' && $queryImage === null ? [] : $this->searchSourcesForDatasets($datasets, $query, $topK, $queryModality, $queryImage);
             $latencyMs = (int) ((microtime(true) - $started) * 1000);
             if ($sources === []) {
                 if ($required) {
@@ -100,6 +117,7 @@ final class RagRetrievalService
                 'retrieval_id' => $retrievalId,
                 'fallback_used' => false,
                 'vector_status' => $this->vectorStatus['status'],
+                'rewritten_query' => $rewrite['method'] === 'none' ? null : $rewrite['query'],
             ];
         } catch (Throwable $throwable) {
             HttpAbortException::rethrowIfAbort($throwable);
@@ -115,7 +133,7 @@ final class RagRetrievalService
      * @param list<array<string, mixed>> $datasets
      * @return list<array<string, mixed>>
      */
-    public function searchSourcesForDatasets(array $datasets, string $query, int $topK, string $queryModality = 'text'): array
+    public function searchSourcesForDatasets(array $datasets, string $query, int $topK, string $queryModality = 'text', ?string $queryImage = null): array
     {
         $configService = $this->vectorConfigs ?? new RagVectorConfigService();
         $topK = $this->normalizeTopK($topK);
@@ -132,11 +150,21 @@ final class RagRetrievalService
                 $config = $retrieval['config'];
                 $modality = $retrieval['modality'];
                 $collection = $retrieval['collection'];
+                // V-10: a multimodal embedding model also receives the query image (image-to-image)
+                // and embeds text queries in the image space (text-to-image).
+                $withImage = $queryImage !== null && $modality !== 'text' && RagMultimodalEmbedding::isMultimodal($config);
+                if (trim($query) === '' && !$withImage) {
+                    continue;
+                }
                 $vectorStatus['attempted']++;
                 try {
                     // One query embedding per model/config, not per dataset (RAG-031).
-                    $vectorKey = $modality . ':' . (string) ($config['id'] ?? $config['config_id'] ?? '') . ':' . (string) ($config['model_name'] ?? '') . ':' . (string) ($config['dimension'] ?? '');
-                    $vector = $queryVectors[$vectorKey] ??= ($this->embeddingProvider ?? new RagEmbeddingProviderService())->embed($modality, ['text' => $query, 'modality' => $modality, 'purpose' => 'query'], $config);
+                    $vectorKey = $modality . ':' . (string) ($config['id'] ?? $config['config_id'] ?? '') . ':' . (string) ($config['model_name'] ?? '') . ':' . (string) ($config['dimension'] ?? '') . ($withImage ? ':img' : '');
+                    $queryInput = ['text' => $query, 'modality' => $modality, 'purpose' => 'query'];
+                    if ($withImage) {
+                        $queryInput['image'] = $queryImage;
+                    }
+                    $vector = $queryVectors[$vectorKey] ??= ($this->embeddingProvider ?? new RagEmbeddingProviderService())->embed($modality, $queryInput, $config);
                     $hits = $configService->store($config)->search($collection, $vector, $candidateK, ['dataset_id' => $dataset['dataset_id'], 'modality' => $modality]);
                 } catch (Throwable $throwable) {
                     $vectorStatus['failed']++;
@@ -167,6 +195,8 @@ final class RagRetrievalService
                         'labels' => $payloadData['labels'] ?? [],
                         'warnings' => $payloadData['warnings'] ?? [],
                         'retrieval_strategy' => 'vector',
+                        // Score scale belongs to the embedding model: its config may carry its own threshold.
+                        'config_min_vector_score' => RagVectorConfigService::minVectorScore($config),
                     ];
                 }
             }
@@ -178,13 +208,20 @@ final class RagRetrievalService
         $rankedLists['vector'] = $this->rehydrateVectorHits($rankedLists['vector'], $datasets);
         $sources = $this->rrfFuse($rankedLists);
         $sources = $this->rerankSources($sources, $queryProfile);
-        $sources = $this->applyConfidenceThresholds($sources, $datasets, $queryProfile);
         $rerank = $this->reranker ?? new RagRerankService();
         $rerankSettings = $rerank->settings($datasets);
-        if ($rerankSettings !== null && count($sources) > 1) {
-            $reranked = $rerank->rerank($query, $sources, $rerankSettings);
-            if ($reranked !== null) {
-                $sources = $reranked;
+        if ($rerankSettings !== null && $rerankSettings['min_score'] > 0 && count($sources) > 1) {
+            // A rerank model with a minimum score is the final gate: vector/keyword thresholds
+            // only pre-filter loosely so it can rescue relevant hits the embedding scored low.
+            $reranked = $rerank->rerank($query, $this->applyConfidenceThresholds($sources, $datasets, $queryProfile, true), $rerankSettings);
+            $sources = $reranked ?? $this->applyConfidenceThresholds($sources, $datasets, $queryProfile);
+        } else {
+            $sources = $this->applyConfidenceThresholds($sources, $datasets, $queryProfile);
+            if ($rerankSettings !== null && count($sources) > 1) {
+                $reranked = $rerank->rerank($query, $sources, $rerankSettings);
+                if ($reranked !== null) {
+                    $sources = $reranked;
+                }
             }
         }
         $sources = $this->diverseTopK($sources, $topK);
@@ -499,7 +536,17 @@ final class RagRetrievalService
     private function retrievalConfigs(RagVectorConfigService $configService, array $dataset, string $queryModality): array
     {
         $configs = [];
-        foreach ($this->modalities($queryModality) as $modality) {
+        $modalities = $this->modalities($queryModality);
+        if ($queryModality === 'text') {
+            // Text-to-image: image/multimodal configs backed by a multimodal embedding model
+            // understand text queries too.
+            foreach (['image' => $configService->imageConfig($dataset), 'multimodal' => $configService->multimodalConfig($dataset)] as $modality => $candidate) {
+                if (RagMultimodalEmbedding::isMultimodal($candidate)) {
+                    $modalities[] = $modality;
+                }
+            }
+        }
+        foreach ($modalities as $modality) {
             $config = match ($modality) {
                 'image' => $configService->imageConfig($dataset),
                 'multimodal' => $configService->multimodalConfig($dataset),
@@ -1000,7 +1047,7 @@ final class RagRetrievalService
      * @param array{original_query: string, expanded_query: string, terms: list<string>, rewrite_terms: list<string>, phrases: list<string>, codes: list<string>} $queryProfile
      * @return list<array<string, mixed>>
      */
-    private function applyConfidenceThresholds(array $sources, array $datasets, array $queryProfile): array
+    private function applyConfidenceThresholds(array $sources, array $datasets, array $queryProfile, bool $prefilter = false): array
     {
         $profiles = [];
         foreach ($datasets as $dataset) {
@@ -1023,18 +1070,25 @@ final class RagRetrievalService
             $exactPhraseEvidence = array_intersect($queryProfile['phrases'], $contentAnalysis['phrases']) !== [];
             $codeEvidence = array_intersect($queryProfile['codes'], $contentAnalysis['codes']) !== [];
             $hasExactEvidence = $exactPhraseEvidence || $codeEvidence;
+            $minVector = in_array('min_vector_score', $profile['explicit'] ?? [], true) || !is_numeric($source['config_min_vector_score'] ?? null)
+                ? $profile['min_vector_score']
+                : (float) $source['config_min_vector_score'];
             $baseThreshold = match ($strategy) {
                 'lexical' => $profile['min_lexical_score'],
                 'hybrid_rrf' => $profile['min_hybrid_confidence'],
-                default => $profile['min_vector_score'],
+                default => $minVector,
             };
+            if ($prefilter) {
+                $baseThreshold *= (float) ($profile['rerank_prefilter_factor'] ?? 0.5);
+            }
             $threshold = $hasExactEvidence ? max(0.0, $baseThreshold - $profile['exact_match_discount']) : $baseThreshold;
             $confidence = match ($strategy) {
                 'lexical' => $lexicalConfidence,
                 'hybrid_rrf' => 0.55 * $vectorScore + 0.35 * $lexicalConfidence + 0.10 * min(1.0, $rerankScore),
                 default => $vectorScore,
             };
-            $signals['min_vector_score'] = $profile['min_vector_score'];
+            $signals['min_vector_score'] = $minVector;
+            $signals['threshold_mode'] = $prefilter ? 'rerank_prefilter' : 'final';
             $signals['min_lexical_score'] = $profile['min_lexical_score'];
             $signals['min_hybrid_confidence'] = $profile['min_hybrid_confidence'];
             $signals['exact_match_discount'] = $profile['exact_match_discount'];

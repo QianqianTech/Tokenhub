@@ -97,7 +97,8 @@ export async function showCreateModal(resourceKey, config, onSaved, initialValue
 
 export async function showEditModal(resourceKey, config, row, onSaved) {
   const formFields = await lookupAwareFields(config.form);
-  const form = resourceForm(formFields, resourceKey === "rag-knowledge-bases" ? knowledgeBaseFormValues(row) : row, resourceKey, { mode: "edit" });
+  const formValues = resourceKey === "rag-knowledge-bases" ? knowledgeBaseFormValues(row) : resourceKey === "rag-vector-configs" ? vectorConfigFormValues(row) : row;
+  const form = resourceForm(formFields, formValues, resourceKey, { mode: "edit" });
   const output = el("p", { className: "notice", hidden: true, role: "status" });
   appendVectorConfigProbe(resourceKey, form, formFields, output);
   const capabilityEditor = resourceKey === "models" ? createModelCapabilityEditor(row) : null;
@@ -215,7 +216,7 @@ export function oneTimeSecretEntries(resourceKey, data = {}) {
 // retrieval_profile (RagRedactionService, RagRetrievalProfileService,
 // RagRerankService). Keys the form does not know are kept as they were.
 const KB_RETRIEVAL_KEYS = ["min_vector_score", "min_lexical_score", "min_hybrid_confidence", "exact_match_discount"];
-const KB_FORM_KEYS = ["redaction_mode", "redaction_types", ...KB_RETRIEVAL_KEYS, "rerank_model_id", "rerank_top_n", "rerank_min_score"];
+const KB_FORM_KEYS = ["redaction_mode", "redaction_types", ...KB_RETRIEVAL_KEYS, "rerank_model_id", "rerank_top_n", "rerank_min_score", "query_rewrite_model_id", "query_rewrite_mode"];
 
 function jsonObject(value) {
   if (value && typeof value === "object" && !Array.isArray(value)) {
@@ -230,6 +231,30 @@ function jsonObject(value) {
     }
   }
   return {};
+}
+
+// Vector config fields kept in config_json (RagMultimodalEmbedding, RagVectorConfigService).
+const VECTOR_CONFIG_JSON_KEYS = ["embedding_api", "min_vector_score"];
+
+export function vectorConfigFormValues(row = {}) {
+  const settings = jsonObject(row.config_json);
+  const values = { ...row };
+  values.embedding_api = settings.embedding_api || "text";
+  if (settings.min_vector_score !== undefined && settings.min_vector_score !== null) values.min_vector_score = settings.min_vector_score;
+  return values;
+}
+
+function vectorConfigPayload(values, row = {}) {
+  const payload = Object.fromEntries(Object.entries(values).filter(([key]) => !VECTOR_CONFIG_JSON_KEYS.includes(key)));
+  const settings = { ...jsonObject(row.config_json), ...jsonObject(values.config_json) };
+  if (values.embedding_api && values.embedding_api !== "text") settings.embedding_api = values.embedding_api;
+  else delete settings.embedding_api;
+  if (values.min_vector_score === undefined || values.min_vector_score === null || values.min_vector_score === "") delete settings.min_vector_score;
+  else settings.min_vector_score = Number(values.min_vector_score);
+  if (Object.keys(settings).length > 0) payload.config_json = settings;
+  else if (Object.keys(jsonObject(row.config_json)).length > 0) payload.config_json = {};
+  else delete payload.config_json;
+  return payload;
 }
 
 export function knowledgeBaseFormValues(row = {}) {
@@ -250,6 +275,11 @@ export function knowledgeBaseFormValues(row = {}) {
     values.rerank_model_id = rerank.model_id;
     if (rerank.top_n !== undefined) values.rerank_top_n = rerank.top_n;
     if (rerank.min_score !== undefined) values.rerank_min_score = rerank.min_score;
+  }
+  const rewrite = jsonObject(retrieval.query_rewrite);
+  if (rewrite.model_id) {
+    values.query_rewrite_model_id = rewrite.model_id;
+    values.query_rewrite_mode = rewrite.mode || "auto";
   }
   return values;
 }
@@ -281,6 +311,16 @@ function knowledgeBasePayload(values, row = {}) {
   } else {
     delete retrieval.rerank;
   }
+  if (values.query_rewrite_model_id) {
+    retrieval.query_rewrite = {
+      ...jsonObject(retrieval.query_rewrite),
+      enabled: true,
+      model_id: Number(values.query_rewrite_model_id),
+      mode: values.query_rewrite_mode === "always" ? "always" : "auto"
+    };
+  } else {
+    delete retrieval.query_rewrite;
+  }
   const hadChunking = Object.keys(jsonObject(row.chunking_profile)).length > 0;
   const hadRetrieval = Object.keys(jsonObject(row.retrieval_profile)).length > 0;
   if (Object.keys(chunking).length > 0 || hadChunking) payload.chunking_profile = chunking;
@@ -291,6 +331,9 @@ function knowledgeBasePayload(values, row = {}) {
 export function resourcePayload(resourceKey, values, row = {}) {
   if (resourceKey === "rag-knowledge-bases") {
     return knowledgeBasePayload(values, row);
+  }
+  if (resourceKey === "rag-vector-configs") {
+    return vectorConfigPayload(values, row);
   }
   if (resourceKey === "dashboard-share-links") {
     // A global share has no scope objects; unselected metrics mean "all".

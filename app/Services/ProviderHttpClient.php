@@ -54,6 +54,12 @@ final class ProviderHttpClient
 
     public function endpointFor(string $path): string
     {
+        if (preg_match('#^https?://#i', $path) === 1) {
+            // Vendor-specific absolute endpoints (e.g. multimodal embeddings) are used as is;
+            // target() still restricts them to the channel's own host family.
+            return $path;
+        }
+
         return match (true) {
             str_contains($path, '/chat/completions') => '/v1/chat/completions',
             str_ends_with($path, '/completions') => '/v1/completions',

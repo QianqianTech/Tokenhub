@@ -596,10 +596,13 @@ Chat 请求示例：
     "retrieval_id": "rtr_xxx",
     "sources": [],
     "fallback_used": false,
-    "vector_status": "ok"
+    "vector_status": "ok",
+    "rewritten_query": null
   }
 }
 ```
+
+`rewritten_query`：知识库开启多轮查询改写（检索配置里的“多轮查询改写模型”，或环境变量 `RAG_QUERY_REWRITE_MODEL_ID`）后，依赖上文的追问会先改写成完整问题再检索，这里返回实际检索用的问题；没有改写时为 `null`。发给回答模型的消息不变。
 
 `vector_status`：`ok` 向量检索正常；`degraded` 部分向量检索失败（嵌入模型或向量库异常），这部分只用了关键词结果；`error` 全部向量检索失败，结果只来自关键词检索；`none` 数据集没有可用的向量配置。后台“索引健康”页和告警会统计 degraded / error。
 

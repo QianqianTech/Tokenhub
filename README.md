@@ -46,7 +46,7 @@ Docker 安装会获取应用镜像并启动 Caddy、PHP-FPM、MySQL、Redis、Qd
 
 ## 快速安装
 
-**ARM64 用户可直接拉取 Docker Hub 镜像。** 当前标签为 `1.0.0-bcc60e571698-arm64-cache`，适用于 `linux/arm64`。完整命令、镜像摘要及验收步骤见 [从 Docker Hub 部署](docs/deployment/README.md#从-docker-hub-部署)。下方是从源码构建的安装方式。
+**ARM64 用户可直接拉取 Docker Hub 镜像。** 当前标签为 `1.0.1`，适用于 `linux/arm64`。本版新增多轮查询改写、以文搜图与以图搜图、向量阈值校准和紧凑向量存储，见 [1.0.1 变更记录](CHANGELOG.md#101---2026-11-04)。完整命令及验收步骤见[从 Docker Hub 部署](docs/deployment/README.md#从-docker-hub-部署)。下方是从源码构建的安装方式。
 
 ### 1. 准备环境
 

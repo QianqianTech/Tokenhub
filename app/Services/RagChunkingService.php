@@ -25,6 +25,9 @@ final class RagChunkingService
             $chunker = new RagContentChunkerService();
             $structured = new RagStructuredChunkerService();
             $profile = $this->profile($dataset['kb_chunking_profile'] ?? null);
+            // Chunks should fit the embedding model's input (max_input_tokens), leaving room
+            // for the "document > section" context line added before embedding.
+            $modelInputLimit = (int) ((new RagVectorConfigService())->textConfig($dataset)['max_input_tokens'] ?? 0);
             $effectiveProfile = $chunker->profile($profile);
             $uploadMetadata = json_decode((string) ($upload['metadata'] ?? '{}'), true);
             $uploadMetadata = is_array($uploadMetadata) ? $uploadMetadata : [];
@@ -39,7 +42,7 @@ final class RagChunkingService
                 $useStructured = (string) ($itemMetadata['chunker'] ?? '') === RagStructuredChunkerService::VERSION
                     || (string) ($profile['version'] ?? '') === 'p2'
                     || str_starts_with((string) ($profile['version'] ?? ''), 'p2-');
-                $structuredProfile = $structured->profile(array_merge($profile, is_array($itemMetadata['chunking_profile'] ?? null) ? $itemMetadata['chunking_profile'] : []));
+                $structuredProfile = $this->capToModel($structured->profile(array_merge($profile, is_array($itemMetadata['chunking_profile'] ?? null) ? $itemMetadata['chunking_profile'] : [])), $modelInputLimit);
                 $documentKey = (string) ($itemMetadata['document_key'] ?? $uploadMetadata['document_key'] ?? '');
                 if ($documentKey === '') {
                     $documentKey = 'upload:' . (string) $upload['upload_id'] . ':' . (string) $item['preview_item_id'];
@@ -239,5 +242,26 @@ final class RagChunkingService
     private function id(string $prefix): string
     {
         return $prefix . '_' . bin2hex(random_bytes(12));
+    }
+
+    /**
+     * @param array{target_tokens: int, max_tokens: int, overlap_tokens: int, min_tokens: int, version: string} $settings
+     * @return array<string, mixed>
+     */
+    private function capToModel(array $settings, int $modelInputLimit): array
+    {
+        if ($modelInputLimit <= 0) {
+            return $settings;
+        }
+        $cap = max(64, (int) floor($modelInputLimit * 0.9) - 48);
+        if ($settings['max_tokens'] <= $cap) {
+            return $settings;
+        }
+        $settings['max_tokens'] = $cap;
+        $settings['target_tokens'] = min($settings['target_tokens'], max(64, (int) floor($cap * 0.75)));
+        $settings['overlap_tokens'] = min($settings['overlap_tokens'], intdiv($settings['target_tokens'], 2));
+        $settings['min_tokens'] = min($settings['min_tokens'], intdiv($settings['target_tokens'], 2));
+
+        return $settings;
     }
 }

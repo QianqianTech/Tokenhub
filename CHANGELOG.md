@@ -6,9 +6,25 @@ TokenHub 的版本变更记录。格式参考 [Keep a Changelog](https://keepach
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-11-04
+
+### 知识库检索
+
+- **多轮查询改写**。开启后，系统会结合对话历史将“那个怎么报？”这类追问改写成独立问题再检索。支持自动和每次改写，可在 `rag.rewritten_query` 查看实际检索问题。
+- **以文搜图与以图搜图**。图片可用多模态模型直接向量化，支持 OpenAI 混合输入、火山方舟和阿里云百炼的多模态向量接口。对话图片或 `rag.query_image` 可作为检索输入。
+- **向量阈值校准与重排**。可用知识库评测集建议相似度阈值，也可配置重排得分下限，让符合条件的候选先进入重排。
+- **适配模型输入长度**。可为向量配置设置最大输入 Token 数，超长分块可拆成多个向量并保留文档和章节上下文。
+- **紧凑向量副本**。迁移后新向量使用 float32 编码存储，旧 JSON 向量继续可读，支持按批转换。
+
+配置、校准和转换命令见[知识库向量运维](docs/rag-vector-operations.md)。
+
+### 安装与升级
+
 - 增加可独立下载的 GitHub 安装入口 `install.sh` / `install.ps1`，支持环境预检、指定源码版本、只下载模式、独立提交镜像标签及已有目录保护。
 - 完善项目首页：功能介绍、平台要求、Linux/macOS/Windows 安装、首次配置、API 调用、升级备份和常见问题。
 - 修复 Windows PowerShell 5.1 默认编码导致 `.env` 中文注释反复转码、安装配置截断的问题；安装、升级和备份统一按 UTF-8 读取配置。
+- Docker Hub 发布 `docker.io/leofan2022/` 下的五个 TokenHub 镜像，统一使用 `1.0.1` 标签，适用于 `linux/arm64`。部署命令见[部署指南](docs/deployment/README.md#从-docker-hub-部署)。
+- 升级前备份，升级时执行数据库迁移以新增 `rag_vector_records.vector_f32` 列。使用 Docker Hub 同一仓库的部署可运行 `bash deploy/docker/upgrade.sh --tag 1.0.1`。如需回滚到 1.0.0，使用升级前的备份恢复向量数据。
 
 ## [1.0.0] - 2026-10-31
 

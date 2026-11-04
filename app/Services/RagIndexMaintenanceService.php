@@ -21,10 +21,14 @@ use TokenHub\Support\App;
  */
 final class RagIndexMaintenanceService
 {
+    /**
+     * @param null|\Closure(string, array<string, mixed>): list<float> $embedQuery query embedder override (tests)
+     */
     public function __construct(
         private readonly ?RagEmbeddingJobService $jobs = null,
         private readonly ?RagVectorConfigService $configs = null,
         private readonly mixed $evaluator = null,
+        private readonly ?\Closure $embedQuery = null,
     ) {
     }
 
@@ -284,11 +288,12 @@ final class RagIndexMaintenanceService
                     if (!is_array($row)) {
                         continue;
                     }
+                    $stored = RagVectorCodec::storage($row['vector']);
                     App::db()->execute(
-                        'INSERT INTO rag_vector_records (vector_id, collection_name, kb_id, dataset_id, chunk_id, image_id, vector_config_id, modality, dimension, vector_json, content_hash, index_status, status, indexed_at)
-                         VALUES (?, ?, ?, ?, ?, ?, ?, "text", ?, ?, ?, "indexed", "indexed", UTC_TIMESTAMP())
-                         ON DUPLICATE KEY UPDATE collection_name = VALUES(collection_name), vector_config_id = VALUES(vector_config_id), dimension = VALUES(dimension), vector_json = VALUES(vector_json), content_hash = VALUES(content_hash), index_status = "indexed", status = "indexed", indexed_at = UTC_TIMESTAMP(), deleted_at = NULL',
-                        [$row['vector_id'], $alias, $dataset['kb_id'], $datasetId, $row['chunk_id'], $row['image_id'], $target['id'], count($row['vector']), json_encode($row['vector'], JSON_UNESCAPED_SLASHES), $row['input_hash']]
+                        'INSERT INTO rag_vector_records (vector_id, collection_name, kb_id, dataset_id, chunk_id, image_id, vector_config_id, modality, dimension, ' . implode(', ', array_keys($stored)) . ', content_hash, index_status, status, indexed_at)
+                         VALUES (?, ?, ?, ?, ?, ?, ?, "text", ?, ' . implode(', ', array_fill(0, count($stored), '?')) . ', ?, "indexed", "indexed", UTC_TIMESTAMP())
+                         ON DUPLICATE KEY UPDATE collection_name = VALUES(collection_name), vector_config_id = VALUES(vector_config_id), dimension = VALUES(dimension), ' . implode(', ', array_map(static fn (string $column): string => $column . ' = VALUES(' . $column . ')', array_keys($stored))) . ', content_hash = VALUES(content_hash), index_status = "indexed", status = "indexed", indexed_at = UTC_TIMESTAMP(), deleted_at = NULL',
+                        [$row['vector_id'], $alias, $dataset['kb_id'], $datasetId, $row['chunk_id'], $row['image_id'], $target['id'], count($row['vector']), ...array_values($stored), $row['input_hash']]
                     );
                 }
                 fclose($read);
@@ -315,6 +320,113 @@ final class RagIndexMaintenanceService
             }
             @unlink($spoolFile);
         }
+    }
+
+    /**
+     * Suggests a vector score threshold for the dataset's embedding model from its evaluation
+     * cases: raw vector scores of the expected chunks (relevant) versus the other top hits
+     * (irrelevant). The suggestion keeps $targetRecall of the relevant hits. With $apply it is
+     * written to the vector config (config_json.min_vector_score), so every dataset using that
+     * model shares it; a knowledge base's own retrieval_profile.min_vector_score still wins.
+     *
+     * @return array<string, mixed>
+     */
+    public function calibrate(int $datasetId, float $targetRecall = 0.95, bool $apply = false, int $minSamples = 10): array
+    {
+        $dataset = $this->dataset($datasetId);
+        $configService = $this->configs ?? new RagVectorConfigService();
+        $config = $configService->textConfig($dataset);
+        $collection = (string) ($config['collection_name'] ?? '') ?: $configService->collection((string) $dataset['dataset_id'], 'text');
+        $store = $configService->store($config);
+        $provider = new RagEmbeddingProviderService();
+        $embed = $this->embedQuery ?? static fn (string $query, array $cfg): array => $provider->embed('text', ['text' => $query, 'modality' => 'text', 'purpose' => 'query'], $cfg);
+        $targetRecall = max(0.5, min(1.0, $targetRecall));
+        $cases = App::db()->select('SELECT * FROM rag_eval_cases WHERE dataset_id = ? AND status = "active" ORDER BY id', [$datasetId]);
+        $relevant = [];
+        $irrelevant = [];
+        $missed = 0;
+        $stale = 0;
+        foreach ($cases as $case) {
+            $expected = json_decode((string) ($case['expected_chunk_ids'] ?? '[]'), true);
+            $expected = is_array($expected) ? array_values(array_map('strval', $expected)) : [];
+            if ($expected === []) {
+                continue;
+            }
+            $live = App::db()->select('SELECT chunk_id FROM rag_chunks WHERE chunk_id IN (' . implode(',', array_fill(0, count($expected), '?')) . ') AND enabled = 1 AND lifecycle_status = "active"', $expected);
+            if ($live === []) {
+                $stale++;
+                continue;
+            }
+            $hits = $store->search($collection, $embed((string) $case['query'], $config), 50, ['dataset_id' => (string) $dataset['dataset_id'], 'modality' => 'text']);
+            $best = [];
+            foreach ($hits as $hit) {
+                $chunkId = (string) ($hit['payload']['chunk_id'] ?? '');
+                if ($chunkId !== '' && !isset($best[$chunkId])) {
+                    $best[$chunkId] = (float) $hit['score'];
+                }
+            }
+            $found = false;
+            foreach (array_column($live, 'chunk_id') as $chunkId) {
+                if (isset($best[$chunkId])) {
+                    $relevant[] = $best[$chunkId];
+                    $found = true;
+                }
+            }
+            $missed += $found ? 0 : 1;
+            $rank = 0;
+            foreach ($best as $chunkId => $score) {
+                if (!in_array($chunkId, $expected, true) && $rank++ < 10) {
+                    $irrelevant[] = $score;
+                }
+            }
+        }
+        sort($relevant);
+        sort($irrelevant);
+        $current = RagVectorConfigService::minVectorScore($config);
+        $report = [
+            'dataset_id' => (string) $dataset['dataset_id'],
+            'vector_config_id' => $config['id'] ?? null,
+            'model' => (string) ($config['model_name'] ?? ''),
+            'cases' => count($cases),
+            'stale_cases' => $stale,
+            'cases_without_relevant_hit_in_top50' => $missed,
+            'relevant_scores' => $this->percentiles($relevant),
+            'irrelevant_scores' => $this->percentiles($irrelevant),
+            'target_recall' => $targetRecall,
+            'current_threshold' => $current ?? 0.35,
+            'suggested_threshold' => null,
+            'applied' => false,
+        ];
+        if (count($relevant) < $minSamples) {
+            $report['message'] = 'Need at least ' . $minSamples . ' relevant hits (about 30 active evaluation cases are recommended); nothing suggested.';
+            return $report;
+        }
+        $index = (int) floor((1.0 - $targetRecall) * count($relevant));
+        $suggested = floor($relevant[min($index, count($relevant) - 1)] * 100) / 100;
+        $report['suggested_threshold'] = $suggested;
+        $report['relevant_kept'] = round(count(array_filter($relevant, static fn (float $v): bool => $v >= $suggested)) / count($relevant), 4);
+        $report['irrelevant_filtered'] = $irrelevant === [] ? null : round(count(array_filter($irrelevant, static fn (float $v): bool => $v < $suggested)) / count($irrelevant), 4);
+        if ($apply) {
+            if (empty($config['id'])) {
+                throw new RuntimeException('The dataset has no vector config to store a threshold on');
+            }
+            $json = $config['config_json'] ?? null;
+            $settings = is_array($json) ? $json : (is_string($json) && $json !== '' ? (json_decode($json, true) ?: []) : []);
+            $settings['min_vector_score'] = $suggested;
+            App::db()->execute('UPDATE rag_vector_configs SET config_json = ? WHERE id = ?', [json_encode($settings, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), (int) $config['id']]);
+            (new AuditService())->write('rag.vector_config.calibrate', 'rag_vector_configs', (int) $config['id'], $report);
+            $report['applied'] = true;
+        }
+
+        return $report;
+    }
+
+    /** @param list<float> $sorted @return array<string, float|int|null> */
+    private function percentiles(array $sorted): array
+    {
+        $pick = static fn (float $q): ?float => $sorted === [] ? null : round($sorted[(int) min(count($sorted) - 1, floor($q * count($sorted)))], 4);
+
+        return ['count' => count($sorted), 'p10' => $pick(0.10), 'p50' => $pick(0.50), 'p90' => $pick(0.90)];
     }
 
     /** @param list<array<string, mixed>> $prepared */

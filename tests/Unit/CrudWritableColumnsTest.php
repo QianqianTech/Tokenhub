@@ -245,6 +245,11 @@ foreach (['KB_RETRIEVAL_KEYS', 'KB_FORM_KEYS'] as $constant) {
         $virtual['rag-knowledge-bases'] = [...($virtual['rag-knowledge-bases'] ?? []), ...$keys[1]];
     }
 }
+// Vector-config form keys folded into config_json by forms.js (vectorConfigPayload).
+if (preg_match('/const VECTOR_CONFIG_JSON_KEYS = \[([^\]]*)\]/', $formsJs, $m) === 1) {
+    preg_match_all('/"([a-z_]+)"/', $m[1], $keys);
+    $virtual['rag-vector-configs'] = $keys[1];
+}
 foreach ($resourceTables as $resource => $table) {
     $fields = array_diff([...$formFields($resource), ...($extra[$resource] ?? [])], $virtual[$resource] ?? []);
     assert_true($fields !== [], "The {$resource} form has fields.");

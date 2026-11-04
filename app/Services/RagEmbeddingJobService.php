@@ -111,11 +111,14 @@ final class RagEmbeddingJobService
         $collection = $contract['collection'] ?: $collection;
         foreach ($this->prepareChunkVectors($config, $dataset, $chunk, $modality, $precomputed) as $prepared) {
             ['vector_id' => $vectorId, 'vector' => $vector, 'input_hash' => $inputHash, 'payload' => $payload, 'lexical_text' => $lexicalText] = $prepared;
+            $stored = RagVectorCodec::storage($vector);
+            $storedColumns = implode(', ', array_keys($stored));
+            $storedUpdates = implode(', ', array_map(static fn (string $column): string => $column . ' = VALUES(' . $column . ')', array_keys($stored)));
             try {
                 App::db()->execute(
-                    'INSERT INTO rag_vector_records (vector_id, collection_name, kb_id, dataset_id, chunk_id, image_id, vector_config_id, modality, dimension, vector_json, content_hash, index_status, status, indexed_at)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "stale", "stale", NULL)
-                 ON DUPLICATE KEY UPDATE collection_name = VALUES(collection_name), kb_id = VALUES(kb_id), dataset_id = VALUES(dataset_id), chunk_id = VALUES(chunk_id), image_id = VALUES(image_id), vector_config_id = VALUES(vector_config_id), modality = VALUES(modality), dimension = VALUES(dimension), vector_json = VALUES(vector_json), content_hash = VALUES(content_hash), index_status = "stale", status = "stale", indexed_at = NULL, deleted_at = NULL',
+                    'INSERT INTO rag_vector_records (vector_id, collection_name, kb_id, dataset_id, chunk_id, image_id, vector_config_id, modality, dimension, ' . $storedColumns . ', content_hash, index_status, status, indexed_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ' . implode(', ', array_fill(0, count($stored), '?')) . ', ?, "stale", "stale", NULL)
+                 ON DUPLICATE KEY UPDATE collection_name = VALUES(collection_name), kb_id = VALUES(kb_id), dataset_id = VALUES(dataset_id), chunk_id = VALUES(chunk_id), image_id = VALUES(image_id), vector_config_id = VALUES(vector_config_id), modality = VALUES(modality), dimension = VALUES(dimension), ' . $storedUpdates . ', content_hash = VALUES(content_hash), index_status = "stale", status = "stale", indexed_at = NULL, deleted_at = NULL',
                     [
                         $vectorId,
                         $collection,
@@ -126,7 +129,7 @@ final class RagEmbeddingJobService
                         $config['id'] ?? null,
                         $modality,
                         count($vector),
-                        json_encode($vector, JSON_UNESCAPED_SLASHES),
+                        ...array_values($stored),
                         $inputHash,
                     ]
                 );
@@ -164,7 +167,7 @@ final class RagEmbeddingJobService
         $metadata = $this->sourceMetadata($chunk);
         $provider = $this->provider ?? new RagEmbeddingProviderService();
         $prepared = [];
-        foreach ($this->embeddingInputs($chunk, $modality) as $index => $input) {
+        foreach ($this->embeddingInputs($chunk, $modality, $config) as $index => $input) {
             $vectorId = $contract['vector_id'] . $input['suffix'];
             $inputHash = $this->inputHash($config, $input);
             $reused = $precomputed[$index] ?? $this->reusableVector($config, $inputHash);
@@ -240,10 +243,10 @@ final class RagEmbeddingJobService
             return null;
         }
         $row = App::db()->first(
-            'SELECT vector_json FROM rag_vector_records WHERE content_hash = ? AND vector_config_id = ? AND status = "indexed" AND vector_json IS NOT NULL LIMIT 1',
+            'SELECT ' . RagVectorCodec::selectColumns() . ' FROM rag_vector_records WHERE content_hash = ? AND vector_config_id = ? AND status = "indexed" AND ' . RagVectorCodec::presentCondition() . ' LIMIT 1',
             [$inputHash, (int) $config['id']]
         );
-        $vector = $row === null ? null : json_decode((string) $row['vector_json'], true);
+        $vector = $row === null ? null : RagVectorCodec::decode($row);
         if (!is_array($vector) || $vector === [] || count($vector) !== (int) ($config['dimension'] ?? count($vector))) {
             return null;
         }
@@ -343,7 +346,7 @@ final class RagEmbeddingJobService
             $owners = [];
             foreach ($groupJobs as $job) {
                 $chunk = [...$job, 'id' => (int) ($job['internal_chunk_id'] ?? 0), 'chunk_id' => (string) ($job['external_chunk_id'] ?? '')];
-                foreach ($this->embeddingInputs($chunk, 'text') as $index => $input) {
+                foreach ($this->embeddingInputs($chunk, 'text', $config) as $index => $input) {
                     if ($this->reusableVector($config, $this->inputHash($config, $input)) !== null) {
                         continue;
                     }
@@ -520,7 +523,101 @@ final class RagEmbeddingJobService
      * @param array<string, mixed> $chunk
      * @return list<array{suffix: string, text: string, lexical_text?: string, image_path: string, image_sha256: string, modality: string}>
      */
-    private function embeddingInputs(array $chunk, string $modality): array
+    private function embeddingInputs(array $chunk, string $modality, array $config = []): array
+    {
+        $inputs = $this->rawEmbeddingInputs($chunk, $modality);
+        $limit = (int) ($config['max_input_tokens'] ?? 0);
+        if ($modality !== 'text' && RagMultimodalEmbedding::isMultimodal([...$config, 'modality' => $config['modality'] ?? $modality])) {
+            return $inputs; // the image itself is embedded; its text is not split into parts
+        }
+
+        return $limit > 0 ? $this->fitInputs($inputs, $limit) : $inputs;
+    }
+
+    /**
+     * Inputs longer than the model's max_input_tokens are split on sentence boundaries into
+     * several vectors of the same chunk (suffix _p2, _p3 ...) instead of being truncated by
+     * the provider, so the tail of a long chunk stays searchable. The context line
+     * ("document > section") is repeated on every part.
+     *
+     * @param list<array<string, mixed>> $inputs
+     * @return list<array<string, mixed>>
+     */
+    private function fitInputs(array $inputs, int $limit): array
+    {
+        $budget = max(16, (int) floor($limit * 0.9));
+        $fitted = [];
+        foreach ($inputs as $input) {
+            $text = (string) $input['text'];
+            if (RagStructuredChunkerService::estimateTokens($text) <= $budget) {
+                $fitted[] = $input;
+                continue;
+            }
+            $header = '';
+            $body = $text;
+            $newline = strpos($text, "\n");
+            if ($newline !== false && $newline < 300 && str_contains(substr($text, 0, $newline), ' > ')) {
+                $header = substr($text, 0, $newline + 1);
+                $body = substr($text, $newline + 1);
+            }
+            $room = max(8, $budget - RagStructuredChunkerService::estimateTokens($header));
+            $parts = $this->splitToBudget($body, $room);
+            if (count($parts) > 20) {
+                App::logger()->warning('rag', 'rag embedding input split into more than 20 parts; the rest is not embedded', ['parts' => count($parts)]);
+                $parts = array_slice($parts, 0, 20);
+            }
+            foreach ($parts as $position => $part) {
+                $piece = $input;
+                $piece['suffix'] = $input['suffix'] . ($position === 0 ? '' : '_p' . ($position + 1));
+                $piece['text'] = $header . $part;
+                // Keyword index: the whole text once, on the first part.
+                $piece['lexical_text'] = $position === 0 ? (string) ($input['lexical_text'] ?? $text) : '';
+                $fitted[] = $piece;
+            }
+        }
+
+        return $fitted;
+    }
+
+    /** @return list<string> */
+    private function splitToBudget(string $text, int $budget): array
+    {
+        $sentences = preg_split('/(?<=[。！？!?；;])|(?<=[.])\s+|\n+/u', $text, -1, PREG_SPLIT_NO_EMPTY) ?: [$text];
+        $parts = [];
+        $current = '';
+        foreach ($sentences as $sentence) {
+            // A single sentence over budget is cut by characters.
+            while (RagStructuredChunkerService::estimateTokens($sentence) > $budget) {
+                $length = max(1, mb_strlen($sentence));
+                $take = max(1, (int) floor($length * $budget / RagStructuredChunkerService::estimateTokens($sentence)));
+                $head = mb_substr($sentence, 0, $take);
+                $sentence = mb_substr($sentence, $take);
+                if (trim($current) !== '') {
+                    $parts[] = trim($current);
+                    $current = '';
+                }
+                $parts[] = trim($head);
+            }
+            $joiner = preg_match('/\p{Han}$/u', $current) === 1 || $current === '' ? '' : ' ';
+            if ($current !== '' && RagStructuredChunkerService::estimateTokens($current . $joiner . $sentence) > $budget) {
+                $parts[] = trim($current);
+                $current = $sentence;
+                continue;
+            }
+            $current .= $joiner . $sentence;
+        }
+        if (trim($current) !== '') {
+            $parts[] = trim($current);
+        }
+
+        return array_values(array_filter($parts, static fn (string $part): bool => $part !== ''));
+    }
+
+    /**
+     * @param array<string, mixed> $chunk
+     * @return list<array{suffix: string, text: string, lexical_text?: string, image_path: string, image_sha256: string, modality: string}>
+     */
+    private function rawEmbeddingInputs(array $chunk, string $modality): array
     {
         $metadata = $this->sourceMetadata($chunk);
         $content = (string) ($chunk['content'] ?? '');

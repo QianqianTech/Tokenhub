@@ -13,10 +13,12 @@ final class RagEmbeddingProviderService
      * @param null|callable(string, array<string, mixed>, array<string, mixed>): list<float> $embedder
      * @param null|callable(array<string, mixed>, string, array<string, mixed>): array<string, mixed> $providerRequester
      */
+    /** @param list<string>|null $imageRoots directories stored images may come from (tests); null = RAG upload storage */
     public function __construct(
         private readonly mixed $embedder = null,
         private readonly mixed $providerRequester = null,
         private readonly ?RagEmbeddingMeter $meter = null,
+        private readonly ?array $imageRoots = null,
     )
     {
     }
@@ -38,6 +40,9 @@ final class RagEmbeddingProviderService
         }
 
         if (!empty($config['provider_id']) && !empty($config['model_id'])) {
+            if ($modality !== 'text' && RagMultimodalEmbedding::isMultimodal([...$config, 'modality' => $config['modality'] ?? $modality])) {
+                return $this->multimodalEmbedding($modality, $input, $config);
+            }
             return $this->providerEmbedding($input, $config);
         }
 
@@ -122,15 +127,15 @@ final class RagEmbeddingProviderService
      * @param array<string, mixed> $payload
      * @return array<string, mixed>
      */
-    private function send(array $route, array $payload): array
+    private function send(array $route, array $payload, string $endpoint = '/v1/embeddings'): array
     {
         $attemptLimit = max(1, (int) ($route['retry_count'] ?? 1));
         $response = ['ok' => false, 'error_code' => 'PROVIDER_ERROR'];
         $started = microtime(true);
         for ($attempt = 1; $attempt <= $attemptLimit; $attempt++) {
             $response = is_callable($this->providerRequester)
-                ? ($this->providerRequester)($route, '/v1/embeddings', $payload)
-                : (new ProviderHttpClient())->request($route, '/v1/embeddings', $payload);
+                ? ($this->providerRequester)($route, $endpoint, $payload)
+                : (new ProviderHttpClient())->request($route, $endpoint, $payload);
             if (($response['ok'] ?? false) === true || ($response['error_code'] ?? null) === 'PROVIDER_REJECTED') {
                 break;
             }
@@ -187,6 +192,45 @@ final class RagEmbeddingProviderService
         $response = $this->send($route, $payload);
 
         return $this->vector($response['json']['data'][0]['embedding'] ?? null, $config);
+    }
+
+    /**
+     * Image / multimodal vector from a multimodal embedding model (V-10). Indexing sends the
+     * stored image (input.image_path) and, for "multimodal", the annotation text as well;
+     * queries send the query image (input.image) and/or the query text. Without any image the
+     * text alone is embedded with the same model, which is how text finds images.
+     *
+     * @param array<string, mixed> $input
+     * @param array<string, mixed> $config
+     * @return list<float>
+     */
+    private function multimodalEmbedding(string $modality, array $input, array $config): array
+    {
+        $purpose = (string) ($input['purpose'] ?? 'document');
+        $image = is_string($input['image'] ?? null) && $input['image'] !== '' ? (string) $input['image'] : null;
+        if ($image === null && !empty($input['image_path'])) {
+            $image = RagMultimodalEmbedding::imageDataUri((string) $input['image_path'], (int) ($config['image_max_pixels'] ?? 0) ?: 1048576, $this->imageRoots);
+            if ($image === null) {
+                App::logger()->warning('rag', 'rag image not readable for multimodal embedding; using its text', ['image_path' => $input['image_path']]);
+            }
+        }
+        $text = trim((string) ($input['text'] ?? ''));
+        $parts = [];
+        if ($image !== null) {
+            $parts[] = ['type' => 'image', 'value' => $image];
+        }
+        if ($text !== '' && ($image === null || $modality === 'multimodal')) {
+            $parts[] = ['type' => 'text', 'value' => $this->withInstruction($text, $purpose, $config)];
+        }
+        if ($parts === []) {
+            throw new RuntimeException('RAG_EMBEDDING_INVALID_INPUT');
+        }
+        $route = $this->route($config);
+        $multimodal = new RagMultimodalEmbedding();
+        ['endpoint' => $endpoint, 'payload' => $payload] = $multimodal->request($route, $config, $parts, $purpose);
+        $response = $this->send($route, $payload, $endpoint);
+
+        return $this->vector(RagMultimodalEmbedding::combine($multimodal->vectors($config, $response['json'] ?? null)), $config);
     }
 
     /**

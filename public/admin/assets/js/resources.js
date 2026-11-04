@@ -308,13 +308,15 @@ const ragResourceDefinitions = {
       // Stored in chunking_profile.redaction / retrieval_profile (see forms.js knowledgeBasePayload).
       { name: "redaction_mode", label: "入库脱敏", type: "select", optional: true, options: [["", "使用系统默认（RAG_REDACTION_TYPES）"], ["off", "关闭脱敏"], ["custom", "按勾选的类型脱敏"]] },
       { name: "redaction_types", label: "脱敏类型（选择“按勾选的类型脱敏”时生效）", type: "multiselect", optional: true, options: [["phone", "手机号"], ["email", "邮箱"], ["id_card", "身份证号"], ["bank_card", "银行卡号"], ["ipv4", "IPv4 地址"]] },
-      { name: "min_vector_score", label: "向量相似度下限（0–1，留空用默认 0.35）", type: "number", optional: true },
+      { name: "min_vector_score", label: "向量相似度下限（0–1，留空用向量配置里的值，默认 0.35）", type: "number", optional: true },
       { name: "min_lexical_score", label: "关键词得分下限（0–1，留空用默认 0.08）", type: "number", optional: true },
       { name: "min_hybrid_confidence", label: "混合检索置信度下限（0–1，留空用默认 0.20）", type: "number", optional: true },
       { name: "exact_match_discount", label: "精确匹配折扣（0–0.25，留空用默认 0.10）", type: "number", optional: true },
       { name: "rerank_model_id", label: "重排模型（可选）", type: "select", coerce: "number", reference: "models", optional: true },
       { name: "rerank_top_n", label: "重排候选数（可选）", type: "number", optional: true },
-      { name: "rerank_min_score", label: "重排得分下限（可选）", type: "number", optional: true }
+      { name: "rerank_min_score", label: "重排得分下限（可选；填写后由重排模型把关，向量阈值只做宽松预筛）", type: "number", optional: true },
+      { name: "query_rewrite_model_id", label: "多轮查询改写模型（可选；用对话上下文补全“那个、它”等指代后再检索）", type: "select", coerce: "number", reference: "models", optional: true },
+      { name: "query_rewrite_mode", label: "查询改写时机", type: "select", optional: true, options: [["auto", "自动：只改写依赖上文的追问"], ["always", "每次有对话历史都改写"]] }
     ]
   },
   "rag-knowledge-base-bindings": { label: "知识库授权（原始表，只读；请在“知识集权限”中修改）", group: "RAG知识库", readOnly: true, columns: ["id", "kb_id", "subject_type", "subject_id", "permission", "is_default", "include_descendants", "expires_at", "created_at"] },
@@ -345,6 +347,8 @@ const ragResourceDefinitions = {
       { name: "model_id", label: "向量模型", type: "select", coerce: "number", reference: "models", optional: true },
       { name: "model_name", label: "本地模型名称", optional: true },
       { name: "dimension", label: "向量维度", type: "number" },
+      { name: "embedding_api", label: "图片向量接口（图片/多模态配置）", type: "select", optional: true, options: [["text", "不送图片：用图片描述文字做向量"], ["openai_mixed", "Jina 兼容 /v1/embeddings（jina-clip-v2 等）"], ["ark_multimodal", "火山方舟多模态向量（doubao-embedding-vision）"], ["dashscope_multimodal", "阿里云百炼多模态向量"]] },
+      { name: "min_vector_score", label: "向量最低分（留空用默认；可用 rag-index.php calibrate 校准）", type: "number", optional: true },
       { name: "distance_metric", label: "距离度量", type: "select", options: [["cosine", "余弦相似度"], ["dot", "点积"], ["euclidean", "欧氏距离"]] },
       { name: "vector_store", label: "向量库", type: "select", options: [["qdrant", "Qdrant"], ["mysql_fallback", "MySQL 回退（仅适合少量数据）"]] },
       { name: "collection_name", label: "集合名称" },

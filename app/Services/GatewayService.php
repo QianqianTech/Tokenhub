@@ -500,6 +500,7 @@ final class GatewayService
                 'sources' => $ragResult['sources'] ?? [],
                 'fallback_used' => (bool) ($ragResult['fallback_used'] ?? false),
                 'vector_status' => (string) ($ragResult['vector_status'] ?? 'none'),
+                'rewritten_query' => $ragResult['rewritten_query'] ?? null,
                 'context_truncated_sources' => (int) ($ragResult['truncated_sources'] ?? 0),
             ];
         }

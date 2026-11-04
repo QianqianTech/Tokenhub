@@ -130,6 +130,9 @@ final class QdrantVectorStore implements RagVectorStoreInterface
      */
     public function upsertLexical(string $collection, string $vectorId, string $text, array $payload): void
     {
+        if (trim($text) === '') {
+            return;
+        }
         $sparse = (new RagSparseEncoder())->encodeDocument($text);
         if ($sparse['indices'] === []) {
             return;
@@ -158,6 +161,9 @@ final class QdrantVectorStore implements RagVectorStoreInterface
         $target = $collection . self::LEXICAL_SUFFIX;
         $body = [];
         foreach ($points as $point) {
+            if (trim($point['text']) === '') {
+                continue;
+            }
             $sparse = $encoder->encodeDocument($point['text']);
             if ($sparse['indices'] !== []) {
                 $body[] = ['id' => $contract->pointId($point['vector_id']), 'vector' => ['lexical' => $sparse], 'payload' => $point['payload']];

@@ -11,6 +11,9 @@ declare(strict_types=1);
  *   php bin/rag-index.php reindex --dataset=ds_x [--config=<vector config id>] [--skip-gate]
  *                                 [--max-recall-drop=2] [--max-mrr-drop=0.02] [--dry-run]
  *   php bin/rag-index.php remap-eval [--dataset=ds_x]    re-point evaluation cases by their anchors
+ *   php bin/rag-index.php calibrate --dataset=ds_x [--target-recall=0.95] [--apply]
+ *                                 suggest (and with --apply store) the embedding model's vector threshold
+ *   php bin/rag-index.php compact-vectors [--batch=500]   rewrite stored vectors as compact float32
  *
  * reindex builds a new Qdrant collection next to the live one and swaps the alias only after
  * the evaluation gate passes; --config switches the dataset to another embedding model.
@@ -54,7 +57,9 @@ try {
             isset($options['dry-run']),
         ),
         'remap-eval' => (new \TokenHub\Services\RagEvaluationAnchorService())->remap(isset($options['dataset']) ? $datasetPk((string) $options['dataset']) : null),
-        default => throw new InvalidArgumentException('Usage: php bin/rag-index.php health|reconcile|backfill-lexical|reindex|remap-eval [options]'),
+        'calibrate' => $service->calibrate($datasetPk((string) ($options['dataset'] ?? '')), (float) ($options['target-recall'] ?? 0.95), isset($options['apply'])),
+        'compact-vectors' => \TokenHub\Services\RagVectorCodec::compactStoredVectors((int) ($options['batch'] ?? 500)),
+        default => throw new InvalidArgumentException('Usage: php bin/rag-index.php health|reconcile|backfill-lexical|reindex|remap-eval|calibrate|compact-vectors [options]'),
     };
     fwrite(STDOUT, json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) . PHP_EOL);
     exit($command === 'reindex' && ($result['gate']['passed'] ?? true) === false ? 2 : 0);

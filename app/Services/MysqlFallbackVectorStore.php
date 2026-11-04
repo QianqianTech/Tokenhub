@@ -10,9 +10,10 @@ final class MysqlFallbackVectorStore implements RagVectorStoreInterface
 {
     public function upsert(string $collection, string $vectorId, array $vector, array $payload): void
     {
+        $stored = RagVectorCodec::storage($vector);
         App::db()->execute(
-            'UPDATE rag_vector_records SET vector_json = ?, index_status = "indexed", status = "indexed", indexed_at = UTC_TIMESTAMP(), deleted_at = NULL WHERE vector_id = ?',
-            [json_encode(array_values($vector), JSON_UNESCAPED_SLASHES), $vectorId]
+            'UPDATE rag_vector_records SET ' . implode(', ', array_map(static fn (string $column): string => $column . ' = ?', array_keys($stored))) . ', index_status = "indexed", status = "indexed", indexed_at = UTC_TIMESTAMP(), deleted_at = NULL WHERE vector_id = ?',
+            [...array_values($stored), $vectorId]
         );
     }
 
@@ -34,7 +35,7 @@ final class MysqlFallbackVectorStore implements RagVectorStoreInterface
         }
 
         $rows = App::db()->select(
-            'SELECT v.vector_id, v.vector_json, v.modality, v.dataset_id, v.chunk_id, c.chunk_id AS external_chunk_id, c.title, c.content, c.question, c.answer, c.image_asset_id, c.metadata AS chunk_metadata, d.dataset_id AS external_dataset_id, d.name AS dataset_name, k.kb_id AS external_kb_id,
+            'SELECT v.vector_id, ' . RagVectorCodec::selectColumns('v') . ', v.modality, v.dataset_id, v.chunk_id, c.chunk_id AS external_chunk_id, c.title, c.content, c.question, c.answer, c.image_asset_id, c.metadata AS chunk_metadata, d.dataset_id AS external_dataset_id, d.name AS dataset_name, k.kb_id AS external_kb_id,
                     i.image_id, i.thumbnail_path, i.purpose, i.short_description, i.detailed_description, i.ocr_text, i.labels, i.warnings, i.metadata AS image_metadata
              FROM rag_vector_records v
              JOIN rag_chunks c ON c.id = v.chunk_id
@@ -47,11 +48,11 @@ final class MysqlFallbackVectorStore implements RagVectorStoreInterface
 
         $hits = [];
         foreach ($rows as $row) {
-            $candidate = json_decode((string) ($row['vector_json'] ?? '[]'), true);
-            if (!is_array($candidate)) {
+            $candidate = RagVectorCodec::decode($row);
+            if ($candidate === null) {
                 continue;
             }
-            $score = $this->cosine($vector, array_map('floatval', $candidate));
+            $score = $this->cosine($vector, $candidate);
             $hits[] = [
                 'vector_id' => (string) $row['vector_id'],
                 'score' => $score,

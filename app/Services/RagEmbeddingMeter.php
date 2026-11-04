@@ -32,6 +32,7 @@ final class RagEmbeddingMeter
     public function record(array $route, array $payload, array $response, float $started, string $capability = 'embedding'): void
     {
         $rerank = $capability === 'rerank';
+        $rewrite = $capability === 'text_generation'; // multi-turn query rewrite (RagQueryRewriteService)
         $apiKey = App::context()->apiKey();
         if ($apiKey === null || (int) ($apiKey['id'] ?? 0) <= 0) {
             return;
@@ -39,10 +40,10 @@ final class RagEmbeddingMeter
 
         $ok = ($response['ok'] ?? false) === true;
         $usage = is_array($response['json'] ?? null)
-            ? (new UsageNormalizer())->fromResponse($rerank ? UsageNormalizer::KIND_RERANK : UsageNormalizer::KIND_EMBEDDING, $response['json'])
+            ? (new UsageNormalizer())->fromResponse($rerank ? UsageNormalizer::KIND_RERANK : ($rewrite ? ((string) ($route['protocol'] ?? 'openai') === 'anthropic' ? UsageNormalizer::KIND_ANTHROPIC : UsageNormalizer::KIND_CHAT) : UsageNormalizer::KIND_EMBEDDING), $response['json'])
             : null;
         if ($usage === null) {
-            $input = $ok ? MediaPayload::estimate(['input' => $rerank ? implode("\n", array_map('strval', [$payload['query'] ?? '', ...($payload['documents'] ?? [])])) : ($payload['input'] ?? '')])['tokens'] : 0;
+            $input = $ok ? MediaPayload::estimate(['input' => $rerank ? implode("\n", array_map('strval', [$payload['query'] ?? '', ...($payload['documents'] ?? [])])) : ($rewrite ? (string) json_encode([$payload['system'] ?? '', $payload['messages'] ?? []], JSON_UNESCAPED_UNICODE) : ($payload['input'] ?? ''))])['tokens'] : 0;
             $usage = ['input_tokens' => $input, 'output_tokens' => 0, 'total_tokens' => $input, 'usage_source' => $ok ? 'estimated' : 'none'];
         }
 
@@ -50,7 +51,7 @@ final class RagEmbeddingMeter
         $record = [
             // Distinct from the caller's own record (a chat request with `rag`
             // has its own usage row under the plain request id).
-            'request_id' => substr(App::context()->requestId(), 0, 64) . ($rerank ? '-rr' : '-emb') . self::$sequence,
+            'request_id' => substr(App::context()->requestId(), 0, 64) . ($rerank ? '-rr' : ($rewrite ? '-qr' : '-emb')) . self::$sequence,
             'trace_id' => App::context()->traceId(),
             'user_id' => $apiKey['user_id'] ?? null,
             'department_id' => $apiKey['department_id'] ?? null,
@@ -59,8 +60,8 @@ final class RagEmbeddingMeter
             'model_id' => $route['model_id'] ?? $route['id'] ?? null,
             'model_name' => $route['name'] ?? null,
             'protocol' => (string) ($route['protocol'] ?? 'openai'),
-            'endpoint' => $rerank ? 'rag:rerank' : self::ENDPOINT,
-            'capability' => $rerank ? 'rerank' : 'embedding',
+            'endpoint' => $rerank ? 'rag:rerank' : ($rewrite ? 'rag:query-rewrite' : self::ENDPOINT),
+            'capability' => $rerank ? 'rerank' : ($rewrite ? 'text_generation' : 'embedding'),
             'status' => $ok ? 'success' : 'failed',
             'http_status' => (int) ($response['status'] ?? 0),
             'error_code' => $ok ? null : (string) ($response['error_code'] ?? 'PROVIDER_ERROR'),

@@ -1,6 +1,6 @@
 # TokenHub 部署方式
 
-TokenHub 1.0 提供两种交付方式，两者使用同一套安装逻辑（`bin/install.php`、`bin/doctor.php`、`bin/migrate.php`）。
+TokenHub 提供两种交付方式，两者使用同一套安装逻辑（`bin/install.php`、`bin/doctor.php`、`bin/migrate.php`）。
 
 **还没有下载源码？** 使用根目录的独立入口 [install.sh](../../install.sh)（Linux/macOS）或 [install.ps1](../../install.ps1)（Windows）。它会从 GitHub 获取指定分支、tag 或提交，再从源码构建生产 Docker 镜像。下载命令、前置环境、续装和升级步骤见 [README 快速安装](../../README.md#快速安装)。需要 Git 和已启动的 Docker；`--download-only` / `-DownloadOnly` 仅下载源码。
 
@@ -17,7 +17,7 @@ TokenHub 1.0 提供两种交付方式，两者使用同一套安装逻辑（`bin
 
 ## 从 Docker Hub 部署
 
-这批预构建镜像统一使用标签 `1.0.0-bcc60e571698-arm64-cache`，适用于 **`linux/arm64`**。安装脚本直接拉取镜像并初始化服务，省去本地构建。[Docker Hub 镜像](https://hub.docker.com/u/leofan2022) · [镜像摘要清单](docker-hub-1.0.0-bcc60e571698-arm64-cache.tsv)
+这批预构建镜像统一使用标签 `1.0.1`，适用于 **`linux/arm64`**。安装脚本直接拉取镜像并初始化服务，省去本地构建。[Docker Hub 镜像](https://hub.docker.com/u/leofan2022) · [v1.0.1 发布说明与镜像摘要](https://github.com/QianqianTech/Tokenhub/releases/tag/v1.0.1) · [1.0.0 镜像摘要](docker-hub-1.0.0-bcc60e571698-arm64-cache.tsv)
 
 在 ARM64 Linux 或使用 Docker Desktop 的 Apple 芯片 Mac 上，先确认 Docker 服务端的系统和架构：
 
@@ -31,12 +31,11 @@ Docker 服务端应显示 `linux/arm64`，Compose 需要 2.20 或以上。AMD64 
 首次安装时，从 GitHub 取出与镜像配套的部署文件。下面的示例仅开放本机访问：
 
 ```bash
-git clone https://github.com/QianqianTech/Tokenhub.git tokenhub &&
+git clone --branch v1.0.1 --depth 1 https://github.com/QianqianTech/Tokenhub.git tokenhub &&
 cd tokenhub &&
-git checkout --detach bcc60e571698c103a9ef7590d30720938b2d682d &&
 bash deploy/docker/install.sh \
   --image-prefix docker.io/leofan2022/ \
-  --tag 1.0.0-bcc60e571698-arm64-cache \
+  --tag 1.0.1 \
   --site http://localhost --http-port 8080 --https-port 8443 \
   --bind 127.0.0.1 --yes
 ```

@@ -75,6 +75,10 @@ final class RagVectorConfigService
             throw new RuntimeException('RAG_VECTOR_CONFIG_INVALID');
         }
 
+        $api = self::prefix($effective['config_json'] ?? null, 'embedding_api') ?: 'text';
+        if (!in_array($api, RagMultimodalEmbedding::APIS, true) || ($api !== 'text' && (string) ($effective['modality'] ?? 'text') === 'text')) {
+            abort_json('RAG_VECTOR_CONFIG_INVALID', 'embedding_api must be one of ' . implode(', ', RagMultimodalEmbedding::APIS) . ' and a multimodal API needs an image or multimodal config', 422);
+        }
         $this->assertCollectionNotShared($effective, $id);
         if ($existing !== null) {
             $this->assertNotInUse($existing, $effective);
@@ -276,8 +280,10 @@ final class RagVectorConfigService
                 $changed[] = $field;
             }
         }
-        if (self::prefix($existing['config_json'] ?? null, 'document_prefix') !== self::prefix($effective['config_json'] ?? null, 'document_prefix')) {
-            $changed[] = 'document_prefix';
+        foreach (['document_prefix', 'embedding_api'] as $key) {
+            if (self::prefix($existing['config_json'] ?? null, $key) !== self::prefix($effective['config_json'] ?? null, $key)) {
+                $changed[] = $key;
+            }
         }
         if ((int) ($existing['enabled'] ?? 1) === 1 && array_key_exists('enabled', $effective) && (int) $effective['enabled'] === 0) {
             $changed[] = 'enabled';
@@ -353,6 +359,26 @@ final class RagVectorConfigService
         }
 
         return App::db()->first('SELECT 1 AS hit FROM rag_vector_records WHERE dataset_id = ? AND vector_config_id = ? AND status = "indexed" LIMIT 1', [$datasetId, $configId]) !== null;
+    }
+
+    /**
+     * Vector score threshold of an embedding model (config_json.min_vector_score), or null
+     * when the config does not set one. Set it with `php bin/rag-index.php calibrate`.
+     *
+     * @param array<string, mixed>|null $config
+     */
+    public static function minVectorScore(?array $config): ?float
+    {
+        $json = $config['config_json'] ?? null;
+        $settings = is_array($json) ? $json : (is_string($json) && $json !== '' ? (json_decode($json, true) ?: []) : []);
+        $value = $settings['min_vector_score'] ?? null;
+        if (is_numeric($value) && is_finite((float) $value)) {
+            return max(0.0, min(1.0, (float) $value));
+        }
+
+        // Cross-modal (text-to-image) similarities of CLIP-style models are much lower than
+        // text-to-text ones; 0.35 would drop most relevant images.
+        return RagMultimodalEmbedding::isMultimodal($config) ? 0.20 : null;
     }
 
     public static function prefix(mixed $configJson, string $key): string
