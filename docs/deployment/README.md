@@ -9,11 +9,47 @@ TokenHub 1.0 提供两种交付方式，两者使用同一套安装逻辑（`bin
 | 适用系统 | Linux（Ubuntu、Debian、CentOS Stream、Rocky、AlmaLinux、麒麟、统信等能运行 Docker 的系统）、Windows（Docker Desktop + WSL 2）、macOS | Ubuntu 22.04/24.04、Debian 12、RHEL/CentOS Stream/Rocky/AlmaLinux 8 和 9 |
 | 入口 | `deploy/docker/install.sh` / `install.ps1` | `sudo deploy/linux/install.sh` |
 | 依赖 | 只需要 Docker | 由脚本安装 PHP 8.2+、Caddy、MySQL、Redis、Qdrant 和 Python |
-| 镜像来源 | 离线包、镜像仓库（规划中）、源码构建 | — |
+| 镜像来源 | [Docker Hub 预构建镜像](#从-docker-hub-部署)、离线包、源码构建 | — |
 | 文档 | [docker.md](docker.md)、[deploy/docker/README.md](../../deploy/docker/README.md) | [linux-source.md](linux-source.md) |
 
 - Windows 不支持源码安装，因为 PHP-FPM 没有 Windows 版本，Redis 扩展也不完整。Windows 请使用 Docker Desktop。
 - CentOS 7 已停止维护，安装脚本会拒绝执行，请改用 Rocky/AlmaLinux 8 以上版本或 Docker 部署。
+
+## 从 Docker Hub 部署
+
+这批预构建镜像统一使用标签 `1.0.0-bcc60e571698-arm64-cache`，适用于 **`linux/arm64`**。安装脚本直接拉取镜像并初始化服务，省去本地构建。[Docker Hub 镜像](https://hub.docker.com/u/leofan2022) · [镜像摘要清单](docker-hub-1.0.0-bcc60e571698-arm64-cache.tsv)
+
+在 ARM64 Linux 或使用 Docker Desktop 的 Apple 芯片 Mac 上，先确认 Docker 服务端的系统和架构：
+
+```sh
+docker version --format '{{.Server.Os}}/{{.Server.Arch}}'
+docker compose version
+```
+
+Docker 服务端应显示 `linux/arm64`，Compose 需要 2.20 或以上。AMD64 主机可使用[源码构建](../../README.md#快速安装)。首次部署需能访问 GitHub 和 Docker Hub。Compose 还会拉取 MySQL、Redis 和 Qdrant 镜像。
+
+首次安装时，从 GitHub 取出与镜像配套的部署文件。下面的示例仅开放本机访问：
+
+```bash
+git clone https://github.com/QianqianTech/Tokenhub.git tokenhub &&
+cd tokenhub &&
+git checkout --detach bcc60e571698c103a9ef7590d30720938b2d682d &&
+bash deploy/docker/install.sh \
+  --image-prefix docker.io/leofan2022/ \
+  --tag 1.0.0-bcc60e571698-arm64-cache \
+  --site http://localhost --http-port 8080 --https-port 8443 \
+  --bind 127.0.0.1 --yes
+```
+
+部署到公网服务器时，将示例中的站点、端口及绑定参数替换为 `--site tokenhub.example.com --yes`，并使用自己的域名。域名需解析到服务器，且 80 和 443 端口需能从公网访问。
+
+安装完成后用终端显示的账号和初始密码登录 `http://localhost:8080/admin/`，然后修改密码。可以用以下命令验收部署：
+
+```bash
+bash deploy/docker/verify.sh
+```
+
+本次发布包含 `tokenhub-php`、`tokenhub-caddy`、`tokenhub-rag-worker`、`tokenhub-realtime-gateway` 和 `tokenhub-worker-autoscaler`。自动扩缩容按需启用，具体操作见 [Docker 运维说明](../../deploy/docker/README.md#可选按队列长度自动扩缩-worker)。首次安装会在 `.env` 中记录镜像仓库及标签。已使用同一镜像仓库的部署可按[升级流程](../../deploy/docker/README.md#升级备份与恢复)更新标签。
 
 ## 版本基线
 

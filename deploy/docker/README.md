@@ -2,7 +2,7 @@
 
 这个目录可以单独交付给客户，包含生产 Compose 文件和安装、升级、备份、恢复脚本。适用于 Linux、macOS 和 Windows（Docker Desktop）。
 
-从 GitHub 在线安装时，请先使用[根目录 README 中的下载入口](../../README.md#快速安装)。根目录的 `install.sh` / `install.ps1` 负责下载完整源码并默认启用源码构建；本目录的同名脚本负责实际部署，不能单独下载后运行。
+从 GitHub 在线安装时，ARM64 用户可按 [Docker Hub 部署步骤](../../docs/deployment/README.md#从-docker-hub-部署)直接拉取预构建镜像。源码构建使用[根目录 README 中的下载入口](../../README.md#快速安装)，该入口会下载完整源码并启用源码构建。本目录的同名脚本需要配套的部署文件。
 
 ## 环境要求
 
@@ -13,17 +13,19 @@
 
 ## 首次安装
 
+下面是使用完整源码树构建镜像时的站点参数示例。使用 Docker Hub 或离线包时，按下表选择相应参数。
+
 ```sh
 # Linux / macOS
-./install.sh --site tokenhub.example.com          # 域名，自动申请 HTTPS 证书
-./install.sh --site https://10.0.0.8              # IP 访问，使用 HTTPS（Caddy 内部 CA 签发）
-./install.sh --site 10.0.0.8 --http-port 8080     # IP 访问，使用纯 HTTP（仅限可信内网）
-./install.sh --site "tokenhub.example.com, https://10.0.0.8"   # 域名和 IP 同时可用
+./install.sh --build --site tokenhub.example.com          # 域名，自动申请 HTTPS 证书
+./install.sh --build --site https://10.0.0.8              # IP 访问，使用 HTTPS（Caddy 内部 CA 签发）
+./install.sh --build --site 10.0.0.8 --http-port 8080      # IP 访问，使用纯 HTTP（仅限可信内网）
+./install.sh --build --site "tokenhub.example.com, https://10.0.0.8"   # 域名和 IP 同时可用
 ```
 
 ```powershell
 # Windows
-powershell -ExecutionPolicy Bypass -File .\install.ps1 -Site tokenhub.example.com
+powershell -ExecutionPolicy Bypass -File .\install.ps1 -Build -Site tokenhub.example.com
 ```
 
 镜像来源有三种，每次安装选其一：
@@ -31,7 +33,7 @@ powershell -ExecutionPolicy Bypass -File .\install.ps1 -Site tokenhub.example.co
 | 来源 | 参数 |
 | --- | --- |
 | 离线包 | 先在包根目录执行 `load-images.sh` 或 `load-images.ps1`，然后直接运行 `install.sh` |
-| 镜像仓库（规划中） | `--image-prefix registry.example.com/tokenhub/ --tag 1.0.0` |
+| [Docker Hub 预构建镜像](../../docs/deployment/README.md#从-docker-hub-部署)（`linux/arm64`） | `--image-prefix docker.io/leofan2022/ --tag 1.0.0-bcc60e571698-arm64-cache`。PowerShell 使用 `-ImagePrefix` 和 `-Tag` |
 | 源码构建 | 在完整源码树中执行 `deploy/docker/install.sh --build` |
 
 安装脚本依次执行以下步骤：

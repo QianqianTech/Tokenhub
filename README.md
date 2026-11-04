@@ -42,9 +42,11 @@ flowchart LR
     workers --> qdrant
 ```
 
-Docker 安装会构建应用镜像并启动 Caddy、PHP-FPM、MySQL、Redis、Qdrant、队列 worker、调度器、RAG worker 和 realtime-gateway。数据保存在 Docker 命名卷中，生产配置位于 `deploy/docker/.env`。主机无需另外安装 PHP、MySQL、Python 或 Go。
+Docker 安装会获取应用镜像并启动 Caddy、PHP-FPM、MySQL、Redis、Qdrant、队列 worker、调度器、RAG worker 和 realtime-gateway。数据保存在 Docker 命名卷中，生产配置位于 `deploy/docker/.env`。主机无需另外安装 PHP、MySQL、Python 或 Go。
 
 ## 快速安装
+
+**ARM64 用户可直接拉取 Docker Hub 镜像。** 当前标签为 `1.0.0-bcc60e571698-arm64-cache`，适用于 `linux/arm64`。完整命令、镜像摘要及验收步骤见 [从 Docker Hub 部署](docs/deployment/README.md#从-docker-hub-部署)。下方是从源码构建的安装方式。
 
 ### 1. 准备环境
 
