@@ -6,6 +6,9 @@ TokenHub 的版本变更记录。格式参考 [Keep a Changelog](https://keepach
 
 ## [Unreleased]
 
+- 增加可独立下载的 GitHub 安装入口 `install.sh` / `install.ps1`，支持环境预检、指定源码版本、只下载模式、独立提交镜像标签及已有目录保护。
+- 完善项目首页：功能介绍、平台要求、Linux/macOS/Windows 安装、首次配置、API 调用、升级备份和常见问题。
+
 ## [1.0.0] - 2026-10-31
 
 第一个正式版本。

@@ -2,6 +2,8 @@
 
 这个目录可以单独交付给客户，包含生产 Compose 文件和安装、升级、备份、恢复脚本。适用于 Linux、macOS 和 Windows（Docker Desktop）。
 
+从 GitHub 在线安装时，请先使用[根目录 README 中的下载入口](../../README.md#快速安装)。根目录的 `install.sh` / `install.ps1` 负责下载完整源码并默认启用源码构建；本目录的同名脚本负责实际部署，不能单独下载后运行。
+
 ## 环境要求
 
 - Docker Engine 24 以上（Linux），或 Docker Desktop（Windows 需使用 WSL 2 后端，也可用于 macOS）。
