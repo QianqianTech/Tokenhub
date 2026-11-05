@@ -4,7 +4,7 @@
 
 TokenHub 将不同供应商的模型接入统一网关，集中管理 API Key、用户与部门、调用额度、成本、知识库和审计记录。业务系统使用 TokenHub 发放的 Key 调用模型，无需各自保存厂商密钥；管理员可以在一个后台查看模型状态、分配资源、追踪用量并处理告警。
 
-[Docker Hub 部署](docs/deployment/README.md#从-docker-hub-部署) · [快速安装](#快速安装) · [首次使用](#首次使用) · [升级与备份](#升级与备份) · [版本与新增功能](docs/deployment/versions.md) · [常见问题](#常见问题) · [文档](#文档) · [许可](#许可--license)
+[Docker Hub 快速安装](#docker-hub-快速安装) · [从源码构建](#从源码构建) · [首次使用](#首次使用) · [升级与备份](#升级与备份) · [版本与新增功能](docs/deployment/versions.md) · [常见问题](#常见问题) · [文档](#文档) · [许可](#许可--license)
 
 ## 可以做什么
 
@@ -46,9 +46,28 @@ Docker 安装会获取应用镜像并启动 Caddy、PHP-FPM、MySQL、Redis、Qd
 
 ## 快速安装
 
-**ARM64 用户可直接拉取 Docker Hub 镜像。** 当前标签为 `1.0.3`，适用于 `linux/arm64`。本版支持在会话记录中加密保存、查看和下载图片、视频及音频，并可同步到腾讯云 COS，见 [1.0.3 变更记录](CHANGELOG.md#103---2026-11-05)。完整命令及验收步骤见[从 Docker Hub 部署](docs/deployment/README.md#从-docker-hub-部署)。下方是从源码构建的安装方式。
+### Docker Hub 快速安装
 
-### 1. 准备环境
+TokenHub `1.0.3` 的预构建镜像位于 `docker.io/leofan2022/`，适用于 `linux/arm64`。安装脚本会从这个仓库拉取 Compose 所需的 `tokenhub-*` 镜像。先安装 Git、Docker 和 Compose 2.20 或以上版本，并确认 `docker version --format '{{.Server.Os}}/{{.Server.Arch}}'` 输出 `linux/arm64`。
+
+在 Linux、macOS 或 WSL 2 上执行以下命令。示例仅允许本机访问。
+
+```bash
+git clone --depth 1 --branch v1.0.3 https://github.com/QianqianTech/Tokenhub.git tokenhub &&
+cd tokenhub &&
+bash deploy/docker/install.sh \
+  --image-prefix docker.io/leofan2022/ --tag 1.0.3 \
+  --site http://localhost --http-port 8080 --https-port 8443 \
+  --bind 127.0.0.1 --yes
+```
+
+安装成功后，用终端显示的初始账号和密码登录 `http://localhost:8080/admin/`。在安装目录运行 `bash deploy/docker/verify.sh` 可检查服务状态。PowerShell 安装、公网部署和原地升级见[完整 Docker Hub 部署指南](docs/deployment/README.md#从-docker-hub-部署)。[Docker Hub 仓库](https://hub.docker.com/u/leofan2022) · [镜像摘要](https://github.com/QianqianTech/Tokenhub/releases/download/v1.0.3/docker-hub-digests.tsv) · [1.0.3 更新说明](CHANGELOG.md#103---2026-11-05)
+
+### 从源码构建
+
+源码构建适用于 AMD64 和 ARM64。
+
+#### 1. 准备环境
 
 | 项目 | 要求 |
 | --- | --- |
@@ -70,7 +89,7 @@ docker info
 docker compose version
 ```
 
-### 2. Linux / macOS：下载脚本并安装
+#### 2. Linux / macOS：下载脚本并安装
 
 在准备保存 TokenHub 的目录中执行。下面的例子仅在本机开放 `http://localhost:8080`：
 
@@ -102,7 +121,7 @@ bash tokenhub-install.sh --site https://10.0.0.8 --yes
 
 更多网络和证书说明见 [Docker 部署包文档](deploy/docker/README.md#访问方式说明)。同一台机器上的多套部署需要分别设置 Compose 项目名和端口；默认项目名为 `tokenhub`，改变下载目录不会自动隔离另一套实例。
 
-### 3. Windows：下载 PowerShell 安装脚本
+#### 3. Windows：下载 PowerShell 安装脚本
 
 先安装 Git 和 Docker Desktop，启动 Docker Desktop 并切换为 Linux 容器。在 PowerShell 中执行：
 
@@ -118,7 +137,7 @@ if ($?) {
 
 服务器部署可改用 `-Directory C:\TokenHub -Site tokenhub.example.com -Yes`。`ExecutionPolicy Bypass` 仅用于本次进程，不修改系统执行策略。WSL 2 用户也可以在 Linux 终端使用前面的 Bash 入口。
 
-### 4. 安装脚本参数
+#### 4. 安装脚本参数
 
 | Bash | PowerShell | 作用 |
 | --- | --- | --- |
