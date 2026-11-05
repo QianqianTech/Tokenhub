@@ -6,6 +6,8 @@ TokenHub 提供两种交付方式，两者使用同一套安装逻辑（`bin/ins
 
 **已有 Docker 实例？** 请按 [Docker 升级指南](upgrade.md)下载独立升级脚本，在原目录备份并更新。
 
+[Docker Hub 安装](#从-docker-hub-部署) · [Docker Hub 原地升级](#升级已有-docker-hub-部署) · [各版本新增功能和可用标签](versions.md)
+
 | | Docker 部署（推荐） | 源码安装 |
 | --- | --- | --- |
 | 适用系统 | Linux（Ubuntu、Debian、CentOS Stream、Rocky、AlmaLinux、麒麟、统信等能运行 Docker 的系统）、Windows（Docker Desktop + WSL 2）、macOS | Ubuntu 22.04/24.04、Debian 12、RHEL/CentOS Stream/Rocky/AlmaLinux 8 和 9 |
@@ -19,7 +21,7 @@ TokenHub 提供两种交付方式，两者使用同一套安装逻辑（`bin/ins
 
 ## 从 Docker Hub 部署
 
-这批预构建镜像统一使用标签 `1.0.3`，适用于 **`linux/arm64`**。安装脚本直接拉取镜像并初始化服务，省去本地构建。[Docker Hub 镜像](https://hub.docker.com/u/leofan2022) · [v1.0.3 发布说明与镜像摘要](https://github.com/QianqianTech/Tokenhub/releases/tag/v1.0.3) · [1.0.0 镜像摘要](docker-hub-1.0.0-bcc60e571698-arm64-cache.tsv)
+五个预构建镜像位于 `docker.io/leofan2022/`，统一使用 `1.0.3` 标签，适用于 **`linux/arm64`**。安装脚本会直接拉取镜像并初始化服务。[Docker Hub 仓库](https://hub.docker.com/u/leofan2022) · [v1.0.3 发布说明](https://github.com/QianqianTech/Tokenhub/releases/tag/v1.0.3) · [镜像摘要清单](https://github.com/QianqianTech/Tokenhub/releases/download/v1.0.3/docker-hub-digests.tsv)
 
 在 ARM64 Linux 或使用 Docker Desktop 的 Apple 芯片 Mac 上，先确认 Docker 服务端的系统和架构：
 
@@ -28,9 +30,11 @@ docker version --format '{{.Server.Os}}/{{.Server.Arch}}'
 docker compose version
 ```
 
-Docker 服务端应显示 `linux/arm64`，Compose 需要 2.20 或以上。AMD64 主机可使用[源码构建](../../README.md#快速安装)。首次部署需能访问 GitHub 和 Docker Hub。Compose 还会拉取 MySQL、Redis 和 Qdrant 镜像。
+Docker 服务端应显示 `linux/arm64`，Compose 需要 2.20 或以上。AMD64 主机可使用[源码构建](../../README.md#快速安装)。首次部署需安装 Git，并能访问 GitHub 和 Docker Hub。Compose 还会拉取 MySQL、Redis 和 Qdrant 镜像。
 
-首次安装时，从 GitHub 取出与镜像配套的部署文件。下面的示例仅开放本机访问：
+### 首次安装
+
+Linux、macOS 或 WSL 2 从 GitHub 下载与镜像配套的部署文件。下面的配置仅允许本机访问。
 
 ```bash
 git clone --branch v1.0.3 --depth 1 https://github.com/QianqianTech/Tokenhub.git tokenhub &&
@@ -42,15 +46,46 @@ bash deploy/docker/install.sh \
   --bind 127.0.0.1 --yes
 ```
 
-部署到公网服务器时，将示例中的站点、端口及绑定参数替换为 `--site tokenhub.example.com --yes`，并使用自己的域名。域名需解析到服务器，且 80 和 443 端口需能从公网访问。
+Windows PowerShell 也可使用这组镜像，前提是 Docker Desktop 的服务端显示 `linux/arm64`。
 
-安装完成后用终端显示的账号和初始密码登录 `http://localhost:8080/admin/`，然后修改密码。可以用以下命令验收部署：
+```powershell
+git clone --branch v1.0.3 --depth 1 https://github.com/QianqianTech/Tokenhub.git tokenhub
+if ($LASTEXITCODE -ne 0) { throw '下载 TokenHub 失败' }
+Set-Location .\tokenhub
+powershell -NoProfile -ExecutionPolicy Bypass -File .\deploy\docker\install.ps1 `
+  -ImagePrefix 'docker.io/leofan2022/' -Tag '1.0.3' `
+  -Site 'http://localhost' -HttpPort 8080 -HttpsPort 8443 -Bind '127.0.0.1' -Yes
+```
+
+部署到公网服务器时，将示例中的站点、端口及绑定参数替换为 `--site tokenhub.example.com --yes`，PowerShell 对应 `-Site tokenhub.example.com -Yes`。请用自己的域名，并将域名解析到服务器，开放公网 80 和 443 端口。
+
+安装完成后用终端显示的账号和初始密码登录 `http://localhost:8080/admin/`，然后修改密码。可从安装目录执行下面的命令，检查容器、数据库迁移以及 `/health` 和 `/ready`。
 
 ```bash
 bash deploy/docker/verify.sh
 ```
 
-本次发布包含 `tokenhub-php`、`tokenhub-caddy`、`tokenhub-rag-worker`、`tokenhub-realtime-gateway` 和 `tokenhub-worker-autoscaler`。自动扩缩容按需启用，具体操作见 [Docker 运维说明](../../deploy/docker/README.md#可选按队列长度自动扩缩-worker)。首次安装会在 `.env` 中记录镜像仓库及标签。已使用同一镜像仓库的部署可按 [Docker 升级指南](upgrade.md)更新标签。
+Windows 可执行 `powershell -NoProfile -ExecutionPolicy Bypass -File .\deploy\docker\verify.ps1`。
+
+发布包含 `tokenhub-php`、`tokenhub-caddy`、`tokenhub-rag-worker`、`tokenhub-realtime-gateway` 和 `tokenhub-worker-autoscaler`。自动扩缩容按需启用。[Docker 运维说明](../../deploy/docker/README.md#可选按队列长度自动扩缩-worker)
+
+### 升级已有 Docker Hub 部署
+
+确认原部署 `.env` 中的 `TOKENHUB_IMAGE_PREFIX` 为 `docker.io/leofan2022/`。在原安装目录运行预检和升级，脚本会保留配置和数据卷，先备份，再拉取镜像、执行迁移和验收。
+
+```bash
+(
+  upgrade_script=$(mktemp "${TMPDIR:-/tmp}/tokenhub-upgrade.XXXXXX") || exit 1
+  trap 'rm -f "$upgrade_script"' EXIT
+  curl --fail --show-error --location --retry 3 \
+    https://raw.githubusercontent.com/QianqianTech/Tokenhub/v1.0.3/upgrade.sh \
+    --output "$upgrade_script" &&
+  bash "$upgrade_script" --dir "$PWD" --tag 1.0.3 --check &&
+  bash "$upgrade_script" --dir "$PWD" --tag 1.0.3
+)
+```
+
+Windows PowerShell 对应 `-Tag 1.0.3`。需要选择其他版本时，先查看已发布的镜像标签和迁移说明。[完整升级指南](upgrade.md) · [各版本新增功能与可用标签](versions.md)
 
 ## 版本基线
 

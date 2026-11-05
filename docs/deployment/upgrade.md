@@ -4,6 +4,8 @@
 
 ## 1. 选对升级方式
 
+先在[版本与新增功能](versions.md)确认目标版本提供的 Docker Hub 镜像标签或 GitHub 源码标签。跨版本升级时，阅读当前版本之后到目标版本的变更，确认迁移要求和新增功能的启用条件。
+
 在原安装目录的 `deploy/docker/.env` 中查看 `TOKENHUB_IMAGE_PREFIX` 和 `TOKENHUB_IMAGE_TAG`。如果使用独立 Docker 运维包，这两个值在运维包的 `.env` 中。不要分享整个 `.env`，其中包含密钥和密码。
 
 | 当前安装方式 | 升级参数 | 目标版本示例 |
@@ -17,7 +19,7 @@
 
 ## 2. 下载、预检和升级
 
-先看目标版本的 [GitHub 发布说明](https://github.com/QianqianTech/Tokenhub/releases)和[变更记录](../../CHANGELOG.md)，确认目标标签、架构和迁移要求。以下以 `1.0.3` 为例，等对应标签和镜像发布后再使用；升级到其他版本时，替换下载地址和命令中的版本号。如果原目录已经包含根目录的升级入口，也可以直接使用。提前确认 Docker 正在运行、Compose 为 2.20 或以上、磁盘能容纳备份和新镜像，并安排维护窗口。源码升级还需要 Git；先保存本地源码改动。
+以下以已发布的 `1.0.3` 为例。要选择其他版本，保留已下载的升级脚本，把 `--tag` / `-Tag` 或 `--ref` / `-Ref` 的值换成目标版本的实际发布标签。如果原目录已有根目录升级入口，也可以直接使用。提前确认 Docker 正在运行、Compose 为 2.20 或以上、磁盘能容纳备份和新镜像，并安排维护窗口。源码升级还需要 Git，先保存本地源码改动。
 
 生产实例建议在备份前暂停业务写入、等待现有任务处理完毕。保留 Docker 服务运行，同一实例一次只执行一个升级。
 
@@ -66,6 +68,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\tokenhub-upgrade.ps1 -Dire
 ## 3. 验收升级
 
 看到 `Upgrade verified` 表示升级入口调用的部署检查已通过。然后登录原管理后台，确认旧账号能登录、现有数据集和文档可检索，并使用已有测试 Key 发一次常用 API 请求。多轮查询改写和知识库图片检索需要按[知识库向量运维文档](../rag-vector-operations.md)配置；升级不会自动启用这些能力，也不要求立即批量转换旧向量。
+
+升级到 `1.0.3` 后，要验证多模态会话记录，可在全局和测试 API 密钥上开启会话记录，发起一次带媒体的测试调用，再到「API 接入 › 会话记录」检查素材和生成结果。[各版本功能与验收要点](versions.md)
 
 若需要重新检查，在原安装目录执行 `bash deploy/docker/verify.sh`；Windows 对应 `powershell -NoProfile -File .\deploy\docker\verify.ps1`。独立运维包直接运行包内的 `verify.sh` / `verify.ps1`。检查报告保存在 `verify-report-*.txt`。
 

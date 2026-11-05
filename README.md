@@ -4,7 +4,7 @@
 
 TokenHub 将不同供应商的模型接入统一网关，集中管理 API Key、用户与部门、调用额度、成本、知识库和审计记录。业务系统使用 TokenHub 发放的 Key 调用模型，无需各自保存厂商密钥；管理员可以在一个后台查看模型状态、分配资源、追踪用量并处理告警。
 
-[快速安装](#快速安装) · [首次使用](#首次使用) · [升级与备份](#升级与备份) · [常见问题](#常见问题) · [文档](#文档) · [许可](#许可--license)
+[Docker Hub 部署](docs/deployment/README.md#从-docker-hub-部署) · [快速安装](#快速安装) · [首次使用](#首次使用) · [升级与备份](#升级与备份) · [版本与新增功能](docs/deployment/versions.md) · [常见问题](#常见问题) · [文档](#文档) · [许可](#许可--license)
 
 ## 可以做什么
 
@@ -203,6 +203,8 @@ Windows 可以使用相同的 `docker compose` 命令，验证脚本使用 `powe
 
 - **镜像仓库安装**：用 `--tag 1.0.3` / `-Tag 1.0.3` 从原仓库升级；本次 Docker Hub 镜像适用于 `linux/arm64`。
 - **GitHub 源码构建安装**：用 `--ref v1.0.3` / `-Ref v1.0.3` 获取正式发布标签并重新构建。
+
+选择其他目标版本前，请确认该版本是否提供对应的镜像或源码标签。[版本与新增功能](docs/deployment/versions.md)
 
 首次安装中断时，回到原下载目录重试 `bash deploy/docker/install.sh --build` 或 `powershell -File .\deploy\docker\install.ps1 -Build`。若尚未生成 `.env`，请带上首次安装的站点、端口等参数。
 
