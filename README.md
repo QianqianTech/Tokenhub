@@ -4,7 +4,7 @@
 
 TokenHub 将不同供应商的模型接入统一网关，集中管理 API Key、用户与部门、调用额度、成本、知识库和审计记录。业务系统使用 TokenHub 发放的 Key 调用模型，无需各自保存厂商密钥；管理员可以在一个后台查看模型状态、分配资源、追踪用量并处理告警。
 
-[Docker Hub 快速安装](#docker-hub-快速安装) · [从源码构建](#从源码构建) · [首次使用](#首次使用) · [升级与备份](#升级与备份) · [版本与新增功能](docs/deployment/versions.md) · [常见问题](#常见问题) · [文档](#文档) · [许可](#许可--license)
+[Docker Hub 快速安装](#docker-hub-快速安装) · [从源码构建](#从源码构建) · [首次使用](#首次使用) · [升级与备份](#升级与备份) · [版本与新增功能](docs/deployment/versions.md) · [常见问题](#常见问题) · [文档](#文档) · [公司信息](#公司信息) · [许可](#许可--license)
 
 ## 可以做什么
 
@@ -293,6 +293,13 @@ CI 包含 PHP、前端浏览器、RAG worker、部署和安装入口测试。流
 | [对外 API](docs/external-api-complete.md) / [OpenAPI](public/openapi.json) | 模型与业务接口；线上规范为 `GET /v1/openapi.json` |
 | [智能体管理 API](docs/agent-management-api.md) / [MCP](docs/mcp.md) | Agent 与客户端接入 |
 | [变更记录](CHANGELOG.md) / [验收清单](docs/acceptance/final-acceptance-checklist.md) | 版本变化与验收项目 |
+
+## 公司信息
+
+**贵阳黔前科技有限公司**
+
+- 服务热线 400-656-3113
+- 网站 [https://www.qianqianai.com](https://www.qianqianai.com)
 
 ## 许可 / License
 
