@@ -296,6 +296,8 @@ CI 包含 PHP、前端浏览器、RAG worker、部署和安装入口测试。流
 
 ## 公司信息
 
+<img src="brand/source/tokenhub-master-250.png" alt="贵阳黔前科技有限公司 Logo" width="96" height="96">
+
 **贵阳黔前科技有限公司**
 
 - 服务热线 400-656-3113
