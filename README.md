@@ -2,27 +2,211 @@
 
 **面向团队和企业的大模型统一接入、权限与用量管理平台。**
 
-TokenHub 将不同供应商的模型接入统一网关，集中管理 API Key、用户与部门、调用额度、成本、知识库和审计记录。业务系统使用 TokenHub 发放的 Key 调用模型，无需各自保存厂商密钥；管理员可以在一个后台查看模型状态、分配资源、追踪用量并处理告警。
+TokenHub 部署在自己的服务器上，负责在业务应用与多个模型供应商之间转发请求。平台管理员配置供应商、模型和访问规则，开发者用 TokenHub 签发的 API Key 接入，运维人员可按部门、模型或请求编号追踪调用、费用和故障。
 
-[Docker Hub 快速安装](#docker-hub-快速安装) · [从源码构建](#从源码构建) · [首次使用](#首次使用) · [升级与备份](#升级与备份) · [版本与新增功能](docs/deployment/versions.md) · [常见问题](#常见问题) · [文档](#文档) · [公司信息](#公司信息) · [许可](#许可--license)
+[软件功能](#可以做什么) · [界面截图](#界面截图) · [Docker Hub 快速安装](#docker-hub-快速安装) · [从源码构建](#从源码构建) · [首次使用](#首次使用) · [升级与备份](#升级与备份) · [版本与新增功能](docs/deployment/versions.md) · [常见问题](#常见问题) · [文档](#文档) · [公司信息](#公司信息) · [许可](#许可--license)
 
 ## 可以做什么
 
-| 能力 | 说明 |
+| 模块 | 使用场景与主要功能 |
 | --- | --- |
-| 统一模型网关 | OpenAI / Anthropic 兼容接口、Gemini 原生接口、SSE 流式输出，为应用提供统一入口 |
-| 多供应商与路由 | 厂商和模型目录、模型导入、路由优先级、健康检查、渠道限流与故障处理 |
-| API Key 与权限 | 按用户、部门和 Key 分配模型权限，设置有效期、IP 白名单、请求/Token/成本额度 |
-| 用量与成本 | 查询调用记录、Token 消耗、延迟、计价及结算，支持导出与审计 |
-| 多模态 | 图片、语音、视频等能力接入，异步任务与媒体资产管理；可用能力取决于上游模型及配置 |
-| 知识库 RAG | 文档上传、解析、切分、向量化、检索、引用与质量评估，支持部门和 Key 访问范围 |
-| 智能体与 MCP | 对外管理 API 与 MCP 服务，供业务系统及兼容客户端接入 |
-| 管理与运维 | Web 后台、运维大屏、告警、SMTP 密码找回、日志、自检与备份恢复 |
-| 移动管理 | `/app/` 管理端、设备授权、二次验证与可选推送；另有 Capacitor / Tauri 原生工程 |
+| 运营中心 | 在智慧分析查看请求趋势、Token、部门与员工用量、安全事件和延迟。用会话测试检查模型配置，也可为运营大屏设置共享范围和访问条件。 |
+| 组织与权限 | 按部门管理用户，区分业务用户与管理员。为不同管理员分配角色和可管理的数据范围，并在权限配置页查看授权情况。 |
+| 模型服务 | 管理上游厂商、模型目录、路由优先级、渠道限流和健康检查。为模型维护价格，用于费用统计和结算。 |
+| API 接入 | 为用户和部门发放密钥，设置可用模型、有效期、IP 白名单以及请求数、Token 和成本限额。启用会话记录后，可按密钥查看问答及受支持的多模态内容。 |
+| 用量中心 | 按时间、用户、部门和结果查询请求，查看 Token、费用、耗时和失败原因。跟踪多模态异步任务与媒体资产，管理内容留存、会话归档和导出。 |
+| RAG 知识库 | 建立知识库和数据集，导入文档、问答或图片，完成解析、预览和向量化。可按部门、用户或密钥控制访问范围，并用检索试验台、评估样本和索引监控检查质量。 |
+| 安全审计 | 设置脱敏策略，查看脱敏事件、告警、网关日志和管理员操作记录。按日志类别配置保留期限并管理归档。 |
+| 系统设置 | 查看核心服务健康、任务队列与积压，配置站点标识、TLS 证书、SMTP 密码找回、告警阈值及内容和会话留存策略。 |
 
-适用于统一管理团队模型账号、为内部应用提供模型网关、按部门分摊用量、搭建带权限的企业知识库，以及对接智能体和自动化系统。
+### 业务应用接入
 
-TokenHub 不提供模型权重或免费的模型调用额度。安装后需要配置自己的模型服务地址与厂商 Key；实际调用费用由相应服务产生。原生应用工程的构建和分发见 [native/README.md](native/README.md)，服务器安装脚本不会安装手机或桌面客户端。
+网关提供 OpenAI 和 Anthropic 兼容接口、Gemini 原生接口及 SSE 流式输出。配置相应上游后，还可接入图像、语音、视频和音乐能力，以及独立的实时语音网关。智能体和自动化工具可通过管理 API、Webhook 或 MCP 接入。模型由部署方配置，调用费用按所用服务计费。[对外 API](docs/external-api-complete.md) · [智能体管理 API](docs/agent-management-api.md) · [MCP 接入](docs/mcp.md)
+
+### 管理入口
+
+- **Web 后台 `/admin/`** 管理平台配置，排查用量和故障。
+- **移动管理端 `/app/`** 通过设备认证链接登录，支持二次验证和可选推送。原生壳工程的构建与签名另行配置。[APP 管理端](docs/app-admin.md) · [原生工程](native/README.md)
+- **运营大屏 `/screen/`** 通过独立分享入口展示 Token、调用趋势、排行和多模态任务，按分享配置限制可见指标和访问范围。[使用和管理指南](docs/tokenhub-usage-management-guide.md#10-大屏和大屏分享)
+
+## 界面截图
+
+以下 **56 张截图**来自 `v1.0.3` Docker 验收实例，覆盖后台 41 个菜单页面、12 个 RAG 子页和 3 个认证入口。验收实例采用空白业务数据，部分列表展示空状态。点击模块名称可在本页展开截图，点击图片可查看原图。
+
+![智慧分析](docs/screenshots/v1.0.3/operations--dashboard.jpg)
+
+| 模型管理 | RAG 质量评估 |
+| --- | --- |
+| ![模型管理](docs/screenshots/v1.0.3/models--models.jpg) | ![质量评估](docs/screenshots/v1.0.3/rag--rag-quality.jpg) |
+
+| 会话记录 | 运行状态 |
+| --- | --- |
+| ![会话记录](docs/screenshots/v1.0.3/access--conversation-logs.jpg) | ![运行状态](docs/screenshots/v1.0.3/system--operations-status.jpg) |
+
+<details>
+<summary>运营中心（4 张）</summary>
+
+| 智慧分析 | 会话测试 |
+| --- | --- |
+| ![智慧分析](docs/screenshots/v1.0.3/operations--dashboard.jpg) | ![会话测试](docs/screenshots/v1.0.3/operations--admin-chat-sessions.jpg) |
+
+| 大屏分享 | 大屏访问日志 |
+| --- | --- |
+| ![大屏分享](docs/screenshots/v1.0.3/operations--dashboard-share-links.jpg) | ![大屏访问日志](docs/screenshots/v1.0.3/operations--dashboard-share-access-logs.jpg) |
+
+</details>
+
+<details>
+<summary>组织与权限（4 张）</summary>
+
+| 部门管理 | 用户管理 |
+| --- | --- |
+| ![部门管理](docs/screenshots/v1.0.3/organization--departments.jpg) | ![用户管理](docs/screenshots/v1.0.3/organization--users.jpg) |
+
+| 管理员管理 | 权限配置 |
+| --- | --- |
+| ![管理员管理](docs/screenshots/v1.0.3/organization--admin-users.jpg) | ![权限配置](docs/screenshots/v1.0.3/organization--permission-config.jpg) |
+
+</details>
+
+<details>
+<summary>模型服务（3 张）</summary>
+
+| 厂商管理 | 模型管理 |
+| --- | --- |
+| ![厂商管理](docs/screenshots/v1.0.3/models--providers.jpg) | ![模型管理](docs/screenshots/v1.0.3/models--models.jpg) |
+
+**价格配置**
+
+![价格配置](docs/screenshots/v1.0.3/models--model-prices.jpg)
+
+</details>
+
+<details>
+<summary>API 接入（5 张）</summary>
+
+| API 密钥 | 会话记录 |
+| --- | --- |
+| ![API 密钥](docs/screenshots/v1.0.3/access--api-keys.jpg) | ![会话记录](docs/screenshots/v1.0.3/access--conversation-logs.jpg) |
+
+| 模型限额 | 限额策略 |
+| --- | --- |
+| ![模型限额](docs/screenshots/v1.0.3/access--api-key-model-quotas.jpg) | ![限额策略](docs/screenshots/v1.0.3/access--quota-policies.jpg) |
+
+**限额绑定**
+
+![限额绑定](docs/screenshots/v1.0.3/access--quota-bindings.jpg)
+
+</details>
+
+<details>
+<summary>用量中心（6 张）</summary>
+
+| 用量明细 | 多模态任务 |
+| --- | --- |
+| ![用量明细](docs/screenshots/v1.0.3/usage--usage-records.jpg) | ![多模态任务](docs/screenshots/v1.0.3/usage--multimodal-tasks.jpg) |
+
+| 媒体资产 | 内容留存 |
+| --- | --- |
+| ![媒体资产](docs/screenshots/v1.0.3/usage--media-assets.jpg) | ![内容留存](docs/screenshots/v1.0.3/usage--usage-contents.jpg) |
+
+| 会话归档 | 导出任务 |
+| --- | --- |
+| ![会话归档](docs/screenshots/v1.0.3/usage--content-archive.jpg) | ![导出任务](docs/screenshots/v1.0.3/usage--export-tasks.jpg) |
+
+</details>
+
+<details>
+<summary>RAG 知识库（16 张）</summary>
+
+| 构建知识 | 构建知识 · 知识库 |
+| --- | --- |
+| ![构建知识](docs/screenshots/v1.0.3/rag--rag-build.jpg) | ![构建知识 · 知识库](docs/screenshots/v1.0.3/rag--rag-knowledge-bases.jpg) |
+
+| 构建知识 · 数据集 | 构建知识 · 知识集权限 |
+| --- | --- |
+| ![构建知识 · 数据集](docs/screenshots/v1.0.3/rag--rag-vector-datasets.jpg) | ![构建知识 · 知识集权限](docs/screenshots/v1.0.3/rag--rag-access.jpg) |
+
+| 构建知识 · 导入任务 | 构建知识 · 任务记录 |
+| --- | --- |
+| ![构建知识 · 导入任务](docs/screenshots/v1.0.3/rag--rag-import-task.jpg) | ![构建知识 · 任务记录](docs/screenshots/v1.0.3/rag--rag-uploads.jpg) |
+
+| 检索试验台 | 质量评估 |
+| --- | --- |
+| ![检索试验台](docs/screenshots/v1.0.3/rag--rag-retrieval-lab.jpg) | ![质量评估](docs/screenshots/v1.0.3/rag--rag-quality.jpg) |
+
+| 质量评估 · 评估样本 | 质量评估 · 用户反馈 |
+| --- | --- |
+| ![质量评估 · 评估样本](docs/screenshots/v1.0.3/rag--rag-eval-cases.jpg) | ![质量评估 · 用户反馈](docs/screenshots/v1.0.3/rag--rag-answer-feedback.jpg) |
+
+| 质量评估 · 纠偏任务 | 运行维护 |
+| --- | --- |
+| ![质量评估 · 纠偏任务](docs/screenshots/v1.0.3/rag--rag-correction-tasks.jpg) | ![运行维护](docs/screenshots/v1.0.3/rag--rag-operations.jpg) |
+
+| 运行维护 · 向量化健康 | 运行维护 · 向量任务 |
+| --- | --- |
+| ![运行维护 · 向量化健康](docs/screenshots/v1.0.3/rag--rag-vectorization-metrics.jpg) | ![运行维护 · 向量任务](docs/screenshots/v1.0.3/rag--rag-embedding-jobs.jpg) |
+
+| 运行维护 · 检索记录 | 运行维护 · 数据留存 |
+| --- | --- |
+| ![运行维护 · 检索记录](docs/screenshots/v1.0.3/rag--rag-retrieval-logs.jpg) | ![运行维护 · 数据留存](docs/screenshots/v1.0.3/rag--rag-retention-policies.jpg) |
+
+</details>
+
+<details>
+<summary>安全审计（7 张）</summary>
+
+| 脱敏策略 | 脱敏事件 |
+| --- | --- |
+| ![脱敏策略](docs/screenshots/v1.0.3/security--desensitization-policies.jpg) | ![脱敏事件](docs/screenshots/v1.0.3/security--desensitization-events.jpg) |
+
+| 告警事件 | 日志中心 |
+| --- | --- |
+| ![告警事件](docs/screenshots/v1.0.3/security--alert-events.jpg) | ![日志中心](docs/screenshots/v1.0.3/security--logs.jpg) |
+
+| 审计日志 | 日志留存 |
+| --- | --- |
+| ![审计日志](docs/screenshots/v1.0.3/security--audit-logs.jpg) | ![日志留存](docs/screenshots/v1.0.3/security--log-retention-policies.jpg) |
+
+**日志归档**
+
+![日志归档](docs/screenshots/v1.0.3/security--log-archive-files.jpg)
+
+</details>
+
+<details>
+<summary>系统设置（8 张）</summary>
+
+| 运行状态 | 标题与标识 |
+| --- | --- |
+| ![运行状态](docs/screenshots/v1.0.3/system--operations-status.jpg) | ![标题与标识](docs/screenshots/v1.0.3/system--settings-brand-identity.jpg) |
+
+| 证书与入口 | SMTP 邮件 |
+| --- | --- |
+| ![证书与入口](docs/screenshots/v1.0.3/system--settings-tls-certificates.jpg) | ![SMTP 邮件](docs/screenshots/v1.0.3/system--settings-smtp.jpg) |
+
+| 告警设置 | 内容留存策略 |
+| --- | --- |
+| ![告警设置](docs/screenshots/v1.0.3/system--settings-alert-thresholds.jpg) | ![内容留存策略](docs/screenshots/v1.0.3/system--content-retention-policy.jpg) |
+
+| 会话记录设置 | 高级设置 |
+| --- | --- |
+| ![会话记录设置](docs/screenshots/v1.0.3/system--conversation-log-settings.jpg) | ![高级设置](docs/screenshots/v1.0.3/system--system-settings.jpg) |
+
+</details>
+
+<details>
+<summary>登录与其他入口（3 张）</summary>
+
+| 管理后台登录 | 移动管理端入口 |
+| --- | --- |
+| ![管理后台登录](docs/screenshots/v1.0.3/interfaces--admin-login.png) | ![移动管理端入口](docs/screenshots/v1.0.3/interfaces--mobile-entry.jpg) |
+
+**运营大屏入口**
+
+![运营大屏入口](docs/screenshots/v1.0.3/interfaces--operations-screen-entry.jpg)
+
+</details>
 
 ## 系统组成
 
