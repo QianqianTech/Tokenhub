@@ -71,6 +71,32 @@ source_clean() {
   status="$(git --no-optional-locks -C "$ROOT" status --porcelain --untracked-files=normal)" || die 'Cannot inspect the source directory.'
   [ -z "$status" ] || die 'The source tree has local changes or untracked files. Save or move them before upgrading.'
 }
+
+backup_and_verify() {
+  local output manifest filtered
+  if ! output="$(bash "$KIT/backup.sh")"; then
+    printf '%s\n' "$output"
+    die 'Backup failed; the checkout and deployed version were not changed.'
+  fi
+  printf '%s\n' "$output"
+  BACKUP_PATH="$(printf '%s\n' "$output" | sed -n 's/^.*Backup written to \(.*\) (contains secrets: keep it protected)\.$/\1/p' | tail -1)"
+  manifest="$BACKUP_PATH/SHA256SUMS"
+  [ -n "$BACKUP_PATH" ] && [ -s "$manifest" ] && [ -s "$BACKUP_PATH/mysql.sql.gz" ] &&
+    [ -s "$BACKUP_PATH/env" ] && [ -s "$BACKUP_PATH/image-tag" ] || die 'The backup did not produce the required files.'
+
+  # Older kits could list the temporary checksum file that the backup just renamed.
+  if grep -Eq '^[[:xdigit:]]{64}  \./\.SHA256SUMS\.tmp$' "$manifest"; then
+    filtered="$(mktemp "$BACKUP_PATH/.SHA256SUMS.XXXXXX")"
+    awk '$2 != "./.SHA256SUMS.tmp"' "$manifest" > "$filtered"
+    mv -- "$filtered" "$manifest"
+  fi
+  if command -v sha256sum >/dev/null 2>&1; then
+    (cd "$BACKUP_PATH" && sha256sum -c SHA256SUMS >/dev/null) || die 'Backup checksum verification failed.'
+  else
+    (cd "$BACKUP_PATH" && shasum -a 256 -c SHA256SUMS >/dev/null) || die 'Backup checksum verification failed.'
+  fi
+  info "Backup verified: $BACKUP_PATH"
+}
 if [ -n "$REF" ]; then
   [ -z "$PREFIX" ] || die 'This installation uses registry images. Use --tag instead.'
   command -v git >/dev/null || die 'Git is required for a source upgrade.'
@@ -116,14 +142,15 @@ if [ -n "$REF" ]; then
   source_clean
   info "Current source commit: $PREVIOUS_COMMIT. Target: $COMMIT ($TAG)."
   info 'Backing up with the currently installed deployment files...'
-  KEEP=0 bash "$KIT/backup.sh" || die 'Backup failed; the checkout and deployed version were not changed.'
+  KEEP=0 backup_and_verify
   source_clean
   git -C "$ROOT" checkout --quiet --detach --no-overwrite-ignore "$COMMIT" || die 'Cannot switch source. Keep the backup printed above.'
   if ! bash "$KIT/upgrade.sh" --build --tag "$TAG" --skip-backup; then
-    die "Upgrade failed. Use the backup printed above and the previous source commit $PREVIOUS_COMMIT if recovery is needed."
+    die "Upgrade failed. Use backup $BACKUP_PATH and the previous source commit $PREVIOUS_COMMIT if recovery is needed."
   fi
 else
-  bash "$KIT/upgrade.sh" --tag "$TAG" || die 'Upgrade failed. Review the rollback output and keep the backup.'
+  backup_and_verify
+  bash "$KIT/upgrade.sh" --tag "$TAG" --skip-backup || die "Upgrade failed. Review the rollback output and keep backup $BACKUP_PATH."
 fi
 
 if ! bash "$KIT/verify.sh"; then

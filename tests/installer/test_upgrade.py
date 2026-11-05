@@ -53,8 +53,16 @@ elif args[0] != 'compose' or args[-2:] != ['config', '-q']:
             self.put("deploy/docker/" + name, "services: {}\n")
         self.put("VERSION", "1.0.0\n")
         self.put("deploy/docker/backup.sh", '''#!/usr/bin/env bash
+set -e
 printf 'backup:%s\\n' "$(cat "$(dirname "$0")/../../VERSION")" >> "$EVENTS"
-exit "${BACKUP_EXIT:-0}"
+[ "${BACKUP_EXIT:-0}" = 0 ] || exit "$BACKUP_EXIT"
+backup="$(dirname "$EVENTS")/backup"
+mkdir -p "$backup"
+printf 'backup fixture\\n' | tee "$backup/mysql.sql.gz" "$backup/env" > "$backup/image-tag"
+(cd "$backup" && shasum -a 256 ./mysql.sql.gz ./env ./image-tag > SHA256SUMS)
+printf '%064d  ./.SHA256SUMS.tmp\\n' 0 >> "$backup/SHA256SUMS"
+if [ "${BAD_CHECKSUM:-0}" = 1 ]; then printf 'damaged\\n' > "$backup/mysql.sql.gz"; fi
+printf 'Backup written to %s (contains secrets: keep it protected).\\n' "$backup"
 ''')
         self.put("deploy/docker/upgrade.sh", '''#!/usr/bin/env bash
 printf 'upgrade:%s\\n' "$*" >> "$EVENTS"
@@ -128,7 +136,8 @@ exit ([int]$env:VERIFY_EXIT)
         result = self.upgrade("tag", "1.0.1", VERIFY_EXIT="1")
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("verification failed", result.stderr)
-        self.assertEqual(self.events.read_text().splitlines(), ["upgrade:--tag 1.0.1", "verify"])
+        expected = ["upgrade:--tag 1.0.1", "verify"] if self.powershell else ["backup:1.0.0", "upgrade:--tag 1.0.1 --skip-backup", "verify"]
+        self.assertEqual(self.events.read_text().splitlines(), expected)
         self.assertEqual(self.git(self.root, "rev-parse", "HEAD"), self.previous)
 
     def test_source_backs_up_old_release_then_builds_new_tag(self):
@@ -155,7 +164,14 @@ exit ([int]$env:VERIFY_EXIT)
 
 @unittest.skipIf(os.name == "nt", "Bash entry runs on Linux, macOS or WSL")
 class BashUpgradeTest(UpgradeCases, unittest.TestCase):
-    pass
+    def test_legacy_backup_checksums_are_fixed_before_upgrade(self):
+        self.write_config("docker.io/leofan2022/")
+        result = self.upgrade("tag", "1.0.1", BAD_CHECKSUM="1")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Backup checksum verification failed", result.stderr)
+        self.assertEqual(self.events.read_text().splitlines(), ["backup:1.0.0"])
+        self.assertNotIn(".SHA256SUMS.tmp", (self.base / "backup/SHA256SUMS").read_text())
+        self.assertEqual(self.env_file.read_bytes(), self.config)
 
 
 @unittest.skipUnless(shutil.which("pwsh") or shutil.which("powershell"), "PowerShell not installed")

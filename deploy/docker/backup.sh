@@ -65,7 +65,7 @@ chmod 600 "$TARGET/env"
 printf '%s\n' "$(env_get TOKENHUB_IMAGE_TAG)" >"$TARGET/image-tag"
 
 if command -v sha256sum >/dev/null 2>&1; then HASH=(sha256sum); else HASH=(shasum -a 256); fi
-(cd "$TARGET" && find . -type f ! -name SHA256SUMS | sort | while read -r f; do "${HASH[@]}" "$f"; done >"$TARGET/.SHA256SUMS.tmp" && mv "$TARGET/.SHA256SUMS.tmp" "$TARGET/SHA256SUMS")
+(cd "$TARGET" && find . -type f ! -name SHA256SUMS ! -name .SHA256SUMS.tmp | sort | while read -r f; do "${HASH[@]}" "$f"; done >"$TARGET/.SHA256SUMS.tmp" && mv "$TARGET/.SHA256SUMS.tmp" "$TARGET/SHA256SUMS")
 
 if [ "$KEEP" -gt 0 ] 2>/dev/null; then
   # Newest first; everything after the first $KEEP entries is removed (portable to BSD tools).

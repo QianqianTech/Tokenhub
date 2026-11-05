@@ -24,9 +24,9 @@ TokenHub 的版本变更记录。格式参考 [Keep a Changelog](https://keepach
 
 ### 安装与升级
 
-- 提供可独立下载的 `upgrade.sh` 和 `upgrade.ps1`。支持预检、原仓库镜像升级及按 GitHub 标签重新构建。升级前备份，升级后执行验收。见 [Docker 升级指南](docs/deployment/upgrade.md)。
-- Docker Hub 版使用 `docker.io/leofan2022/` 下的五个 `1.0.2` 镜像，适用于 `linux/arm64`。同仓库的 `1.0.0` 用户可原地升级到 `1.0.2`。镜像和部署步骤见 [Docker 部署指南](docs/deployment/README.md#从-docker-hub-部署)。
-- 本版包含下方 1.0.1 的 RAG 改进。升级前备份数据库和数据卷，部署会执行知识库与 API 密钥迁移。
+- 提供可独立下载的 `upgrade.sh` 和 `upgrade.ps1`。支持预检、原仓库镜像升级及按 GitHub 标签重新构建。升级前备份，升级后执行验收。Bash 升级会验证备份摘要，并修复旧脚本生成的临时文件条目。见 [Docker 升级指南](https://github.com/QianqianTech/Tokenhub/blob/v1.0.2/docs/deployment/upgrade.md)。
+- Docker Hub 版使用 `docker.io/leofan2022/` 下的五个 `1.0.2` 镜像，适用于 `linux/arm64`。同仓库的 `1.0.0` 用户可原地升级到 `1.0.2`。镜像和部署步骤见 [Docker 部署指南](https://github.com/QianqianTech/Tokenhub/blob/v1.0.2/docs/deployment/README.md#从-docker-hub-部署)。
+- 本版包含 1.0.1 的知识库改进，包括多轮追问改写、以文搜图、以图搜图、阈值校准、重排与紧凑向量存储。升级前备份数据库和数据卷，部署会执行知识库与 API 密钥迁移。见 [知识库向量运维](https://github.com/QianqianTech/Tokenhub/blob/v1.0.2/docs/rag-vector-operations.md)。
 
 ## [1.0.1] - 2026-11-04
 
