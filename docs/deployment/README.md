@@ -21,7 +21,29 @@ TokenHub 提供两种交付方式，两者使用同一套安装逻辑（`bin/ins
 
 ## 从 Docker Hub 部署
 
-五个预构建镜像位于 `docker.io/leofan2022/`，统一使用 `1.0.3` 标签，适用于 **`linux/arm64`**。安装脚本会直接拉取镜像并初始化服务。[Docker Hub 仓库](https://hub.docker.com/u/leofan2022) · [v1.0.3 发布说明](https://github.com/QianqianTech/Tokenhub/releases/tag/v1.0.3) · [镜像摘要清单](https://github.com/QianqianTech/Tokenhub/releases/download/v1.0.3/docker-hub-digests.tsv)
+以下五个镜像已推送到 Docker Hub，标签均为 `1.0.3`，适用于 **`linux/arm64`**。[v1.0.3 发布说明](https://github.com/QianqianTech/Tokenhub/releases/tag/v1.0.3) · [镜像摘要清单](https://github.com/QianqianTech/Tokenhub/releases/download/v1.0.3/docker-hub-digests.tsv)
+
+### 已推送的镜像
+
+| Docker Hub 仓库 | 完整镜像地址 |
+| --- | --- |
+| [tokenhub-php](https://hub.docker.com/r/leofan2022/tokenhub-php/tags?name=1.0.3) | `docker.io/leofan2022/tokenhub-php:1.0.3` |
+| [tokenhub-caddy](https://hub.docker.com/r/leofan2022/tokenhub-caddy/tags?name=1.0.3) | `docker.io/leofan2022/tokenhub-caddy:1.0.3` |
+| [tokenhub-rag-worker](https://hub.docker.com/r/leofan2022/tokenhub-rag-worker/tags?name=1.0.3) | `docker.io/leofan2022/tokenhub-rag-worker:1.0.3` |
+| [tokenhub-realtime-gateway](https://hub.docker.com/r/leofan2022/tokenhub-realtime-gateway/tags?name=1.0.3) | `docker.io/leofan2022/tokenhub-realtime-gateway:1.0.3` |
+| [tokenhub-worker-autoscaler](https://hub.docker.com/r/leofan2022/tokenhub-worker-autoscaler/tags?name=1.0.3) | `docker.io/leofan2022/tokenhub-worker-autoscaler:1.0.3` |
+
+如果需要提前下载镜像，可以逐个拉取。
+
+```bash
+docker pull --platform linux/arm64 docker.io/leofan2022/tokenhub-php:1.0.3
+docker pull --platform linux/arm64 docker.io/leofan2022/tokenhub-caddy:1.0.3
+docker pull --platform linux/arm64 docker.io/leofan2022/tokenhub-rag-worker:1.0.3
+docker pull --platform linux/arm64 docker.io/leofan2022/tokenhub-realtime-gateway:1.0.3
+docker pull --platform linux/arm64 docker.io/leofan2022/tokenhub-worker-autoscaler:1.0.3
+```
+
+安装脚本会自动拉取 Compose 所需镜像并初始化服务。`tokenhub-worker-autoscaler` 用于可选的自动扩缩容。[Docker 运维说明](../../deploy/docker/README.md#可选按队列长度自动扩缩-worker)
 
 在 ARM64 Linux 或使用 Docker Desktop 的 Apple 芯片 Mac 上，先确认 Docker 服务端的系统和架构：
 
@@ -66,8 +88,6 @@ bash deploy/docker/verify.sh
 ```
 
 Windows 可执行 `powershell -NoProfile -ExecutionPolicy Bypass -File .\deploy\docker\verify.ps1`。
-
-发布包含 `tokenhub-php`、`tokenhub-caddy`、`tokenhub-rag-worker`、`tokenhub-realtime-gateway` 和 `tokenhub-worker-autoscaler`。自动扩缩容按需启用。[Docker 运维说明](../../deploy/docker/README.md#可选按队列长度自动扩缩-worker)
 
 ### 升级已有 Docker Hub 部署
 

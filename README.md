@@ -48,7 +48,17 @@ Docker 安装会获取应用镜像并启动 Caddy、PHP-FPM、MySQL、Redis、Qd
 
 ### Docker Hub 快速安装
 
-TokenHub `1.0.3` 的预构建镜像位于 `docker.io/leofan2022/`，适用于 `linux/arm64`。安装脚本会从这个仓库拉取 Compose 所需的 `tokenhub-*` 镜像。先安装 Git、Docker 和 Compose 2.20 或以上版本，并确认 `docker version --format '{{.Server.Os}}/{{.Server.Arch}}'` 输出 `linux/arm64`。
+TokenHub `1.0.3` 已推送以下五个 `linux/arm64` 镜像。安装脚本会按 Compose 配置拉取所需镜像。
+
+| Docker Hub 仓库 | 完整镜像地址 |
+| --- | --- |
+| [tokenhub-php](https://hub.docker.com/r/leofan2022/tokenhub-php/tags?name=1.0.3) | `docker.io/leofan2022/tokenhub-php:1.0.3` |
+| [tokenhub-caddy](https://hub.docker.com/r/leofan2022/tokenhub-caddy/tags?name=1.0.3) | `docker.io/leofan2022/tokenhub-caddy:1.0.3` |
+| [tokenhub-rag-worker](https://hub.docker.com/r/leofan2022/tokenhub-rag-worker/tags?name=1.0.3) | `docker.io/leofan2022/tokenhub-rag-worker:1.0.3` |
+| [tokenhub-realtime-gateway](https://hub.docker.com/r/leofan2022/tokenhub-realtime-gateway/tags?name=1.0.3) | `docker.io/leofan2022/tokenhub-realtime-gateway:1.0.3` |
+| [tokenhub-worker-autoscaler](https://hub.docker.com/r/leofan2022/tokenhub-worker-autoscaler/tags?name=1.0.3) | `docker.io/leofan2022/tokenhub-worker-autoscaler:1.0.3` |
+
+先安装 Git、Docker 和 Compose 2.20 或以上版本，并确认 `docker version --format '{{.Server.Os}}/{{.Server.Arch}}'` 输出 `linux/arm64`。
 
 在 Linux、macOS 或 WSL 2 上执行以下命令。示例仅允许本机访问。
 
@@ -61,7 +71,7 @@ bash deploy/docker/install.sh \
   --bind 127.0.0.1 --yes
 ```
 
-安装成功后，用终端显示的初始账号和密码登录 `http://localhost:8080/admin/`。在安装目录运行 `bash deploy/docker/verify.sh` 可检查服务状态。PowerShell 安装、公网部署和原地升级见[完整 Docker Hub 部署指南](docs/deployment/README.md#从-docker-hub-部署)。[Docker Hub 仓库](https://hub.docker.com/u/leofan2022) · [镜像摘要](https://github.com/QianqianTech/Tokenhub/releases/download/v1.0.3/docker-hub-digests.tsv) · [1.0.3 更新说明](CHANGELOG.md#103---2026-11-05)
+安装成功后，用终端显示的初始账号和密码登录 `http://localhost:8080/admin/`。在安装目录运行 `bash deploy/docker/verify.sh` 可检查服务状态。单独拉取镜像、PowerShell 安装、公网部署和原地升级见[完整 Docker Hub 部署指南](docs/deployment/README.md#从-docker-hub-部署)。[镜像摘要](https://github.com/QianqianTech/Tokenhub/releases/download/v1.0.3/docker-hub-digests.tsv) · [1.0.3 更新说明](CHANGELOG.md#103---2026-11-05)
 
 ### 从源码构建
 
