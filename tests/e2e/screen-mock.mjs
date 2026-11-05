@@ -2,7 +2,7 @@
 // way Caddy does: /screen and /screen/* fall back to /screen/index.html. Kept apart
 // from mock-server.mjs (admin API) so the two can evolve independently.
 //
-//   node screen-mock.mjs 8091   then open http://127.0.0.1:8091/screen/GoodCode7Q2xLm9P
+//   node screen-mock.mjs 8091 [--demo]   then open http://127.0.0.1:8091/screen/GoodCode7Q2xLm9P
 import { createServer } from "node:http";
 import { readFile, stat } from "node:fs/promises";
 import { extname, join, normalize } from "node:path";
@@ -63,6 +63,86 @@ function fixtures() {
   };
 }
 
+
+// Dense, realistic data for judging the layout (node screen-mock.mjs 8091 --demo).
+// Deterministic so screenshots are comparable between runs.
+function demoFixtures() {
+  const now = Date.now();
+  const dayStart = shanghaiDayStart(now);
+  const generated = new Date(now).toISOString();
+  const hourStart = Math.floor(now / 3600000) * 3600000;
+  const curve = (hourLocal) => 0.15 + Math.max(0, Math.sin((hourLocal - 6) / 16 * Math.PI)) * (hourLocal >= 12 && hourLocal < 14 ? 0.7 : 1);
+  const noise = (i) => 0.85 + ((i * 7919) % 97) / 330;
+  const trends = [];
+  const performance = [];
+  for (let i = 0; i < 48; i += 1) {
+    const at = hourStart - i * 3600000;
+    const hourLocal = new Date(at + 8 * 3600000).getUTCHours();
+    const partial = i === 0 ? ((now - hourStart) / 3600000) : 1;
+    const req = Math.round(4200 * curve(hourLocal) * noise(i) * partial);
+    const failed = Math.round(req * (0.004 + ((i * 13) % 7) / 900));
+    const input = req * 2900;
+    const output = req * 1100;
+    trends.push({ bucket_at: sqlUtc(at), request_count: req, success_count: req - failed, failed_count: failed, input_tokens: input, output_tokens: output, cache_tokens: Math.round(input * 0.18), total_cost: req * 0.012 });
+    const avg = 650 + curve(hourLocal) * 500 + ((i * 31) % 120);
+    performance.push({ bucket_at: sqlUtc(at), request_count: req, avg_latency_ms: avg, p95_latency_ms: avg * 3.1, p99_latency_ms: avg * 6.4 });
+  }
+  const today = trends.filter((row) => new Date(row.bucket_at.replace(" ", "T") + "Z").getTime() >= dayStart);
+  const sum = (rows, key) => rows.reduce((total, row) => total + row[key], 0);
+  const input = sum(today, "input_tokens");
+  const output = sum(today, "output_tokens");
+  const models = [["glm-4.6", 31], ["qwen3-max", 22], ["deepseek-v3.2", 17], ["doubao-seed-1.6", 11], ["kimi-k2", 8], ["qwen3-vl-plus", 5], ["wanx2.1-t2i", 3], ["text-embedding-v4", 3]];
+  const monthTokens = 1_486_000_000;
+  const modelRows = models.map(([name, pct], index) => ({ model_id: index + 1, model_name: name, request_count: Math.round(pct * 9100), input_tokens: Math.round(monthTokens * pct / 100 * 0.72), output_tokens: Math.round(monthTokens * pct / 100 * 0.28), total_tokens: Math.round(monthTokens * pct / 100), percent: pct }));
+  const series = [];
+  for (let i = 4; i >= 0; i -= 1) {
+    const req = 260 + ((i * 37) % 60);
+    series.push({ bucket_at: sqlUtc(Math.floor(now / 60000) * 60000 - i * 60000), request_count: req, failed_count: i === 1 ? 9 : 2, total_tokens: req * 4100 });
+  }
+  const depts = [["办公室", 9120], ["财务处", 7450], ["政策法规处", 6230], ["信息中心", 5480], ["人事处", 3910], ["审计处", 2760], ["后勤服务中心", 1840], ["机关党委", 920]];
+  return {
+    overview: {
+      totals: { request_count: sum(today, "request_count"), success_count: sum(today, "success_count"), failed_count: sum(today, "failed_count"), input_tokens: input, output_tokens: output, cache_tokens: sum(today, "cache_tokens"), total_tokens: input + output },
+      period_totals: { today: { total_tokens: input + output }, week: { total_tokens: 386_400_000 }, month: { total_tokens: monthTokens }, quarter: { total_tokens: 3_912_000_000 }, year: { total_tokens: 14_870_000_000 } },
+      model_usage: modelRows,
+      model_token_share: modelRows,
+      live_generations: [
+        { task_id: "t1", task_type: "image_generation", status: "processing", progress: 62, model_name: "wanx2.1-t2i", department_name: "宣传处", created_at: sqlUtc(now - 40000) },
+        { task_id: "t2", task_type: "video_generation", status: "processing", progress: 18, model_name: "kling-v2", department_name: "信息中心", created_at: sqlUtc(now - 95000) },
+        { task_id: "t3", task_type: "speech_synthesis", status: "queued", model_name: "cosyvoice-v2", user_name: "张敏", created_at: sqlUtc(now - 12000) },
+        { task_id: "t4", task_type: "image_generation", status: "succeeded", total_tokens: 4200, model_name: "qwen-image", department_name: "办公室", created_at: sqlUtc(now - 150000) },
+        { task_id: "t5", task_type: "video_generation", status: "failed", model_name: "kling-v2", department_name: "财务处", created_at: sqlUtc(now - 300000) },
+        { task_id: "t6", task_type: "image_generation", status: "processing", progress: 81, model_name: "wanx2.1-t2i", department_name: "人事处", created_at: sqlUtc(now - 20000) }
+      ],
+      business_timezone: BUSINESS_TZ,
+      generated_at: generated
+    },
+    trends,
+    rankings: depts.map(([name, req], index) => ({ name, request_count: req, total_tokens: req * 4020, error_count: (index * 5) % 11 })),
+    security: {
+      desensitization: [{ action: "replace", match_count: 412, event_count: 238 }, { action: "redact", match_count: 96, event_count: 61 }, { action: "block", match_count: 14, event_count: 9 }, { action: "log", match_count: 33, event_count: 33 }],
+      audit: [{ action: "admin.login", event_count: 41 }, { action: "api_key.create", event_count: 6 }, { action: "provider.update", event_count: 3 }, { action: "share_link.create", event_count: 2 }],
+      period_start: new Date(dayStart).toISOString()
+    },
+    performance: { buckets: performance, queue: { pending_exports: 2 } },
+    live: {
+      window_minutes: 5, window_seconds: 300, qps: 4.62, tps: 18940, request_count: 1386, failed_count: 17, total_tokens: 5_682_000, error_rate: 1.23,
+      avg_latency_ms: 1180, p95_latency_ms: 3620, p99_latency_ms: 8900, ttft: { available: true, avg_ms: 640 },
+      series,
+      providers: [
+        { id: 1, name: "智谱 AI", request_count: 512, qps: 1.71, error_rate: 0.4, avg_latency_ms: 980 },
+        { id: 2, name: "阿里云百炼", request_count: 431, qps: 1.44, error_rate: 1.2, avg_latency_ms: 1210 },
+        { id: 3, name: "DeepSeek", request_count: 268, qps: 0.89, error_rate: 3.1, avg_latency_ms: 1640 },
+        { id: 4, name: "火山方舟", request_count: 129, qps: 0.43, error_rate: 0, avg_latency_ms: 870 },
+        { id: 5, name: "Moonshot", request_count: 46, qps: 0.15, error_rate: 21.7, avg_latency_ms: 4300 }
+      ],
+      circuits: { available: true, closed: 14, open: 1, half_open: 1, open_channels: [{ name: "moonshot-主线路", state: "open", failures: 7 }, { name: "deepseek-备用", state: "half_open", failures: 3 }] },
+      open_alerts: 2, queue: { pending: 7, worker_alive: true }, health: { level: "warn", reasons: ["circuit_open"] },
+      business_timezone: BUSINESS_TZ, generated_at: generated
+    }
+  };
+}
+
 function send(res, status, body, headers = {}) {
   res.writeHead(status, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store", ...headers });
   res.end(JSON.stringify(body));
@@ -85,7 +165,7 @@ function cookieSession(req) {
   return match ? decodeURIComponent(match[1]) : "";
 }
 
-export function startScreenMock(port = 0) {
+export function startScreenMock(port = 0, { demo = false } = {}) {
   const sessions = new Set();
   const requestLog = [];
   const state = { shareLoginEnabled: true };
@@ -123,7 +203,7 @@ export function startScreenMock(port = 0) {
     }
     if (path === "/screen-api/auth/me") return ok(res, { screen: SHARE }, slide);
     const metric = /^\/screen-api\/dashboard\/([a-z]+)$/.exec(path)?.[1];
-    const data = metric ? fixtures()[metric] : undefined;
+    const data = metric ? (demo ? demoFixtures() : fixtures())[metric] : undefined;
     if (data === undefined) return fail(res, 404, "NOT_FOUND", "Not found");
     return ok(res, { metric, scope: { type: "global", ids: [] }, business_timezone: BUSINESS_TZ, data }, slide);
   }
@@ -172,6 +252,6 @@ export function startScreenMock(port = 0) {
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  const mock = await startScreenMock(Number(process.argv[2] || 8091));
+  const mock = await startScreenMock(Number(process.argv[2] || 8091), { demo: process.argv.includes("--demo") });
   process.stdout.write(`screen mock on ${mock.baseUrl}/screen/${GOOD_CODE}\n`);
 }

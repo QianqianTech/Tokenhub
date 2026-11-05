@@ -24,8 +24,8 @@ use TokenHub\Support\App;
 
 App::bootstrap($basePath);
 $type = $argv[1] ?? '';
-if (!in_array($type, ['cleanup.retention', 'cleanup.exports', 'cleanup.media', 'cleanup.external-events'], true)) {
-    fwrite(STDERR, "Usage: php scripts/enqueue.php cleanup.retention|cleanup.exports|cleanup.media|cleanup.external-events\n");
+if (!in_array($type, ['cleanup.retention', 'cleanup.exports', 'cleanup.media', 'cleanup.external-events', 'cleanup.conversation-logs'], true)) {
+    fwrite(STDERR, "Usage: php scripts/enqueue.php cleanup.retention|cleanup.exports|cleanup.media|cleanup.external-events|cleanup.conversation-logs\n");
     exit(1);
 }
 

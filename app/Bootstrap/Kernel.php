@@ -200,6 +200,26 @@ final class Kernel
         $router->get('/admin-api/rag/index-health', [$ragIndex, 'health'], [new AdminAuthMiddleware()]);
         $router->post('/admin-api/rag/index-reconcile', [$ragIndex, 'reconcile'], [new AdminAuthMiddleware(), new CsrfMiddleware()]);
         $router->post('/admin-api/rag/datasets/{id}/backfill-lexical', [$ragIndex, 'backfillLexical'], [new AdminAuthMiddleware(), new CsrfMiddleware()]);
+        // Conversation logs (会话记录): super administrators only (checked in ConversationLogService).
+        $router->get('/admin-api/conversation-logs/settings', [$admin, 'conversationLogSettings'], [new AdminAuthMiddleware()]);
+        $router->put('/admin-api/conversation-logs/settings', [$admin, 'updateConversationLogSettings'], [new AdminAuthMiddleware(), new CsrfMiddleware()]);
+        $router->post('/admin-api/conversation-logs/cleanup', [$admin, 'cleanupConversationLogs'], [new AdminAuthMiddleware(), new CsrfMiddleware()]);
+        $router->get('/admin-api/conversation-logs/cos', [$admin, 'conversationLogCos'], [new AdminAuthMiddleware()]);
+        $router->put('/admin-api/conversation-logs/cos', [$admin, 'updateConversationLogCos'], [new AdminAuthMiddleware(), new CsrfMiddleware()]);
+        $router->post('/admin-api/conversation-logs/cos/test', [$admin, 'testConversationLogCos'], [new AdminAuthMiddleware(), new CsrfMiddleware()]);
+        $router->post('/admin-api/conversation-logs/cos/sync', [$admin, 'syncConversationLogCos'], [new AdminAuthMiddleware(), new CsrfMiddleware()]);
+        $router->post('/admin-api/conversation-logs/cos/pull', [$admin, 'pullConversationLogCos'], [new AdminAuthMiddleware(), new CsrfMiddleware()]);
+        $router->post('/admin-api/conversation-logs/compress', [$admin, 'compressConversationLogs'], [new AdminAuthMiddleware(), new CsrfMiddleware()]);
+        $router->post('/admin-api/conversation-logs/cleanup/preview', [$admin, 'previewConversationLogCleanup'], [new AdminAuthMiddleware(), new CsrfMiddleware()]);
+        $router->delete('/admin-api/conversation-logs/sessions/{session_key}', [$admin, 'deleteConversationLogSession'], [new AdminAuthMiddleware(), new CsrfMiddleware()]);
+        $router->delete('/admin-api/conversation-logs/calls/{id}', [$admin, 'deleteConversationLogCall'], [new AdminAuthMiddleware(), new CsrfMiddleware()]);
+        $router->post('/admin-api/conversation-logs/purge', [$admin, 'purgeConversationLogs'], [new AdminAuthMiddleware(), new CsrfMiddleware()]);
+        $router->get('/admin-api/conversation-logs/api-keys', [$admin, 'conversationLogKeys'], [new AdminAuthMiddleware()]);
+        $router->get('/admin-api/conversation-logs/api-keys/{id}', [$admin, 'conversationLogKey'], [new AdminAuthMiddleware()]);
+        $router->put('/admin-api/conversation-logs/api-keys/{id}', [$admin, 'updateConversationLogKey'], [new AdminAuthMiddleware(), new CsrfMiddleware()]);
+        $router->get('/admin-api/conversation-logs/api-keys/{id}/sessions', [$admin, 'conversationLogSessions'], [new AdminAuthMiddleware()]);
+        $router->get('/admin-api/conversation-logs/api-keys/{id}/calls', [$admin, 'conversationLogCalls'], [new AdminAuthMiddleware()]);
+        $router->get('/admin-api/conversation-logs/sessions/{session_key}', [$admin, 'conversationLogSession'], [new AdminAuthMiddleware()]);
         $router->get('/admin-api/content-archive', [$admin, 'contentArchive'], [new AdminAuthMiddleware()]);
         $router->get('/admin-api/content-archive/{id}', [$admin, 'contentArchiveDetail'], [new AdminAuthMiddleware()]);
         $router->get('/admin-api/dashboard/realtime', [$admin, 'dashboardRealtime'], [new AdminAuthMiddleware()]);

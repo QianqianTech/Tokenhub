@@ -24,6 +24,8 @@ const TOKENHUB_SCHEDULE = [
     'cleanup.exports' => 300,
     'cleanup.media' => 600,
     'cleanup.external-events' => 3600,
+    // Conversation logs (会话记录): the job itself waits for the daily cleanup time set in the console.
+    'cleanup.conversation-logs' => 300,
     'cleanup.mcp-oauth' => 3600,
     // Expired TokenHub APP devices and old sign-in link codes.
     'cleanup.app-devices' => 3600,

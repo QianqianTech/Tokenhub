@@ -7,15 +7,15 @@ export const adminDomains = [
   { key: "operations", label: "运营中心", tabs: ["dashboard", "admin-chat-sessions", "dashboard-share-links", "dashboard-share-access-logs"] },
   { key: "organization", label: "组织与权限", tabs: ["departments", "users", "admin-users", "permission-config"] },
   { key: "models", label: "模型服务", tabs: ["providers", "models", "model-prices"] },
-  { key: "access", label: "API 接入", tabs: ["api-keys", "api-key-model-quotas", "quota-policies", "quota-bindings"] },
+  { key: "access", label: "API 接入", tabs: ["api-keys", "conversation-logs", "api-key-model-quotas", "quota-policies", "quota-bindings"] },
   { key: "usage", label: "用量中心", tabs: ["usage-records", "multimodal-tasks", "media-assets", "usage-contents", "content-archive", "export-tasks"] },
   { key: "rag", label: "RAG 知识库", tabs: ["rag-build", "rag-retrieval-lab", "rag-quality", "rag-operations"] },
   { key: "security", label: "安全审计", tabs: ["desensitization-policies", "desensitization-events", "alert-events", "logs", "audit-logs", "log-retention-policies", "log-archive-files"] },
-  { key: "system", label: "系统设置", tabs: ["operations-status", "settings-brand-identity", "settings-tls-certificates", "settings-smtp", "settings-alert-thresholds", "content-retention-policy", "system-settings"], groups: [
+  { key: "system", label: "系统设置", tabs: ["operations-status", "settings-brand-identity", "settings-tls-certificates", "settings-smtp", "settings-alert-thresholds", "content-retention-policy", "conversation-log-settings", "system-settings"], groups: [
     { label: "运维", tabs: ["operations-status"] },
     { label: "平台与入口", tabs: ["settings-brand-identity", "settings-tls-certificates"] },
     { label: "通知与告警", tabs: ["settings-smtp", "settings-alert-thresholds"] },
-    { label: "数据与高级", tabs: ["content-retention-policy", "system-settings"] }
+    { label: "数据与高级", tabs: ["content-retention-policy", "conversation-log-settings", "system-settings"] }
   ] }
 ];
 

@@ -136,3 +136,55 @@ test("credential login without a share code", async () => {
     await context.close();
   }
 });
+
+test("both screens fill 1366, 1920 and 4K displays without page scroll or cut rows", async () => {
+  const demo = await startScreenMock(0, { demo: true });
+  try {
+    for (const view of ["overview", "operations"]) {
+      for (const [width, height] of [[1366, 768], [1920, 1080], [3840, 2160]]) {
+        const context = await browser.newContext({ viewport: { width, height }, timezoneId: "UTC" });
+        const page = await context.newPage();
+        const errors = [];
+        page.on("pageerror", (error) => errors.push(error.message));
+        try {
+          await page.goto(`${demo.baseUrl}/screen/${GOOD_CODE}/${view}`);
+          await waitForPanels(page);
+          const layout = await page.evaluate(() => {
+            const root = document.documentElement;
+            const cut = [];
+            for (const host of document.querySelectorAll(".screen-view.active .model-list, .screen-view.active .rank-list, .screen-view.active .security-list")) {
+              const limit = host.getBoundingClientRect().bottom + 1;
+              if (host.lastElementChild && host.lastElementChild.getBoundingClientRect().bottom > limit) cut.push(host.id);
+            }
+            return { fit: root.classList.contains("screen-fit"), scrollW: root.scrollWidth, scrollH: root.scrollHeight, cut };
+          });
+          assert.equal(layout.fit, true, `${view} ${width}: fit mode`);
+          assert.ok(layout.scrollW <= width && layout.scrollH <= height, `${view} ${width}: no page scroll (${layout.scrollW}×${layout.scrollH})`);
+          assert.deepEqual(layout.cut, [], `${view} ${width}: no half rows`);
+          assert.deepEqual(errors, []);
+        } finally {
+          await context.close();
+        }
+      }
+    }
+  } finally {
+    await demo.close();
+  }
+});
+
+test("data that stops refreshing is flagged on screen", async () => {
+  const context = await browser.newContext({ viewport: { width: 1920, height: 1080 } });
+  const page = await context.newPage();
+  try {
+    await page.clock.install();
+    await page.goto(`${mock.baseUrl}/screen/${GOOD_CODE}`);
+    await waitForPanels(page);
+    assert.equal(await page.locator("#screen-stale").isVisible(), false);
+    await page.route("**/screen-api/dashboard/**", (route) => route.abort());
+    await page.clock.fastForward(45_000);
+    await page.locator("#screen-stale").filter({ hasText: "未更新" }).waitFor();
+    assert.match(await page.locator("#screen-status").innerText(), /刷新失败|部分数据/);
+  } finally {
+    await context.close();
+  }
+});

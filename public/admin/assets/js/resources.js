@@ -29,6 +29,8 @@ const resourceCapability = (resourceKey) => {
   if (["api-key-model-quotas", "quota-policies", "quota-bindings"].includes(resourceKey)) return "quotas.read";
   if (resourceKey.startsWith("rag-")) return "rag.read";
   if (["usage-records", "multimodal-tasks", "media-assets"].includes(resourceKey)) return "usage.read";
+  // Super administrators only: /admin-api/me adds this pseudo capability for them.
+  if (["conversation-logs", "conversation-log-settings"].includes(resourceKey)) return "conversation_logs.read";
   if (["usage-contents", "content-archive", "export-tasks"].includes(resourceKey)) return "content.read";
   if (["admin-chat-sessions", "dashboard-share-links", "dashboard-share-access-logs"].includes(resourceKey)) return "operations.read";
   if (resourceKey.startsWith("desensitization-")) return "security.read";
@@ -220,6 +222,8 @@ export const resources = {
   "alert-events": { label: "告警事件", group: "日志", readOnly: true, columns: ["id", "event_type", "severity", "message", "status", "created_at"] },
   "audit-logs": { label: "审计日志", group: "日志", readOnly: true, columns: ["id", "actor_user_id", "actor_type", "action", "target_type", "target_id", "channel", "device_id", "request_id", "client_ip", "created_at"], exportType: "logs" },
   "content-retention-policy": { label: "内容留存策略", group: "系统设置", readOnly: true },
+  "conversation-logs": { label: "会话记录", group: "访问", readOnly: true },
+  "conversation-log-settings": { label: "会话记录设置", group: "系统设置", readOnly: true },
   "settings-center": { label: "系统设置", group: "系统设置", readOnly: true },
   "settings-brand-identity": { label: "标题与标识", group: "系统设置", readOnly: true, settingsSection: "brand_identity" },
   "settings-smtp": { label: "SMTP 邮件", group: "系统设置", readOnly: true, settingsSection: "smtp" },
@@ -265,6 +269,8 @@ const navigationLabels = {
   "alert-events": { label: "告警事件", group: "日志" },
   "audit-logs": { label: "审计日志", group: "日志" },
   "content-retention-policy": { label: "内容留存策略", group: "系统设置" },
+  "conversation-logs": { label: "会话记录", group: "访问" },
+  "conversation-log-settings": { label: "会话记录设置", group: "系统设置" },
   "settings-center": { label: "系统设置", group: "系统设置" },
   "settings-brand-identity": { label: "标题与标识", group: "系统设置" },
   "settings-tls-certificates": { label: "证书与入口", group: "系统设置" },

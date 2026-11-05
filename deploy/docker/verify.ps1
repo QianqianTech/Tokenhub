@@ -9,7 +9,7 @@ $KitDir = $PSScriptRoot
 $EnvFile = Join-Path $KitDir '.env'
 if (-not (Test-Path $EnvFile)) { Write-Host "ERROR: $EnvFile not found; run install.ps1 first." -ForegroundColor Red; exit 1 }
 $envValues = @{}
-Get-Content $EnvFile | Where-Object { $_ -match '^[A-Z0-9_]+=' } | ForEach-Object { $k, $v = $_ -split '=', 2; $envValues[$k] = $v.Trim('"') }
+Get-Content -LiteralPath $EnvFile -Encoding UTF8 | Where-Object { $_ -match '^[A-Z0-9_]+=' } | ForEach-Object { $k, $v = $_ -split '=', 2; $envValues[$k] = $v.Trim('"') }
 $compose = @('compose', '--project-directory', $KitDir, '--env-file', $EnvFile, '-f', (Join-Path $KitDir 'compose.yml'))
 $report = Join-Path $KitDir ('verify-report-' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '.txt')
 $script:failures = 0

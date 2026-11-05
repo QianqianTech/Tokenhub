@@ -31,7 +31,6 @@ done
 require_docker
 [ -f "$ENV_FILE" ] || die "$ENV_FILE not found; run install.sh first."
 export TOKENHUB_BUILD="$BUILD"
-ensure_realtime_token
 
 PREVIOUS_TAG="$(env_get TOKENHUB_IMAGE_TAG)"
 if [ -z "$TAG" ] && [ "$BUILD" = 1 ] && [ -f "$KIT_DIR/../../VERSION" ]; then
@@ -137,6 +136,7 @@ if [ "$SKIP_BACKUP" = 0 ]; then
   BACKUP_PATH="$(latest_backup)"
 fi
 
+ensure_realtime_token
 PHASE="images"
 info "Upgrading image tag $PREVIOUS_TAG -> $TAG"
 env_set TOKENHUB_IMAGE_TAG "$TAG"

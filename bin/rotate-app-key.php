@@ -88,4 +88,55 @@ foreach (App::db()->select('SELECT id, default_headers FROM providers WHERE defa
 }
 $report['providers.default_headers'] = $headerStats;
 
+// Conversation log directory: rewriting each day file re-encrypts it with the
+// current key (today's file is folded into its compressed form as well).
+$conversationStats = ['files' => 0, 'rewritten' => 0, 'failed' => 0];
+$conversationStore = new \TokenHub\Services\ConversationLogStore();
+foreach (array_keys($conversationStore->files()) as $relative) {
+    $conversationStats['files']++;
+    if ($dryRun) {
+        continue;
+    }
+    try {
+        $conversationStore->compress($relative);
+        $conversationStats['rewritten']++;
+    } catch (Throwable) {
+        $conversationStats['failed']++;
+    }
+}
+$report['conversation_log_files'] = $conversationStats;
+
+// Conversation log database (its own database, not this one): encrypted columns.
+$logDb = new \TokenHub\Services\ConversationLogDb();
+foreach (['encrypted_title', 'encrypted_system', 'encrypted_messages', 'encrypted_reply'] as $column) {
+    $stats = ['scanned' => 0, 'reencrypted' => 0, 'undecryptable' => 0, 'current' => 0];
+    $lastId = 0;
+    try {
+        do {
+            $rows = $logDb->select("SELECT id, {$column} AS value FROM conversation_logs WHERE id > ? AND {$column} IS NOT NULL AND {$column} <> '' ORDER BY id ASC LIMIT {$batch}", [$lastId]);
+            foreach ($rows as $row) {
+                $lastId = (int) $row['id'];
+                $stats['scanned']++;
+                $value = (string) $row['value'];
+                if (!Crypto::needsReencryption($value)) {
+                    $stats['current']++;
+                    continue;
+                }
+                $plain = Crypto::decrypt($value);
+                if ($plain === '') {
+                    $stats['undecryptable']++;
+                    continue;
+                }
+                if (!$dryRun) {
+                    $logDb->execute("UPDATE conversation_logs SET {$column} = ? WHERE id = ?", [Crypto::encrypt($plain), $lastId]);
+                }
+                $stats['reencrypted']++;
+            }
+        } while (count($rows) === $batch);
+    } catch (Throwable $throwable) {
+        $stats['error'] = $throwable->getMessage();
+    }
+    $report['conversation_log_db.' . $column] = $stats;
+}
+
 echo json_encode(['dry_run' => $dryRun, 'key_id' => Crypto::keyIdOf(Crypto::encrypt('probe')), 'report' => $report], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . PHP_EOL;

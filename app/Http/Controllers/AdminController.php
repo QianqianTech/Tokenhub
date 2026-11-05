@@ -15,6 +15,7 @@ use TokenHub\Services\CertificateRequestService;
 use TokenHub\Services\CertificateStatusService;
 use TokenHub\Services\ContentArchiveService;
 use TokenHub\Services\ContentRetentionService;
+use TokenHub\Services\ConversationLogService;
 use TokenHub\Services\CrudService;
 use TokenHub\Services\DashboardService;
 use TokenHub\Services\DepartmentService;
@@ -628,6 +629,108 @@ final class AdminController
     public function requestCertificate(Request $request): Response
     {
         return Response::ok((new CertificateRequestService())->request($request->json()), 202);
+    }
+
+    public function conversationLogSettings(Request $request): Response
+    {
+        return Response::ok((new ConversationLogService())->settingsView());
+    }
+
+    public function updateConversationLogSettings(Request $request): Response
+    {
+        return Response::ok((new ConversationLogService())->saveSettings($request->json()));
+    }
+
+    public function cleanupConversationLogs(Request $request): Response
+    {
+        $criteria = $request->json();
+        $service = new ConversationLogService();
+        // No criteria: apply the retention rules now ("立即清理过期记录").
+        return Response::ok(isset($criteria['mode']) ? $service->cleanupBy($criteria, false) : $service->cleanupNow());
+    }
+
+    public function conversationLogCos(Request $request): Response
+    {
+        return Response::ok((new ConversationLogService())->cosSettings());
+    }
+
+    public function updateConversationLogCos(Request $request): Response
+    {
+        return Response::ok((new ConversationLogService())->saveCos($request->json()));
+    }
+
+    public function testConversationLogCos(Request $request): Response
+    {
+        return Response::ok((new ConversationLogService())->testCos());
+    }
+
+    public function syncConversationLogCos(Request $request): Response
+    {
+        return Response::ok((new ConversationLogService())->syncCosNow());
+    }
+
+    public function pullConversationLogCos(Request $request): Response
+    {
+        return Response::ok((new ConversationLogService())->pullFromCos());
+    }
+
+    public function compressConversationLogs(Request $request): Response
+    {
+        return Response::ok((new ConversationLogService())->compressNow());
+    }
+
+    public function previewConversationLogCleanup(Request $request): Response
+    {
+        return Response::ok((new ConversationLogService())->cleanupBy($request->json(), true));
+    }
+
+    public function deleteConversationLogSession(Request $request): Response
+    {
+        return Response::ok((new ConversationLogService())->deleteSession((string) $request->params['session_key']));
+    }
+
+    public function deleteConversationLogCall(Request $request): Response
+    {
+        return Response::ok((new ConversationLogService())->deleteCall((int) $request->params['id']));
+    }
+
+    public function purgeConversationLogs(Request $request): Response
+    {
+        if (($request->json()['confirm'] ?? '') !== 'PURGE') {
+            abort_json('CONVERSATION_LOG_PURGE_UNCONFIRMED', '清空会话记录需要确认', 422);
+        }
+        return Response::ok((new ConversationLogService())->purgeAll());
+    }
+
+    public function conversationLogKeys(Request $request): Response
+    {
+        $page = (new ConversationLogService())->keys($request->query);
+        return Response::ok($page['items'])->withHeader('X-Total-Count', (string) $page['total']);
+    }
+
+    public function conversationLogKey(Request $request): Response
+    {
+        return Response::ok((new ConversationLogService())->keySettings((int) $request->params['id']));
+    }
+
+    public function updateConversationLogKey(Request $request): Response
+    {
+        return Response::ok((new ConversationLogService())->saveKeySettings((int) $request->params['id'], $request->json()));
+    }
+
+    public function conversationLogCalls(Request $request): Response
+    {
+        return Response::ok((new ConversationLogService())->calls((int) $request->params['id'], $request->query));
+    }
+
+    public function conversationLogSessions(Request $request): Response
+    {
+        return Response::ok((new ConversationLogService())->sessions((int) $request->params['id'], $request->query));
+    }
+
+    public function conversationLogSession(Request $request): Response
+    {
+        return Response::ok((new ConversationLogService())->session((string) $request->params['session_key'], $request->query));
     }
 
     public function contentArchive(Request $request): Response

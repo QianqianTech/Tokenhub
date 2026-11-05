@@ -90,6 +90,12 @@ final class PermissionService
             return null;
         }
 
+        // Conversation logs: super administrators only, enforced by
+        // ConversationLogService (deliberately not a grantable capability).
+        if (str_starts_with($path, '/admin-api/conversation-logs')) {
+            return null;
+        }
+
         if (str_starts_with($path, '/admin-api/lookups/')) {
             return LookupService::capabilityFor(substr($path, strlen('/admin-api/lookups/'))) ?? 'unknown';
         }

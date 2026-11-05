@@ -117,6 +117,10 @@ final class AuthService
     {
         unset($user['password_hash']);
         $user['permissions'] = (new PermissionService())->permissionsFor($user);
+        if (($user['role'] ?? '') === 'super_admin') {
+            // Sidebar only; the API checks the role itself.
+            $user['permissions'][] = ConversationLogService::CAPABILITY;
+        }
         return $user;
     }
 }

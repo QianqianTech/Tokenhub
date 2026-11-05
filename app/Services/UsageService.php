@@ -38,6 +38,13 @@ final class UsageService
             }
             unset($record['content_encrypted']);
         }
+        if (isset($record['conversation_encrypted']) && is_string($record['conversation_encrypted'])) {
+            $decoded = json_decode(Crypto::decrypt($record['conversation_encrypted']), true);
+            if (is_array($decoded)) {
+                $record['conversation'] = $decoded;
+            }
+            unset($record['conversation_encrypted']);
+        }
         $record['created_at'] = $this->normalizeTime($record['created_at'] ?? null);
 
         $existing = $requestId !== '' ? $this->existing($requestId, $staged) : null;
@@ -281,6 +288,15 @@ final class UsageService
         }
         if ($usageRecord && isset($record['content']) && is_array($record['content'])) {
             (new ContentRetentionService())->writeForRecord((int) $usageRecord['id'], $record);
+        }
+        if ($usageRecord && isset($record['conversation']) && is_array($record['conversation'])) {
+            try {
+                (new ConversationLogService())->writeForRecord($usageRecord, $record);
+            } catch (\Throwable $throwable) {
+                // The usage record and billing must not fail because of the
+                // conversation log (e.g. migration not applied yet).
+                App::logger()->warning('worker', 'conversation log write failed', ['request_id' => $record['request_id'] ?? null, 'error' => $throwable->getMessage()]);
+            }
         }
         $this->aggregate($record);
         if ($staged && $usageRecord) {

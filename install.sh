@@ -45,7 +45,7 @@ Start Docker Desktop first on macOS; use install.ps1 for Windows PowerShell.
 The destination must not already exist. Failed builds keep the downloaded source
 and .env: retry with bash <directory>/deploy/docker/install.sh --build.
 This entry point does not upgrade an existing installation or install Docker.
-Docs: https://github.com/QianqianTech/Tokenhub#readme
+Upgrades: https://github.com/QianqianTech/Tokenhub/blob/main/docs/deployment/upgrade.md
 TXT
 }
 
@@ -95,7 +95,7 @@ info "Prerequisites passed. Source: $REPOSITORY ($REF)"
 [ "$CHECK_ONLY" = 0 ] || exit 0
 
 case "$INSTALL_DIR" in /*) ;; *) INSTALL_DIR="$PWD/$INSTALL_DIR" ;; esac
-[ ! -e "$INSTALL_DIR" ] && [ ! -L "$INSTALL_DIR" ] || die "Destination already exists: $INSTALL_DIR. To resume, run its deploy/docker/install.sh --build; to upgrade, follow the README."
+[ ! -e "$INSTALL_DIR" ] && [ ! -L "$INSTALL_DIR" ] || die "Destination already exists: $INSTALL_DIR. To resume, run its deploy/docker/install.sh --build; to upgrade, use upgrade.sh."
 parent="$(dirname "$INSTALL_DIR")"
 mkdir -p -- "$parent"
 STAGING="$(mktemp -d "$parent/.tokenhub-download.XXXXXX")"

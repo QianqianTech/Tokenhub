@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace TokenHub\Services\Gateway;
 
 use Throwable;
+use TokenHub\Services\ConversationLogService;
 use TokenHub\Support\App;
 use TokenHub\Support\ConfigVersion;
 use TokenHub\Support\Crypto;
@@ -76,6 +77,29 @@ final class GatewayUsageRecorder
             'usage_source' => $usage['usage_source'] ?? ($status === 'success' ? 'estimated' : 'none'),
         ];
 
+        if ($content !== null && ConversationLogService::enabledForKey($apiKey)) {
+            // Conversation log (会话记录, switched on per API key): extract the
+            // new turn from the full payload here, before the size bound below
+            // can cut the history.
+            try {
+                $conversation = ConversationExtractor::extract(
+                    $gatewayRequest->protocol,
+                    $gatewayRequest->capability,
+                    $gatewayRequest->payload,
+                    is_array($content['output'] ?? null) ? $content['output'] : [],
+                    self::sessionHeaders($httpRequest)
+                );
+                if ($conversation !== null) {
+                    $record['conversation_encrypted'] = Crypto::encrypt((string) json_encode($conversation, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE));
+                }
+            } catch (Throwable $throwable) {
+                try {
+                    App::logger()->warning('gateway', 'conversation log extraction failed', ['error' => $throwable->getMessage()]);
+                } catch (Throwable) {
+                }
+            }
+        }
+
         if ($content !== null && self::retainsContent()) {
             // Prompt/response bodies never sit in Redis in clear text: the
             // queue carries ciphertext, the consumer applies the retention
@@ -87,7 +111,7 @@ final class GatewayUsageRecorder
 
         self::enqueue(['type' => 'usage.write', 'record' => $record]);
         $logRecord = $record;
-        unset($logRecord['content'], $logRecord['content_encrypted']);
+        unset($logRecord['content'], $logRecord['content_encrypted'], $logRecord['conversation_encrypted']);
         try {
             App::logger()->info('gateway-access', 'gateway request', $logRecord);
         } catch (Throwable) {
@@ -201,6 +225,24 @@ final class GatewayUsageRecorder
             ]);
         } catch (Throwable) {
         }
+    }
+
+    /**
+     * Client conversation ids sent as headers (Codex CLI: session_id).
+     *
+     * @return array<string, string>
+     */
+    private static function sessionHeaders(Request $request): array
+    {
+        $hints = [];
+        foreach (['x-conversation-id', 'conversation-id', 'x-session-id', 'session-id'] as $name) {
+            $value = trim((string) $request->header($name, ''));
+            if ($value !== '') {
+                $hints[$name] = substr($value, 0, 200);
+            }
+        }
+
+        return $hints;
     }
 
     /**

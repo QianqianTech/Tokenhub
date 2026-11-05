@@ -58,7 +58,8 @@ TokenHub GitHub installer for Windows PowerShell 5.1+ / PowerShell 7
 Install Git and Docker Desktop (Linux containers / WSL 2) first.
 Requires Docker Engine 24+ and Compose 2.20+ (or newer).
 The destination must not already exist. This script does not upgrade an
-existing installation or install Docker. See the repository README.
+existing installation or install Docker.
+Upgrades: https://github.com/QianqianTech/Tokenhub/blob/main/docs/deployment/upgrade.md
 '@
         exit 0
     }
@@ -80,7 +81,7 @@ existing installation or install Docker. See the repository README.
     if ($Check) { exit 0 }
     if ([string]::IsNullOrWhiteSpace($Directory)) { throw 'Directory must not be empty.' }
     $Destination = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Directory)
-    if (Test-Path -LiteralPath $Destination) { throw "Destination already exists: $Destination. Resume with its deploy/docker/install.ps1 -Build; use the README for upgrades." }
+    if (Test-Path -LiteralPath $Destination) { throw "Destination already exists: $Destination. Resume with its deploy/docker/install.ps1 -Build; use upgrade.ps1 for upgrades." }
     $parent = Split-Path -Parent $Destination
     [void][System.IO.Directory]::CreateDirectory($parent)
     $Staging = Join-Path $parent ('.tokenhub-download.' + [Guid]::NewGuid().ToString('N'))

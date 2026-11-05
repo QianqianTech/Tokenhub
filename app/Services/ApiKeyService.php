@@ -284,6 +284,13 @@ final class ApiKeyService
 
             return $newId;
         });
+        if (SchemaInspector::hasColumn('api_keys', 'conversation_log_enabled')) {
+            // The replacement key keeps the old key's conversation-log switch.
+            App::db()->execute(
+                'UPDATE api_keys SET conversation_log_enabled = ?, conversation_log_retention_days = ? WHERE id = ?',
+                [(int) ($old['conversation_log_enabled'] ?? 0), $old['conversation_log_retention_days'] ?? null, $newId]
+            );
+        }
         App::redis()->delete($this->missCacheKey(Crypto::hashKey($plain)));
         $this->invalidateById($id);
         (new AuditService())->write('api_key.rotate', 'api_keys', $id, ['replacement_id' => $newId, 'old_key_expires_at' => $graceEnds]);
@@ -525,11 +532,15 @@ final class ApiKeyService
             $scopesByKey[(int) $scopeRow['api_key_id']][] = (string) $scopeRow['scope'];
         }
 
-        return array_map(static function (array $row) use ($usageByKey, $modelIdsByKey, $departmentNames, $userNames, $scopesByKey): array {
+        // 会话记录 is recording only when the feature and the key switch are both on.
+        $conversationFeature = ConversationLogService::enabled();
+
+        return array_map(static function (array $row) use ($usageByKey, $modelIdsByKey, $departmentNames, $userNames, $scopesByKey, $conversationFeature): array {
             $apiKeyId = (int) ($row['id'] ?? 0);
             $summary = $usageByKey[$apiKeyId] ?? [];
             return [
                 ...$row,
+                'conversation_log_active' => $conversationFeature && (int) ($row['conversation_log_enabled'] ?? 0) === 1,
                 'model_ids' => $modelIdsByKey[$apiKeyId] ?? [],
                 'management_scopes' => $scopesByKey[$apiKeyId] ?? [],
                 'department_name' => $departmentNames[(int) ($row['department_id'] ?? 0)] ?? null,

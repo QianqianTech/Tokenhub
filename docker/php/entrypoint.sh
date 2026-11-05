@@ -26,7 +26,7 @@ if [ -f composer.json ] && [ ! -f vendor/autoload.php ]; then
   fi
 fi
 
-mkdir -p storage/logs storage/exports storage/media storage/cache storage/caddy
+mkdir -p storage/logs storage/exports storage/media storage/cache storage/caddy storage/conversation-logs
 touch storage/caddy/tls-current.caddy
 
 exec "$@"

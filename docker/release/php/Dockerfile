@@ -70,7 +70,7 @@ COPY composer.json VERSION .env.example ./
 
 RUN sh scripts/release/stamp-app-version.sh /srv/app "${TOKENHUB_APP_BUILD}" \
     && chmod -R a+rX app bin config database public scripts vendor composer.json VERSION .env.example \
-    && mkdir -p storage/logs storage/exports storage/media storage/cache storage/caddy \
+    && mkdir -p storage/logs storage/exports storage/media storage/cache storage/caddy storage/conversation-logs \
     && chown -R www-data:www-data storage
 
 HEALTHCHECK --interval=15s --timeout=5s --retries=5 CMD ["tokenhub-healthcheck", "fpm"]

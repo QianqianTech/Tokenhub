@@ -33,7 +33,7 @@ powershell -ExecutionPolicy Bypass -File .\install.ps1 -Build -Site tokenhub.exa
 | 来源 | 参数 |
 | --- | --- |
 | 离线包 | 先在包根目录执行 `load-images.sh` 或 `load-images.ps1`，然后直接运行 `install.sh` |
-| [Docker Hub 预构建镜像](../../docs/deployment/README.md#从-docker-hub-部署)（`linux/arm64`） | `--image-prefix docker.io/leofan2022/ --tag 1.0.1`。PowerShell 使用 `-ImagePrefix` 和 `-Tag` |
+| [Docker Hub 预构建镜像](../../docs/deployment/README.md#从-docker-hub-部署)（`linux/arm64`） | `--image-prefix docker.io/leofan2022/ --tag 1.0.2`。PowerShell 使用 `-ImagePrefix` 和 `-Tag` |
 | 源码构建 | 在完整源码树中执行 `deploy/docker/install.sh --build` |
 
 安装脚本依次执行以下步骤：
@@ -68,6 +68,8 @@ docker compose exec php php bin/install.php admin --username=admin   # 重置管
 ```
 
 ## 升级、备份与恢复
+
+从 GitHub 下载升级入口、预检以及源码构建升级的步骤见 [Docker 升级指南](../../docs/deployment/upgrade.md)。若只更新镜像，也可在已有运维包内直接执行：
 
 ```sh
 ./upgrade.sh --tag 1.1.0               # 打印版本变更，自动备份，切换镜像版本、执行迁移并检查健康状态

@@ -25,8 +25,8 @@ jobs:
         run: find app bin scripts config public -name '*.php' -print0 | xargs -0 -n1 php -l >/dev/null
       - name: Shell syntax and shellcheck
         run: |
-          for f in deploy/docker/*.sh deploy/linux/*.sh scripts/*.sh scripts/release/*.sh docker/php/*.sh docker/release/*/*.sh; do bash -n "$f"; done
-          shellcheck -S error deploy/docker/*.sh deploy/linux/*.sh scripts/release/*.sh scripts/package-offline-release.sh
+          for f in install.sh upgrade.sh deploy/docker/*.sh deploy/linux/*.sh scripts/*.sh scripts/release/*.sh docker/php/*.sh docker/release/*/*.sh; do bash -n "$f"; done
+          shellcheck -S error install.sh upgrade.sh deploy/docker/*.sh deploy/linux/*.sh scripts/release/*.sh scripts/package-offline-release.sh
       - name: Compose files
         run: |
           cp .env.example .env
@@ -36,6 +36,7 @@ jobs:
       - name: Installer unit tests
         run: |
           for t in tests/Console/InstallerTest.php tests/Console/DeploymentModesTest.php tests/Console/OfflineDockerReleaseTest.php tests/Console/QdrantDeploymentConfigTest.php tests/Console/MigrationFilesTest.php; do php "$t"; done
+          python3 -m unittest discover -s tests/installer
 
   docker-install:
     runs-on: ubuntu-24.04

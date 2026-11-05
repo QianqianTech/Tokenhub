@@ -37,10 +37,12 @@ function Save-Volume([string]$Volume, [string]$Archive) {
 }
 
 Write-Host '==> MySQL dump'
-& docker @compose exec -T mysql sh -c 'mysqldump -uroot -p"$MYSQL_ROOT_PASSWORD" --single-transaction --routines --triggers --hex-blob --set-gtid-purged=OFF "$MYSQL_DATABASE" | gzip > /tmp/tokenhub.sql.gz'
+& docker @compose exec -T mysql bash -o pipefail -c 'mysqldump -uroot -p"$MYSQL_ROOT_PASSWORD" --single-transaction --routines --triggers --hex-blob --no-tablespaces --set-gtid-purged=OFF "$MYSQL_DATABASE" | gzip > /tmp/tokenhub.sql.gz'
 if ($LASTEXITCODE -ne 0) { throw 'MySQL dump failed.' }
 $mysqlId = (& docker @compose ps -q mysql | Select-Object -First 1)
+if ($LASTEXITCODE -ne 0 -or -not $mysqlId) { throw 'Cannot find the MySQL container.' }
 & docker cp "${mysqlId}:/tmp/tokenhub.sql.gz" (Join-Path $target 'mysql.sql.gz')
+if ($LASTEXITCODE -ne 0) { throw 'Copying the MySQL dump failed.' }
 & docker @compose exec -T mysql rm -f /tmp/tokenhub.sql.gz
 
 if ($envValues['RAG_VECTOR_STORE'] -ne 'mysql_fallback') {
@@ -48,21 +50,24 @@ if ($envValues['RAG_VECTOR_STORE'] -ne 'mysql_fallback') {
     & docker @compose exec -T php php bin/qdrant-snapshot.php create --index=/tmp/qdrant-index.json
     if ($LASTEXITCODE -ne 0) { throw 'Qdrant snapshot failed.' }
     $phpId = (& docker @compose ps -q php | Select-Object -First 1)
+    if ($LASTEXITCODE -ne 0 -or -not $phpId) { throw 'Cannot find the PHP container.' }
     & docker cp "${phpId}:/tmp/qdrant-index.json" (Join-Path $target 'qdrant-index.json')
+    if ($LASTEXITCODE -ne 0) { throw 'Copying the Qdrant snapshot index failed.' }
     Save-Volume 'qdrant_snapshots' 'qdrant-snapshots.tar.gz'
 }
 
 Write-Host '==> Redis, storage, certificates'
 & docker @compose exec -T redis sh -c 'redis-cli --no-auth-warning -a "$REDIS_PASSWORD" SAVE' | Out-Null
+if ($LASTEXITCODE -ne 0) { throw 'Saving Redis failed.' }
 Save-Volume 'redis_data' 'redis-data.tar.gz'
 Save-Volume 'tokenhub_storage' 'storage.tar.gz'
 Save-Volume 'caddy_data' 'caddy-data.tar.gz'
-Copy-Item $EnvFile (Join-Path $target 'env')
-Set-Content -Path (Join-Path $target 'image-tag') -Value $envValues['TOKENHUB_IMAGE_TAG'] -Encoding ascii
+Copy-Item -LiteralPath $EnvFile -Destination (Join-Path $target 'env') -ErrorAction Stop
+Set-Content -LiteralPath (Join-Path $target 'image-tag') -Value $envValues['TOKENHUB_IMAGE_TAG'] -Encoding ascii -ErrorAction Stop
 
 Get-ChildItem -LiteralPath $target -File | Where-Object Name -ne 'SHA256SUMS' | Sort-Object Name | ForEach-Object {
-    (Get-FileHash -Algorithm SHA256 -LiteralPath $_.FullName).Hash.ToLowerInvariant() + '  ./' + $_.Name
-} | Set-Content -Encoding ascii (Join-Path $target 'SHA256SUMS')
+    (Get-FileHash -Algorithm SHA256 -LiteralPath $_.FullName -ErrorAction Stop).Hash.ToLowerInvariant() + '  ./' + $_.Name
+} | Set-Content -Encoding ascii -LiteralPath (Join-Path $target 'SHA256SUMS') -ErrorAction Stop
 
 if ($Keep -gt 0) {
     Get-ChildItem -LiteralPath $BackupDir -Directory | Where-Object Name -like '20*' | Sort-Object Name -Descending | Select-Object -Skip $Keep | Remove-Item -Recurse -Force

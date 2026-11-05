@@ -37,6 +37,8 @@ final class WorkerService
             'cleanup.exports' => $this->cleanupExports(),
             'cleanup.media' => $this->cleanupMedia(),
             'cleanup.external-events' => $this->cleanupExternalEvents(),
+            // Conversation logs: runs every few minutes, deletes once a day after the configured time.
+            'cleanup.conversation-logs' => (new ConversationLogService())->cleanup(),
             'cleanup.mcp-oauth' => \TokenHub\Support\SchemaInspector::hasColumn('oauth_grants', 'grant_id') ? (new \TokenHub\Services\Mcp\OAuth\OAuthServer(''))->cleanup() : null,
             'cleanup.app-devices' => \TokenHub\Support\SchemaInspector::hasColumn('admin_app_devices', 'refresh_hash') ? (new AppDeviceAuthService())->cleanup() : null,
             'logs.rotate' => $this->rotateLogs($job),

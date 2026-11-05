@@ -336,6 +336,10 @@ function renderApiKeyTable(rows, config, onRefresh, context = {}, { onOpen = nul
       ops.push(button("额度", () => showApiKeyQuota(row), "secondary api-key-quota-button"));
       ops.push(button("MCP 授权", () => showApiKeyMcpGrants(row), "secondary api-key-mcp-button"));
     }
+    if (row.id && hasCapability("conversation_logs.read")) {
+      // Super administrators only: per-key conversation log switch.
+      ops.push(button("会话记录", () => showApiKeyConversationLog(row, onRefresh), "secondary api-key-conversation-button"));
+    }
     if (row.id && row.status === "active") {
       ops.push(button("轮换", () => showApiKeyRotate(row, onRefresh), "secondary api-key-rotate-button"));
       if (hasCapability("operations.read")) {
@@ -356,6 +360,9 @@ function renderApiKeyTable(rows, config, onRefresh, context = {}, { onOpen = nul
       el("span", { className: "cell-stack" }, [
         el("span", { className: "api-key-name-line" }, [
           badge,
+          row.conversation_log_active && hasCapability("conversation_logs.read")
+            ? el("span", { className: "status-pill is-pending api-key-conversation-badge", text: "记录对话", title: "这个密钥的对话正在被记录（会话记录）" })
+            : null,
           el("button", { type: "button", className: "link-button api-key-open", text: row.name || `#${row.id}`, title: "查看密钥详情", onClick: () => onOpen?.(row) })
         ].filter(Boolean)),
         models ? el("span", { className: "cell-secondary", text: models, title: models }) : null
@@ -429,9 +436,13 @@ async function renderApiKeyDrawer(drawer, row, config, context, { onClose, onRef
     ["创建时间", row.created_at || "—"],
     ["过期时间", row.expires_at || "不过期"]
   ];
+  if (hasCapability("conversation_logs.read")) {
+    facts.push(["会话记录", row.conversation_log_active ? "记录中" : (Number(row.conversation_log_enabled) === 1 ? "已开启（功能未启用，暂不记录）" : "未开启")]);
+  }
   const actions = [];
   if (config.form) actions.push(button("编辑", () => showEditModal("api-keys", config, row, onRefresh), "secondary"));
   if (row.status === "active") actions.push(button("轮换密钥", () => showApiKeyRotate(row, onRefresh), "secondary"));
+  if (hasCapability("conversation_logs.read")) actions.push(button("会话记录", () => showApiKeyConversationLog(row, onRefresh), "secondary"));
   if (row.status !== "disabled" && row.status !== "deleted") actions.push(button("删除", () => deleteApiKey(row, onRefresh), "danger"));
   drawer.replaceChildren(
     el("header", { className: "api-key-drawer-head" }, [
@@ -675,5 +686,29 @@ async function showApiKeyRagBindings(row, onSaved) {
     body.replaceChildren(knowledgeBaseSection, datasetSection, save, output);
   } catch (error) {
     body.replaceChildren(statusMessage(adminErrorMessage(error, "知识库权限加载失败"), "error"));
+  }
+}
+
+// 会话记录: switch conversation logging on or off for one key (super administrators).
+async function showApiKeyConversationLog(row, onRefresh) {
+  const body = el("div", { className: "api-key-conversation-dialog" }, [loadingState("正在读取…", { rows: 1 })]);
+  const handle = showModal(`会话记录 · ${row.name || `#${row.id}`}`, body, { size: "sm" });
+  try {
+    const result = await api(`/admin-api/conversation-logs/api-keys/${row.id}`, { silent: true });
+    const { conversationKeySettings } = await import("./conversation-logs.js");
+    body.replaceChildren(conversationKeySettings(result.data || {}, {
+      onSaved: (key) => {
+        row.conversation_log_enabled = key.enabled ? 1 : 0;
+        row.conversation_log_active = Boolean(key.enabled && key.feature_enabled !== false);
+        onRefresh?.();
+      },
+      onView: () => {
+        void handle?.close?.({ force: true });
+        navigateTo("conversation-logs", { api_key_id: row.id });
+      },
+      onLeave: () => void handle?.close?.({ force: true })
+    }));
+  } catch (error) {
+    body.replaceChildren(errorState(error, { fallback: adminErrorMessage(error, "读取会话记录设置失败") }));
   }
 }

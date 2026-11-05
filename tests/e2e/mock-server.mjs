@@ -29,7 +29,8 @@ export const ALL_CAPABILITIES = [
 ];
 
 const ACCOUNTS = {
-  admin: { password: "admin-pass", user: { id: 1, username: "admin", role: "super_admin", department_id: 1, status: "active", permissions: ALL_CAPABILITIES } },
+  // conversation_logs.read: added by /admin-api/me for super administrators only.
+  admin: { password: "admin-pass", user: { id: 1, username: "admin", role: "super_admin", department_id: 1, status: "active", permissions: [...ALL_CAPABILITIES, "conversation_logs.read"] } },
   rag: { password: "rag-pass", user: { id: 2, username: "rag", role: "admin", admin_type: "rag_admin", department_id: 2, status: "active", permissions: ["dashboard.read", "rag.read", "rag.manage"] } }
 };
 
@@ -109,7 +110,7 @@ function rowsFor(resourceKey) {
         { username: "auditor", role: "admin", admin_type: "custom", admin_scope: "global", admin_permission_mode: "custom", department_id: 5, managed_department_ids: [], permissions: ["dashboard.read", "logs.read", "logs.export", "security.read", "usage.read"] }
       ][index - 1] || {});
       if (resourceKey === "providers") Object.assign(row, { name: `厂商${index}`, protocol: "openai", base_url: "https://api.example.com/v1", secret_status: index === 6 ? "empty" : "configured", timeout_ms: 30000, retry_count: 1, default_headers: null });
-      if (resourceKey === "api-keys") Object.assign(row, { name: `密钥${index}`, key_prefix: "sk-th", key_suffix: `k${index}`, model_ids: [1, 6], management_scopes: index === 2 ? ["users:read"] : [], ...(index === 5 ? { status: "disabled", disabled_by: "management" } : { disabled_by: null }) });
+      if (resourceKey === "api-keys") Object.assign(row, { name: `密钥${index}`, key_prefix: "sk-th", key_suffix: `k${index}`, conversation_log_enabled: index === 1 ? 1 : 0, conversation_log_active: index === 1, model_ids: [1, 6], management_scopes: index === 2 ? ["users:read"] : [], ...(index === 5 ? { status: "disabled", disabled_by: "management" } : { disabled_by: null }) });
       rows.push(row);
     }
     stores.set(resourceKey, rows);
@@ -224,6 +225,13 @@ const specialGet = {
 };
 
 export const requestLog = [];
+let conversationCos = { configured: false, secret_id: "", secret_key_set: false, bucket: "", region: "", prefix: "tokenhub/conversation-logs", endpoint: "", storage_class: "STANDARD", keep_local_days: 0, backup_index: true, state: null };
+let conversationLogSettings = { enabled: false, storage_driver: "local", compress_daily: true, retention_days: 30, max_records_per_key: 0, purge_deleted_keys: true, auto_cleanup: true, cleanup_time: "03:00", timezone: "Asia/Shanghai" };
+const conversationCleanupHistory = [{ at: timestamp(600), trigger: "schedule", mode: "expired", deleted: 12 }];
+const conversationKeys = [
+  { id: 1, name: "alice-key", display: "tkh_aaaa****a1b2", status: "active", username: "alice", department_name: "研发部", enabled: true, retention_days: 30, custom_retention: false, default_retention_days: 30 },
+  { id: 2, name: "bot-key", display: "tkh_bbbb****c3d4", status: "active", username: "bob", department_name: "市场部", enabled: false, retention_days: 30, custom_retention: false, default_retention_days: 30 }
+];
 // Test controls: force failures or slow responses for matching paths.
 const faults = []; // { path, method, status, code, times, delayMs }
 
@@ -337,6 +345,97 @@ async function handleApi(req, res, url) {
     if (!dataset) return fail(res, 404, "ADMIN_NOT_FOUND", "dataset not found");
     Object.assign(dataset, { acl_mode: body.acl_mode || dataset.acl_mode, grants: (body.grants || []).map((g) => ({ ...g, editable: true })) });
     return ok(res, dataset);
+  }
+  // ---------------------------------------------------------------- 会话记录 (conversation logs)
+  if (path === "/admin-api/conversation-logs/settings") {
+    if (method === "PUT") {
+      if ((req.__body || {}).storage_driver === "cos" && !conversationCos.configured) return fail(res, 422, "CONVERSATION_LOG_COS_NOT_CONFIGURED", "请先填写并保存腾讯云 COS 配置，测试连接通过后再选择云端存储");
+      const { purge, ...rest } = req.__body || {};
+      conversationLogSettings = { ...conversationLogSettings, ...rest };
+      if (purge) conversationCleanupHistory.unshift({ at: timestamp(), trigger: "disable", mode: "all", actor: "admin", deleted: 42 });
+    }
+    return ok(res, { ...conversationLogSettings, cos: conversationCos, storage: { path: "/srv/app/storage/conversation-logs", writable: true, files: 12, days: 6, active_bytes: 48213, packed_bytes: 182044, total_bytes: 230257, oldest_day: "2026-10-21" }, database: { driver: "sqlite", location: "/srv/app/storage/conversation-logs/index.sqlite", bytes: 1048576, error: null }, history: conversationCleanupHistory, last_cleanup: { last_run_at: timestamp(600), trigger: "schedule", deleted: 12 }, next_cleanup_at: conversationLogSettings.auto_cleanup ? timestamp(-600) : null, stats: { records: 42, keys: 1, enabled_keys: conversationKeys.filter((key) => key.enabled).length, oldest_at: timestamp(9000) } });
+  }
+  if (path === "/admin-api/conversation-logs/cos") {
+    if (method === "PUT") {
+      const body = req.__body || {};
+      conversationCos = { ...conversationCos, ...body, secret_key: undefined, secret_id: `${String(body.secret_id).slice(0, 6)}****${String(body.secret_id).slice(-4)}`, secret_key_set: conversationCos.secret_key_set || Boolean(body.secret_key), configured: true };
+    }
+    return ok(res, conversationCos);
+  }
+  if (path === "/admin-api/conversation-logs/cos/test" && method === "POST") return ok(res, { ok: true, host: `${conversationCos.bucket}.cos.${conversationCos.region}.myqcloud.com`, listed: true, elapsed_ms: 182 });
+  if (path === "/admin-api/conversation-logs/cos/sync" && method === "POST") {
+    conversationCos.state = { last_sync_at: timestamp(), last_sync: { uploaded: 4 }, remote: { files: 4, bytes: 204800, counted_at: timestamp() } };
+    return ok(res, { uploaded: 4, bytes: 204800, removed_local: 2, errors: [] });
+  }
+  if (path === "/admin-api/conversation-logs/cos/pull" && method === "POST") return ok(res, { files: 4, errors: [] });
+  if (path === "/admin-api/conversation-logs/compress" && method === "POST") {
+    conversationCleanupHistory.unshift({ at: timestamp(), trigger: "compress", mode: "compress", actor: "admin", files: 3, bytes_before: 912384, bytes_after: 131072, deleted: 0 });
+    return ok(res, { files: 3, bytes_before: 912384, bytes_after: 131072 });
+  }
+  if (path === "/admin-api/conversation-logs/cleanup/preview" && method === "POST") {
+    const body = req.__body || {};
+    return ok(res, { ...body, matched: body.mode === "all" ? 42 : 7, oldest_at: timestamp(9000), newest_at: timestamp(100) });
+  }
+  if (path === "/admin-api/conversation-logs/cleanup" && method === "POST") {
+    const body = req.__body || {};
+    const deleted = body.mode === "all" ? 42 : body.mode ? 7 : 3;
+    conversationCleanupHistory.unshift({ at: timestamp(), trigger: "manual", mode: body.mode || "expired", actor: "admin", api_key_id: body.api_key_id, before: body.before, deleted });
+    return ok(res, { ...body, deleted, trigger: "manual" });
+  }
+  if (/^\/admin-api\/conversation-logs\/sessions\/[0-9a-f]{64}$/.test(path) && method === "DELETE") return ok(res, { deleted: 2 });
+  if (/^\/admin-api\/conversation-logs\/calls\/\d+$/.test(path) && method === "DELETE") return ok(res, { deleted: 1 });
+  if (path === "/admin-api/conversation-logs/purge" && method === "POST") return ok(res, { deleted: 42 });
+  if (path === "/admin-api/conversation-logs/api-keys" && method === "GET") {
+    const keys = conversationKeys.map((key) => ({ api_key_id: key.id, name: key.name, display: key.display, status: "active", username: key.username, department_name: "研发部", enabled: key.enabled, retention_days: key.retention_days, sessions: key.id === 1 ? 2 : 0, turns: key.id === 1 ? 5 : 0, total_tokens: key.id === 1 ? 1230 : 0, last_at: key.id === 1 ? timestamp(5) : null }))
+      .filter((row) => !url.searchParams.get("keyword") || row.name.includes(url.searchParams.get("keyword")));
+    return ok(res, keys, 200, { "X-Total-Count": String(keys.length) });
+  }
+  const conversationKey = path.match(/^\/admin-api\/conversation-logs\/api-keys\/(\d+)$/);
+  if (conversationKey) {
+    const key = conversationKeys.find((item) => String(item.id) === conversationKey[1]);
+    if (!key) return fail(res, 404, "ADMIN_NOT_FOUND", "API key not found");
+    if (method === "PUT") {
+      const body = req.__body || {};
+      if (body.enabled && !key.enabled && !conversationLogSettings.enabled) return fail(res, 409, "CONVERSATION_LOG_FEATURE_DISABLED", "请先在「系统设置 › 会话记录设置」中启用会话记录功能");
+      key.enabled = Boolean(body.enabled);
+      key.custom_retention = body.retention_days !== null && body.retention_days !== undefined;
+      key.retention_days = key.custom_retention ? Number(body.retention_days) : 30;
+    }
+    return ok(res, { ...key, feature_enabled: Boolean(conversationLogSettings.enabled) });
+  }
+  const conversationCalls = path.match(/^\/admin-api\/conversation-logs\/api-keys\/(\d+)\/calls$/);
+  if (conversationCalls && method === "GET") {
+    const key = conversationKeys.find((item) => String(item.id) === conversationCalls[1]) || conversationKeys[0];
+    const calls = key.id === 1 ? [
+      { id: 2, session_key: "a".repeat(64), request_id: "req_2", created_at: timestamp(5), model_name: "gpt-4.1", format: "openai_chat", status: "success", input_tokens: 520, output_tokens: 210, total_tokens: 730, cache_read_tokens: 300, cost_amount: "0.00412000", cost_currency: "USD", latency_ms: 2100,
+        messages: [{ role: "user", parts: [{ type: "text", text: "再按小时统计一下 ERROR 的数量。" }] }], reply: { text: "按小时统计：09 点 2 条，10 点 1 条。" } },
+      { id: 1, session_key: "a".repeat(64), request_id: "req_1", created_at: timestamp(30), model_name: "gpt-4.1", format: "openai_chat", status: "success", input_tokens: 300, output_tokens: 200, total_tokens: 500, cache_read_tokens: 0, cost_amount: "0.00220000", cost_currency: "USD", latency_ms: 1800,
+        messages: [{ role: "user", parts: [{ type: "text", text: "帮我写一个 Python 脚本统计日志里每种级别的数量。" }] }], reply: { text: "可以这样写：\n\n```python\nfrom collections import Counter\n```" } }
+    ] : [];
+    return ok(res, { api_key: { ...key, feature_enabled: Boolean(conversationLogSettings.enabled) }, summary: { calls: calls.length, sessions: calls.length ? 1 : 0, input_tokens: 820, output_tokens: 410, total_tokens: 1230, cache_read_tokens: 300, cost_amount: calls.length ? "0.00632000" : null, currency: "USD" }, items: calls, total: calls.length, limit: 20, offset: 0 });
+  }
+  const conversationSessions = path.match(/^\/admin-api\/conversation-logs\/api-keys\/(\d+)\/sessions$/);
+  if (conversationSessions && method === "GET") {
+    const key = conversationKeys.find((item) => String(item.id) === conversationSessions[1]) || conversationKeys[0];
+    return ok(res, { api_key: { ...key }, summary: { calls: 5, sessions: 2, input_tokens: 820, output_tokens: 410, total_tokens: 1230, cost_amount: "0.00632000", currency: "USD" }, total: 2, items: [
+      { session_key: "a".repeat(64), first_id: 1, turns: 3, total_tokens: 1230, cost_amount: "0.00632000", title: "帮我写一个 Python 脚本统计日志", started_at: timestamp(30), last_at: timestamp(5), models: ["gpt-4.1"], session_source: "derived" },
+      { session_key: "b".repeat(64), first_id: 9, turns: 2, title: "列出当前目录的文件", started_at: timestamp(300), last_at: timestamp(280), models: ["claude-sonnet"], session_source: "client" }
+    ] });
+  }
+  const conversationSession = path.match(/^\/admin-api\/conversation-logs\/sessions\/([0-9a-f]{64})$/);
+  if (conversationSession && method === "GET") {
+    return ok(res, {
+      session_key: conversationSession[1], api_key: { ...conversationKeys[0] }, user: { id: 7, username: "alice" }, turns_total: 2, started_at: timestamp(30), last_at: timestamp(5), input_tokens: 820, output_tokens: 410, total_tokens: 1230, cost_amount: "0.00632000", currency: "USD", limit: 50, offset: 0,
+      turns: [
+        { id: 1, request_id: "req_1", created_at: timestamp(30), model_name: "gpt-4.1", format: "openai_chat", status: "success", api_key_name: "alice-key", input_tokens: 300, output_tokens: 200, total_tokens: 500, cost_amount: "0.00220000", cost_currency: "USD", latency_ms: 1800, prior_count: 0, system: "你是一名资深 Python 工程师。",
+          messages: [{ role: "user", parts: [{ type: "text", text: "帮我写一个 Python 脚本统计日志里每种级别的数量。" }, { type: "image", ref: "image/png，约 120 KB" }] }],
+          reply: { reasoning: "先读文件，再用 Counter 统计。", text: "可以这样写：\n\n```python\nfrom collections import Counter\n```\n\n运行后会打印每种级别的数量。" } },
+        { id: 2, request_id: "req_2", created_at: timestamp(5), model_name: "gpt-4.1", format: "openai_chat", status: "success", api_key_name: "alice-key", input_tokens: 520, output_tokens: 210, total_tokens: 730, cost_amount: "0.00412000", cost_currency: "USD", latency_ms: 2100, prior_count: 0, system: "",
+          messages: [{ role: "tool", parts: [{ type: "tool_result", name: "run_python", text: "INFO 120\nERROR 3" }] }],
+          reply: { text: "统计结果：INFO 120 条，ERROR 3 条。", tool_calls: [{ type: "tool_call", name: "save_report", arguments: "{\"path\":\"report.txt\"}" }] } }
+      ]
+    });
   }
   if (path === "/admin-api/rag/access-check" && method === "GET") {
     return ok(res, {

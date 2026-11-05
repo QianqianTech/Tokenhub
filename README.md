@@ -46,7 +46,7 @@ Docker 安装会获取应用镜像并启动 Caddy、PHP-FPM、MySQL、Redis、Qd
 
 ## 快速安装
 
-**ARM64 用户可直接拉取 Docker Hub 镜像。** 当前标签为 `1.0.1`，适用于 `linux/arm64`。本版新增多轮查询改写、以文搜图与以图搜图、向量阈值校准和紧凑向量存储，见 [1.0.1 变更记录](CHANGELOG.md#101---2026-11-04)。完整命令及验收步骤见[从 Docker Hub 部署](docs/deployment/README.md#从-docker-hub-部署)。下方是从源码构建的安装方式。
+**ARM64 用户可直接拉取 Docker Hub 镜像。** 当前标签为 `1.0.2`，适用于 `linux/arm64`。本版新增按密钥启用的会话记录、运营大屏改进和独立升级脚本，并包含多轮查询改写与图片检索，见 [1.0.2 变更记录](CHANGELOG.md#102---2026-11-04)。完整命令及验收步骤见[从 Docker Hub 部署](docs/deployment/README.md#从-docker-hub-部署)。下方是从源码构建的安装方式。
 
 ### 1. 准备环境
 
@@ -199,45 +199,14 @@ Windows 可以使用相同的 `docker compose` 命令，验证脚本使用 `powe
 
 ## 升级与备份
 
-新安装入口不覆盖已有目录。安装中断后，回到原下载目录重试实际部署脚本，它会保留已有 `.env`：
+已有 Docker 实例请按 [Docker 升级指南](docs/deployment/upgrade.md)下载独立入口 [upgrade.sh](upgrade.sh)（Linux/macOS/WSL）或 [upgrade.ps1](upgrade.ps1)（Windows）。指定原安装目录和目标版本，用 `--check` / `-Check` 预检，确认后执行升级。脚本会备份、更新应用、执行迁移并检查服务。
 
-```bash
-cd tokenhub
-bash deploy/docker/install.sh --build
-```
+- **镜像仓库安装**：用 `--tag 1.0.2` / `-Tag 1.0.2` 从原仓库升级；本次 Docker Hub 镜像适用于 `linux/arm64`。
+- **GitHub 源码构建安装**：用 `--ref v1.0.2` / `-Ref v1.0.2` 获取正式发布标签并重新构建。
 
-如果中断发生在 `.env` 生成之前，请带上首次安装的 `--site`、端口等参数。Windows 对应 `powershell -File .\deploy\docker\install.ps1 -Build`。
+首次安装中断时，回到原下载目录重试 `bash deploy/docker/install.sh --build` 或 `powershell -File .\deploy\docker\install.ps1 -Build`。若尚未生成 `.env`，请带上首次安装的站点、端口等参数。
 
-**从 GitHub 源码升级：** 先检查工作区，再备份当前部署，获取目标代码并以新的提交标签构建。下面以 `main` 为例，也可以换成已经存在的 tag 或完整提交 SHA：
-
-```bash
-cd tokenhub
-git status --short                         # 有源码改动时，先保存并处理，勿强制覆盖
-bash deploy/docker/backup.sh && \
-git fetch --depth 1 origin main && \
-git checkout --detach FETCH_HEAD && \
-bash deploy/docker/upgrade.sh --build --tag "source-$(git rev-parse --short=12 HEAD)"
-```
-
-Windows PowerShell：
-
-```powershell
-Set-Location .\tokenhub
-git status --short
-powershell -File .\deploy\docker\backup.ps1
-if ($LASTEXITCODE -ne 0) { throw 'Backup failed' }
-git fetch --depth 1 origin main
-if ($LASTEXITCODE -ne 0) { throw 'Download failed' }
-git checkout --detach FETCH_HEAD
-if ($LASTEXITCODE -ne 0) { throw 'Checkout failed' }
-$Commit = git rev-parse --short=12 HEAD
-if ($LASTEXITCODE -ne 0) { throw 'Cannot read commit' }
-powershell -File .\deploy\docker\upgrade.ps1 -Build -Tag "source-$Commit"
-```
-
-升级脚本还会自动执行一次备份，然后重建镜像、执行迁移并检查健康状态。保留不同的镜像标签便于失败时切回旧镜像；已经执行的数据库迁移不能靠镜像回退撤销，需要结合备份恢复。备份包含敏感配置，应保存在受控位置，并定期演练恢复。
-
-备份位置、定时任务、数据卷和恢复步骤见 [备份与恢复](docs/deployment/backup-restore.md)。停止服务可在 `deploy/docker` 中执行 `docker compose down`，保留数据卷；不要把 `down -v` 当作普通重启，它会删除该项目的数据卷。
+切回镜像不会撤销数据库迁移。备份位置、定时任务和数据恢复步骤见 [备份与恢复](docs/deployment/backup-restore.md)。
 
 ## 常见问题
 

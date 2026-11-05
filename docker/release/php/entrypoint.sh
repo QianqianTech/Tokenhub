@@ -12,7 +12,7 @@ test -f vendor/autoload.php || {
     exit 70
 }
 
-mkdir -p storage/logs storage/exports storage/media storage/cache storage/caddy
+mkdir -p storage/logs storage/exports storage/media storage/cache storage/caddy storage/conversation-logs
 touch storage/caddy/tls-current.caddy
 
 if [ "$(id -u)" = 0 ]; then
