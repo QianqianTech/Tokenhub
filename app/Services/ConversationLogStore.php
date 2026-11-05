@@ -517,8 +517,21 @@ final class ConversationLogStore
     private function load(string $relative): array
     {
         $active = $this->path($relative) . self::ACTIVE;
+        if (is_file($active)) {
+            return $this->loadPacked($relative) + $this->parseActive((string) @file_get_contents($active));
+        }
+        $packed = $this->loadPacked($relative);
+        try {
+            $remote = $this->remoteActive($relative, true);
+        } catch (Throwable $throwable) {
+            // COS unreachable: what is on disk is still readable.
+            if (!is_file($this->path($relative) . self::PACKED)) {
+                throw $throwable;
+            }
+            $remote = [];
+        }
 
-        return $this->loadPacked($relative) + (is_file($active) ? $this->parseActive((string) @file_get_contents($active)) : $this->remoteActive($relative, true));
+        return $packed + $remote;
     }
 
     /**

@@ -46,7 +46,7 @@ Docker 安装会获取应用镜像并启动 Caddy、PHP-FPM、MySQL、Redis、Qd
 
 ## 快速安装
 
-**ARM64 用户可直接拉取 Docker Hub 镜像。** 当前标签为 `1.0.2`，适用于 `linux/arm64`。本版新增按密钥启用的会话记录、运营大屏改进和独立升级脚本，并包含多轮查询改写与图片检索，见 [1.0.2 变更记录](CHANGELOG.md#102---2026-11-04)。完整命令及验收步骤见[从 Docker Hub 部署](docs/deployment/README.md#从-docker-hub-部署)。下方是从源码构建的安装方式。
+**ARM64 用户可直接拉取 Docker Hub 镜像。** 当前标签为 `1.0.3`，适用于 `linux/arm64`。本版支持在会话记录中加密保存、查看和下载图片、视频及音频，并可同步到腾讯云 COS，见 [1.0.3 变更记录](CHANGELOG.md#103---2026-11-05)。完整命令及验收步骤见[从 Docker Hub 部署](docs/deployment/README.md#从-docker-hub-部署)。下方是从源码构建的安装方式。
 
 ### 1. 准备环境
 
@@ -201,8 +201,8 @@ Windows 可以使用相同的 `docker compose` 命令，验证脚本使用 `powe
 
 已有 Docker 实例请按 [Docker 升级指南](docs/deployment/upgrade.md)下载独立入口 [upgrade.sh](upgrade.sh)（Linux/macOS/WSL）或 [upgrade.ps1](upgrade.ps1)（Windows）。指定原安装目录和目标版本，用 `--check` / `-Check` 预检，确认后执行升级。脚本会备份、更新应用、执行迁移并检查服务。
 
-- **镜像仓库安装**：用 `--tag 1.0.2` / `-Tag 1.0.2` 从原仓库升级；本次 Docker Hub 镜像适用于 `linux/arm64`。
-- **GitHub 源码构建安装**：用 `--ref v1.0.2` / `-Ref v1.0.2` 获取正式发布标签并重新构建。
+- **镜像仓库安装**：用 `--tag 1.0.3` / `-Tag 1.0.3` 从原仓库升级；本次 Docker Hub 镜像适用于 `linux/arm64`。
+- **GitHub 源码构建安装**：用 `--ref v1.0.3` / `-Ref v1.0.3` 获取正式发布标签并重新构建。
 
 首次安装中断时，回到原下载目录重试 `bash deploy/docker/install.sh --build` 或 `powershell -File .\deploy\docker\install.ps1 -Build`。若尚未生成 `.env`，请带上首次安装的站点、端口等参数。
 

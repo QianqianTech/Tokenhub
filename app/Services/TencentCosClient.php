@@ -60,6 +60,44 @@ final class TencentCosClient
     }
 
     /**
+     * Uploads a local file without reading it into memory (media files).
+     */
+    public function putFile(string $key, string $file, string $storageClass = ''): void
+    {
+        $size = @filesize($file);
+        $md5 = @md5_file($file, true);
+        if ($size === false || $md5 === false) {
+            throw new RuntimeException('COS 上传失败：无法读取本地文件');
+        }
+        $headers = ['Content-Length' => (string) $size, 'Content-MD5' => base64_encode($md5), 'Content-Type' => 'application/octet-stream'];
+        if ($storageClass !== '' && $storageClass !== 'STANDARD') {
+            $headers['x-cos-storage-class'] = $storageClass;
+        }
+        [$status, $response] = $this->request('PUT', $key, [], $headers, '', $file);
+        if ($status !== 200) {
+            throw new RuntimeException('COS 上传失败：' . $this->errorText($status, $response));
+        }
+    }
+
+    /**
+     * Downloads an object into a local file (streamed). False when it does not exist.
+     */
+    public function getToFile(string $key, string $file): bool
+    {
+        [$status, $response] = $this->request('GET', $key, [], [], '', null, $file);
+        if ($status === 404) {
+            @unlink($file);
+            return false;
+        }
+        if ($status !== 200) {
+            @unlink($file);
+            throw new RuntimeException('COS 下载失败：' . $this->errorText($status, $response));
+        }
+
+        return true;
+    }
+
+    /**
      * Object content, or null when it does not exist.
      */
     public function get(string $key): ?string
@@ -160,7 +198,7 @@ final class TencentCosClient
      * @param array<string, string> $headers
      * @return array{0: int, 1: string}
      */
-    private function request(string $method, string $key, array $params = [], array $headers = [], string $body = ''): array
+    private function request(string $method, string $key, array $params = [], array $headers = [], string $body = '', ?string $uploadFile = null, ?string $downloadFile = null): array
     {
         if (preg_match('#^[A-Za-z0-9/_.\-]*$#', $key) !== 1) {
             throw new RuntimeException('COS 对象路径含有不支持的字符：' . $key);
@@ -180,7 +218,13 @@ final class TencentCosClient
         $url = $scheme . '://' . $this->host() . $path . $query;
 
         if (self::$transport !== null) {
-            return (self::$transport)($method, $url, $headers, $body);
+            [$status, $response] = (self::$transport)($method, $url, $headers, $uploadFile !== null ? (string) file_get_contents($uploadFile) : $body);
+            if ($downloadFile !== null && $status === 200) {
+                file_put_contents($downloadFile, $response);
+                $response = '';
+            }
+
+            return [$status, $response];
         }
         if (!function_exists('curl_init')) {
             throw new RuntimeException('PHP curl 扩展不可用');
@@ -201,8 +245,25 @@ final class TencentCosClient
             CURLOPT_SSL_VERIFYPEER => true,
             CURLOPT_SSL_VERIFYHOST => 2,
         ]);
-        if ($method === 'PUT') {
+        $upload = null;
+        $download = null;
+        if ($method === 'PUT' && $uploadFile !== null) {
+            $upload = fopen($uploadFile, 'rb');
+            if ($upload === false) {
+                throw new RuntimeException('COS 上传失败：无法读取本地文件');
+            }
+            curl_setopt_array($handle, [CURLOPT_UPLOAD => true, CURLOPT_INFILE => $upload, CURLOPT_INFILESIZE => (int) filesize($uploadFile)]);
+        } elseif ($method === 'PUT') {
             curl_setopt($handle, CURLOPT_POSTFIELDS, $body);
+        }
+        if ($downloadFile !== null) {
+            $download = fopen($downloadFile, 'wb');
+            if ($download === false) {
+                throw new RuntimeException('COS 下载失败：本地文件不可写');
+            }
+            // Error bodies (XML) are small; the object body goes to the file.
+            curl_setopt($handle, CURLOPT_FILE, $download);
+            curl_setopt($handle, CURLOPT_RETURNTRANSFER, false);
         }
         if ($method === 'HEAD') {
             curl_setopt($handle, CURLOPT_NOBODY, true);
@@ -211,6 +272,18 @@ final class TencentCosClient
         $status = (int) curl_getinfo($handle, CURLINFO_RESPONSE_CODE);
         $error = curl_error($handle);
         curl_close($handle);
+        if ($upload !== null) {
+            fclose($upload);
+        }
+        if ($download !== null) {
+            fclose($download);
+            if ($response !== false && $status !== 200) {
+                // The error document landed in the file.
+                $response = (string) @file_get_contents($downloadFile, false, null, 0, 65536);
+            } elseif ($response !== false) {
+                $response = '';
+            }
+        }
         if ($response === false) {
             throw new RuntimeException('无法连接 COS（' . $this->host() . '）：' . $error);
         }

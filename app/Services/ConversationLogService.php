@@ -9,6 +9,7 @@ use DateTimeZone;
 use Throwable;
 use TokenHub\Support\App;
 use TokenHub\Support\Crypto;
+use TokenHub\Support\Response;
 
 /**
  * Conversation logs (会话记录): readable chat transcripts of API key (Token) calls.
@@ -34,6 +35,14 @@ use TokenHub\Support\Crypto;
  * - cleanup() runs from the scheduler every few minutes and, once a day after
  *   cleanup_time in the configured timezone, deletes each key's rows older
  *   than its retention. Expired rows are deleted even after logging is off.
+ * - Media (record_media, default on): images, audio and video sent with a
+ *   call, generated images / video / speech / music and the audio of speech
+ *   recognition are copied into the media directory
+ *   (ConversationLogMediaStore, encrypted) and listed in the
+ *   conversation_log_media table of the log database. Inline data is written
+ *   by the gateway; links, media-library files and task results are copied by
+ *   processMedia() (queue job conversation-logs.media, also every scheduler
+ *   run). Media follow their record: deleted with it, uploaded to COS with it.
  */
 final class ConversationLogService
 {
@@ -54,7 +63,13 @@ final class ConversationLogService
     private const MAX_RECORDS_CAP = 10000000;
 
     private ?ConversationLogStore $store = null;
+    private ?ConversationLogMediaStore $mediaStore = null;
     private ?ConversationLogDb $logs = null;
+
+    public const MEDIA_JOB = 'conversation-logs.media';
+    private const MEDIA_MAX_MB = 2048;
+    private const MEDIA_ATTEMPTS = 3;
+    private const KIND_FOR_CAPABILITY = ['image_generation' => 'image', 'video_generation' => 'video', 'tts' => 'audio', 'music_generation' => 'audio'];
 
     private static ?bool $enabledMemo = null;
     private static float $enabledMemoAt = 0.0;
@@ -76,6 +91,9 @@ final class ConversationLogService
             // local: the conversation log directory; cos: 腾讯云 COS (today's file
             // is staged locally and uploaded every few minutes).
             'storage_driver' => 'local',
+            // Images / audio / video of calls and generated results.
+            'record_media' => true,
+            'media_max_mb' => 100,
         ];
     }
 
@@ -180,8 +198,38 @@ final class ConversationLogService
                 ...$this->store()->stats(),
             ],
             'database' => $database,
+            'media' => $this->mediaStats(),
             'cos' => $this->cosView(),
         ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function mediaStats(): array
+    {
+        $stats = ['stored' => 0, 'stored_bytes' => 0, 'pending' => 0, 'failed' => 0, 'skipped' => 0, 'local_files' => 0, 'local_bytes' => 0];
+        try {
+            foreach ($this->logs()->select("SELECT status, COUNT(*) AS total, SUM(size_bytes) AS bytes FROM conversation_log_media WHERE source <> 'task' OR status IN ('waiting', 'failed') GROUP BY status") as $row) {
+                $count = (int) $row['total'];
+                $status = (string) $row['status'];
+                if ($status === 'stored') {
+                    $stats['stored'] = $count;
+                    $stats['stored_bytes'] = (int) ($row['bytes'] ?? 0);
+                } elseif (in_array($status, ['pending', 'working', 'waiting'], true)) {
+                    $stats['pending'] += $count;
+                } elseif (isset($stats[$status])) {
+                    $stats[$status] += $count;
+                }
+            }
+            $local = $this->mediaStore()->stats();
+            $stats['local_files'] = $local['files'];
+            $stats['local_bytes'] = $local['bytes'];
+        } catch (Throwable $throwable) {
+            $stats['error'] = $throwable->getMessage();
+        }
+
+        return $stats;
     }
 
     private function directoryWritable(): bool
@@ -263,6 +311,9 @@ final class ConversationLogService
             'messages' => $conversation['messages'] ?? [],
             'reply' => $conversation['reply'] ?? [],
         ];
+        if (is_array($conversation['params'] ?? null) && $conversation['params'] !== []) {
+            $payload['params'] = $conversation['params'];
+        }
 
         $id = $this->logs()->insert(
             'INSERT INTO conversation_logs (usage_record_id, request_id, user_id, department_id, api_key_id, model_id, model_name, protocol, format, session_key, session_source, status, input_tokens, output_tokens, total_tokens, cache_read_tokens, cost_amount, cost_currency, latency_ms, prior_count, response_id, system_hash, storage, content_file, system_stored, encrypted_title, created_at)
@@ -315,6 +366,511 @@ final class ConversationLogService
             } catch (Throwable) {
             }
         }
+        try {
+            $this->insertMedia($id, $apiKeyId, $conversation, $record, $createdAt);
+        } catch (Throwable $throwable) {
+            try {
+                App::logger()->warning('worker', 'conversation log media rows failed', ['id' => $id, 'error' => $throwable->getMessage()]);
+            } catch (Throwable) {
+            }
+        }
+    }
+
+    // ---------------------------------------------------------------- media
+
+    /**
+     * Collector the gateway hands to the extractor (null when media are not recorded).
+     */
+    public function mediaCapture(?int $apiKeyId, string $createdAtUtc): ?ConversationMediaCapture
+    {
+        $settings = $this->settings();
+        if (!$settings['record_media']) {
+            return null;
+        }
+
+        return new ConversationMediaCapture(
+            new ConversationLogMediaStore((new ConversationLogStore())->root()),
+            $apiKeyId,
+            $createdAtUtc,
+            $settings['timezone'],
+            $settings['media_max_mb'] * 1048576
+        );
+    }
+
+    public function mediaStore(): ConversationLogMediaStore
+    {
+        if ($this->mediaStore === null) {
+            $this->mediaStore = new ConversationLogMediaStore($this->store()->root());
+            $client = $this->cosClient();
+            if ($client !== null) {
+                $cos = $this->cosConfig();
+                $this->mediaStore->useRemote($client, $cos['prefix'], $cos['storage_class']);
+            }
+        }
+
+        return $this->mediaStore;
+    }
+
+    /**
+     * Wakes the media copier (queue job); the scheduler runs it anyway.
+     */
+    public static function nudgeMedia(): void
+    {
+        try {
+            if (self::enabled()) {
+                App::redis()->push((string) App::config()->get('queue.name', 'tokenhub:jobs'), ['type' => self::MEDIA_JOB]);
+            }
+        } catch (Throwable) {
+        }
+    }
+
+    /**
+     * Rows of the media captured with a turn, plus one row that waits for the
+     * task of a generation call and then brings in its results.
+     *
+     * @param array<string, mixed> $conversation
+     * @param array<string, mixed> $record
+     */
+    private function insertMedia(int $logId, int $apiKeyId, array $conversation, array $record, string $createdAt): void
+    {
+        $now = gmdate('Y-m-d H:i:s');
+        $pending = false;
+        $position = 0;
+        foreach (is_array($conversation['media'] ?? null) ? $conversation['media'] : [] as $item) {
+            if (!is_array($item) || preg_match('/^[a-f0-9]{24}$/', (string) ($item['key'] ?? '')) !== 1) {
+                continue;
+            }
+            $status = in_array($item['status'] ?? '', ['pending', 'stored', 'skipped', 'failed'], true) ? (string) $item['status'] : 'failed';
+            $file = is_string($item['file'] ?? null) && $status === 'stored' ? $item['file'] : null;
+            $this->logs()->insert(
+                'INSERT INTO conversation_log_media (log_id, api_key_id, media_key, direction, kind, source, status, task_id, encrypted_ref, encrypted_name, file, mime, size_bytes, error, attempts, position, created_at, updated_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)',
+                [
+                    $logId,
+                    $apiKeyId,
+                    (string) $item['key'],
+                    ($item['direction'] ?? 'input') === 'output' ? 'output' : 'input',
+                    in_array($item['kind'] ?? '', ['image', 'audio', 'video'], true) ? (string) $item['kind'] : 'file',
+                    in_array($item['source'] ?? '', ['inline', 'url', 'asset'], true) ? (string) $item['source'] : 'inline',
+                    $status,
+                    is_string($item['ref'] ?? null) && $item['ref'] !== '' ? Crypto::encrypt($item['ref']) : null,
+                    is_string($item['name'] ?? null) && $item['name'] !== '' ? Crypto::encrypt($item['name']) : null,
+                    $file,
+                    is_string($item['mime'] ?? null) ? substr($item['mime'], 0, 120) : null,
+                    isset($item['size']) ? max(0, (int) $item['size']) : null,
+                    is_string($item['error'] ?? null) ? mb_substr($item['error'], 0, 300) : null,
+                    $position++,
+                    $createdAt,
+                    $now,
+                ]
+            );
+            $pending = $pending || $status === 'pending';
+        }
+
+        $format = (string) ($conversation['format'] ?? '');
+        $taskId = $record['task_id'] ?? ($conversation['reply']['task']['id'] ?? null);
+        if (isset(self::KIND_FOR_CAPABILITY[$format]) && is_scalar($taskId) && (string) $taskId !== '' && $this->settings()['record_media']) {
+            $this->logs()->insert(
+                "INSERT INTO conversation_log_media (log_id, api_key_id, media_key, direction, kind, source, status, task_id, file, attempts, position, created_at, updated_at)
+                 VALUES (?, ?, ?, 'output', ?, 'task', 'waiting', ?, NULL, 0, ?, ?, ?)",
+                [$logId, $apiKeyId, ConversationLogMediaStore::newKey(), self::KIND_FOR_CAPABILITY[$format], substr((string) $taskId, 0, 80), 1000, $createdAt, $now]
+            );
+            $pending = true;
+        }
+        if ($pending) {
+            self::nudgeMedia();
+        }
+    }
+
+    /**
+     * Copies what is still missing (queue job conversation-logs.media and every
+     * scheduler run): results of finished generation tasks, linked images /
+     * media-library files of requests.
+     *
+     * @return array{tasks: int, stored: int, failed: int, skipped: int}
+     */
+    public function processMedia(int $limit = 20): array
+    {
+        $result = ['tasks' => 0, 'stored' => 0, 'failed' => 0, 'skipped' => 0];
+        $settings = $this->settings();
+        // Copies a crashed worker left half done.
+        $this->logs()->execute("UPDATE conversation_log_media SET status = 'pending' WHERE status = 'working' AND updated_at < ?", [gmdate('Y-m-d H:i:s', time() - 1800)]);
+
+        foreach ($this->logs()->select("SELECT * FROM conversation_log_media WHERE status = 'waiting' ORDER BY updated_at ASC, id ASC LIMIT " . max(1, $limit)) as $row) {
+            try {
+                $result['tasks'] += $this->resolveTask($row) ? 1 : 0;
+            } catch (Throwable $throwable) {
+                try {
+                    App::logger()->warning('worker', 'conversation log media task check failed', ['id' => $row['id'], 'error' => $throwable->getMessage()]);
+                } catch (Throwable) {
+                }
+            }
+        }
+        foreach ($this->logs()->select("SELECT * FROM conversation_log_media WHERE status = 'pending' ORDER BY id ASC LIMIT " . max(1, $limit)) as $row) {
+            $claimed = $this->logs()->execute(
+                "UPDATE conversation_log_media SET status = 'working', attempts = attempts + 1, updated_at = ? WHERE id = ? AND status = 'pending'",
+                [gmdate('Y-m-d H:i:s'), (int) $row['id']]
+            );
+            if ($claimed !== 1) {
+                continue;
+            }
+            $status = $this->copyMedia([...$row, 'attempts' => (int) $row['attempts'] + 1], $settings);
+            if (isset($result[$status])) {
+                $result[$status]++;
+            }
+        }
+
+        return $result;
+    }
+
+    /**
+     * Admin "立即保存待处理的媒体".
+     *
+     * @return array<string, mixed>
+     */
+    public function processMediaNow(): array
+    {
+        $this->requireSuperAdmin();
+
+        return [...$this->processMedia(100), 'media' => $this->mediaStats()];
+    }
+
+    /**
+     * A generation task finished: its files become output rows.
+     *
+     * @param array<string, mixed> $row
+     */
+    private function resolveTask(array $row): bool
+    {
+        $task = App::db()->first('SELECT id, status, error_code, error_message, created_at FROM multimodal_tasks WHERE task_id = ?', [(string) $row['task_id']]);
+        $now = gmdate('Y-m-d H:i:s');
+        if ($task === null) {
+            $this->logs()->execute("UPDATE conversation_log_media SET status = 'failed', error = ?, updated_at = ? WHERE id = ? AND status = 'waiting'", ['task_missing', $now, (int) $row['id']]);
+            return true;
+        }
+        $status = (string) $task['status'];
+        if (in_array($status, ['failed', 'expired', 'cancelled'], true)) {
+            $error = trim((string) ($task['error_message'] ?? '')) !== '' ? (string) $task['error_message'] : (string) ($task['error_code'] ?? $status);
+            $this->logs()->execute("UPDATE conversation_log_media SET status = 'failed', error = ?, updated_at = ? WHERE id = ? AND status = 'waiting'", [mb_substr('生成失败：' . $error, 0, 300), $now, (int) $row['id']]);
+            return true;
+        }
+        if ($status !== 'succeeded') {
+            // Still running: checked again after the other waiting rows.
+            $this->logs()->execute("UPDATE conversation_log_media SET updated_at = ? WHERE id = ? AND status = 'waiting'", [$now, (int) $row['id']]);
+            return false;
+        }
+        if ($this->logs()->execute("UPDATE conversation_log_media SET status = 'done', updated_at = ? WHERE id = ? AND status = 'waiting'", [$now, (int) $row['id']]) !== 1) {
+            return false;
+        }
+        $assets = App::db()->select('SELECT asset_id, media_type, mime_type, size_bytes FROM media_assets WHERE task_id = ? ORDER BY id ASC LIMIT 24', [(int) $task['id']]);
+        if ($assets === []) {
+            $this->logs()->execute('UPDATE conversation_log_media SET error = ? WHERE id = ?', ['no_assets', (int) $row['id']]);
+        }
+        foreach (array_values($assets) as $index => $asset) {
+            $this->logs()->insert(
+                "INSERT INTO conversation_log_media (log_id, api_key_id, media_key, direction, kind, source, status, task_id, encrypted_ref, file, mime, size_bytes, attempts, position, created_at, updated_at)
+                 VALUES (?, ?, ?, 'output', ?, 'asset', 'pending', ?, ?, NULL, ?, ?, 0, ?, ?, ?)",
+                [
+                    (int) $row['log_id'],
+                    isset($row['api_key_id']) ? (int) $row['api_key_id'] : null,
+                    ConversationLogMediaStore::newKey(),
+                    in_array($asset['media_type'] ?? '', ['image', 'audio', 'video'], true) ? (string) $asset['media_type'] : (string) $row['kind'],
+                    (string) $row['task_id'],
+                    Crypto::encrypt((string) $asset['asset_id']),
+                    $asset['mime_type'] ?? null,
+                    isset($asset['size_bytes']) ? (int) $asset['size_bytes'] : null,
+                    (int) $row['position'] + 1 + $index,
+                    (string) $row['created_at'],
+                    $now,
+                ]
+            );
+        }
+
+        return true;
+    }
+
+    /**
+     * Copies one linked / media-library file into the media directory.
+     *
+     * @param array<string, mixed> $row
+     * @param array<string, mixed> $settings
+     * @return string stored | failed | skipped | retry
+     */
+    private function copyMedia(array $row, array $settings): string
+    {
+        $max = (int) $settings['media_max_mb'] * 1048576;
+        $finish = function (string $status, array $fields = []) use ($row): void {
+            $fields += ['error' => null];
+            $sets = ['status = ?', 'updated_at = ?'];
+            $bindings = [$status, gmdate('Y-m-d H:i:s')];
+            foreach ($fields as $column => $value) {
+                $sets[] = $column . ' = ?';
+                $bindings[] = $value;
+            }
+            $bindings[] = (int) $row['id'];
+            $this->logs()->execute('UPDATE conversation_log_media SET ' . implode(', ', $sets) . ' WHERE id = ?', $bindings);
+        };
+        try {
+            $ref = $this->decrypt($row['encrypted_ref'] ?? null);
+            $relative = $this->mediaStore()->relativePath((string) $row['created_at'], $settings['timezone'], isset($row['api_key_id']) ? (int) $row['api_key_id'] : null, (string) $row['media_key']);
+            $mime = is_string($row['mime'] ?? null) && $row['mime'] !== '' ? (string) $row['mime'] : null;
+            if ($row['source'] === 'asset') {
+                $asset = App::db()->first('SELECT storage_path, mime_type, size_bytes FROM media_assets WHERE asset_id = ?', [$ref]);
+                if ($asset === null) {
+                    $finish('failed', ['error' => 'asset_missing']);
+                    return 'failed';
+                }
+                if (isset($asset['size_bytes']) && (int) $asset['size_bytes'] > $max) {
+                    $finish('skipped', ['error' => 'too_large', 'size_bytes' => (int) $asset['size_bytes']]);
+                    return 'skipped';
+                }
+                $mime ??= is_string($asset['mime_type'] ?? null) && $asset['mime_type'] !== '' ? (string) $asset['mime_type'] : null;
+                $path = (string) $asset['storage_path'];
+                if (preg_match('#^https?://#i', $path) === 1) {
+                    $ref = $path;
+                } else {
+                    $local = new Media\LocalMediaStorage();
+                    $real = $local->handles($path) ? Media\PathConfinement::resolve($path, $local->roots()) : null;
+                    if ($real !== null) {
+                        if ((int) filesize($real) > $max) {
+                            $finish('skipped', ['error' => 'too_large', 'size_bytes' => (int) filesize($real)]);
+                            return 'skipped';
+                        }
+                        $size = $this->mediaStore()->writeFile($relative, $real);
+                        $mime ??= ConversationMediaCapture::sniff((string) file_get_contents($real, false, null, 0, 65536));
+                    } else {
+                        $driver = Media\MediaStorageManager::forPath($path);
+                        $bytes = $driver !== null ? $driver->read($path) : false;
+                        if ($bytes === false) {
+                            throw new \RuntimeException('asset_unreadable');
+                        }
+                        $size = $this->mediaStore()->writeString($relative, $bytes);
+                        $mime ??= ConversationMediaCapture::sniff($bytes);
+                    }
+                    $finish('stored', ['file' => $relative, 'size_bytes' => $size, 'mime' => $mime]);
+                    return 'stored';
+                }
+            }
+            if (preg_match('#^https?://#i', $ref) !== 1) {
+                $finish('failed', ['error' => 'unsupported_source']);
+                return 'failed';
+            }
+            $fetched = (new SafeRemoteFetcher(null, null, $max + 1))->get($ref, OutboundUrlPolicy::PURPOSE_REMOTE_ASSET);
+            if (($fetched['ok'] ?? false) !== true) {
+                throw new \RuntimeException((string) ($fetched['error'] ?? 'download_failed'));
+            }
+            $bytes = (string) ($fetched['body'] ?? '');
+            if (strlen($bytes) > $max) {
+                $finish('skipped', ['error' => 'too_large', 'size_bytes' => strlen($bytes)]);
+                return 'skipped';
+            }
+            if ($bytes === '') {
+                throw new \RuntimeException('empty_download');
+            }
+            $type = strtolower(trim(explode(';', (string) ($fetched['content_type'] ?? ''))[0]));
+            $mime ??= preg_match('#^(image|video|audio)/[a-z0-9.+-]+$#', $type) === 1 ? $type : ConversationMediaCapture::sniff($bytes);
+            $size = $this->mediaStore()->writeString($relative, $bytes);
+            $finish('stored', ['file' => $relative, 'size_bytes' => $size, 'mime' => $mime]);
+
+            return 'stored';
+        } catch (Throwable $throwable) {
+            $error = mb_substr($throwable->getMessage(), 0, 300);
+            if ((int) $row['attempts'] >= self::MEDIA_ATTEMPTS) {
+                $finish('failed', ['error' => $error]);
+                return 'failed';
+            }
+            $finish('pending', ['error' => $error]);
+
+            return 'retry';
+        }
+    }
+
+    /**
+     * Media of the given records, for the transcript views.
+     *
+     * @param list<int> $logIds
+     * @return array<int, list<array<string, mixed>>>
+     */
+    private function mediaFor(array $logIds): array
+    {
+        if ($logIds === []) {
+            return [];
+        }
+        try {
+            $rows = $this->logs()->select(
+                'SELECT log_id, media_key, direction, kind, source, status, mime, encrypted_name, size_bytes, error, position FROM conversation_log_media WHERE log_id IN (' . implode(', ', array_map('intval', $logIds)) . ') ORDER BY log_id ASC, position ASC, id ASC'
+            );
+        } catch (Throwable) {
+            return [];
+        }
+        $out = [];
+        foreach ($rows as $row) {
+            $out[(int) $row['log_id']][] = [
+                'key' => (string) $row['media_key'],
+                'direction' => (string) $row['direction'],
+                'kind' => (string) $row['kind'],
+                'source' => (string) $row['source'],
+                'status' => (string) $row['status'],
+                'mime' => $row['mime'] ?? null,
+                'name' => $this->decrypt($row['encrypted_name'] ?? null) ?: null,
+                'size_bytes' => isset($row['size_bytes']) ? (int) $row['size_bytes'] : null,
+                'error' => $row['error'] ?? null,
+                'url' => $row['status'] === 'stored' ? '/admin-api/conversation-logs/media/' . $row['media_key'] : null,
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * Serves one stored media file (super admin), with byte ranges for video.
+     */
+    public function mediaResponse(string $mediaKey, ?string $range): Response
+    {
+        $this->requireSuperAdmin();
+        $row = preg_match('/^[a-f0-9]{24}$/', $mediaKey) === 1
+            ? $this->logs()->first("SELECT media_key, file, mime, kind FROM conversation_log_media WHERE media_key = ? AND status = 'stored'", [$mediaKey])
+            : null;
+        if ($row === null || empty($row['file'])) {
+            abort_json('CONVERSATION_MEDIA_NOT_FOUND', '媒体文件不存在或已被清理', 404);
+        }
+        $store = $this->mediaStore();
+        $file = (string) $row['file'];
+        try {
+            $size = $store->size($file);
+        } catch (Throwable $throwable) {
+            abort_json('CONVERSATION_MEDIA_UNAVAILABLE', '媒体文件无法读取：' . $throwable->getMessage(), 404);
+        }
+        $mime = strtolower((string) ($row['mime'] ?? ''));
+        $inline = preg_match('#^(image|video|audio)/[a-z0-9.+-]+$#', $mime) === 1;
+        $headers = [
+            'Content-Type' => $inline ? $mime : 'application/octet-stream',
+            'Accept-Ranges' => 'bytes',
+            'Cache-Control' => 'private, max-age=300',
+            'X-Content-Type-Options' => 'nosniff',
+            'Content-Security-Policy' => "default-src 'none'; sandbox",
+            'Content-Disposition' => ($inline ? 'inline' : 'attachment') . '; filename="' . $mediaKey . $this->extension($mime) . '"',
+        ];
+        $start = 0;
+        $end = $size - 1;
+        $status = 200;
+        if ($range !== null && preg_match('/^bytes=(\d*)-(\d*)$/', trim($range), $m) === 1 && ($m[1] !== '' || $m[2] !== '')) {
+            if ($m[1] === '') {
+                $start = max(0, $size - (int) $m[2]);
+            } else {
+                $start = (int) $m[1];
+                // Open ranges are served in 8 MiB pieces; players ask for the next one.
+                $end = $m[2] === '' ? min($size - 1, $start + 8388607) : min($size - 1, (int) $m[2]);
+            }
+            if ($start >= $size || $start > $end) {
+                return Response::raw('', 416, ['Content-Range' => 'bytes */' . $size]);
+            }
+            $status = 206;
+            $headers['Content-Range'] = 'bytes ' . $start . '-' . $end . '/' . $size;
+        }
+        $headers['Content-Length'] = (string) max(0, $end - $start + 1);
+
+        return Response::stream(static function () use ($store, $file, $start, $end, $size): void {
+            if ($size === 0) {
+                return;
+            }
+            $store->read($file, $start, $end, static function (string $bytes): void {
+                echo $bytes;
+                if (ob_get_level() > 0) {
+                    @ob_flush();
+                }
+                flush();
+            });
+        }, $status, $headers);
+    }
+
+    private function extension(string $mime): string
+    {
+        return match ($mime) {
+            'image/png' => '.png',
+            'image/jpeg' => '.jpg',
+            'image/webp' => '.webp',
+            'image/gif' => '.gif',
+            'video/mp4' => '.mp4',
+            'video/webm' => '.webm',
+            'audio/mpeg', 'audio/mp3' => '.mp3',
+            'audio/wav', 'audio/x-wav', 'audio/wave' => '.wav',
+            'audio/ogg' => '.ogg',
+            'audio/flac' => '.flac',
+            'audio/mp4', 'audio/m4a', 'audio/x-m4a' => '.m4a',
+            default => '.bin',
+        };
+    }
+
+    /**
+     * Deletes the media rows (and files) of records about to be deleted.
+     *
+     * @param list<int> $logIds
+     */
+    private function deleteMediaFor(array $logIds, bool $files = true): void
+    {
+        if ($logIds === []) {
+            return;
+        }
+        $in = implode(', ', array_map('intval', $logIds));
+        if ($files) {
+            foreach ($this->logs()->select("SELECT file FROM conversation_log_media WHERE log_id IN ({$in}) AND file IS NOT NULL") as $row) {
+                try {
+                    $this->mediaStore()->delete((string) $row['file']);
+                } catch (Throwable $throwable) {
+                    try {
+                        App::logger()->warning('worker', 'conversation log media delete failed', ['file' => $row['file'], 'error' => $throwable->getMessage()]);
+                    } catch (Throwable) {
+                    }
+                }
+            }
+        }
+        $this->logs()->execute("DELETE FROM conversation_log_media WHERE log_id IN ({$in})");
+    }
+
+    /**
+     * Media files no row points at (the gateway wrote them but the record was
+     * never stored, or the rows are gone). Local files after a day, COS
+     * objects of days before yesterday.
+     */
+    private function sweepOrphanMedia(string $today, ?int $now = null): int
+    {
+        $now ??= time();
+        $removed = 0;
+        $store = $this->mediaStore();
+        $candidates = [];
+        foreach ($store->files() as $relative => $info) {
+            if ($info['mtime'] < $now - 86400) {
+                $candidates[$relative] = true;
+            }
+        }
+        try {
+            $yesterday = (new DateTimeImmutable($today))->modify('-1 day')->format('Y-m-d');
+            foreach (array_keys($store->remoteFiles()) as $relative) {
+                if ($store->dayOf($relative) < $yesterday) {
+                    $candidates[$relative] = true;
+                }
+            }
+        } catch (Throwable) {
+        }
+        foreach (array_chunk(array_keys($candidates), 500) as $chunk) {
+            $keys = array_map(static fn (string $relative): string => ConversationLogMediaStore::keyOf($relative), $chunk);
+            $known = array_flip(array_column($this->logs()->select(
+                'SELECT media_key FROM conversation_log_media WHERE media_key IN (' . implode(', ', array_fill(0, count($keys), '?')) . ')',
+                $keys
+            ), 'media_key'));
+            foreach ($chunk as $relative) {
+                if (!isset($known[ConversationLogMediaStore::keyOf($relative)])) {
+                    try {
+                        $store->delete($relative);
+                        $removed++;
+                    } catch (Throwable) {
+                    }
+                }
+            }
+        }
+
+        return $removed;
     }
 
     public function store(): ConversationLogStore
@@ -512,6 +1068,16 @@ final class ConversationLogService
         } catch (Throwable $throwable) {
             $result = ['uploaded' => 0, 'bytes' => 0, 'removed_local' => 0, 'errors' => [$throwable->getMessage()]];
         }
+        try {
+            $media = $this->mediaStore()->sync($today, $cos['keep_local_days']);
+        } catch (Throwable $throwable) {
+            $media = ['uploaded' => 0, 'bytes' => 0, 'removed_local' => 0, 'errors' => [$throwable->getMessage()]];
+        }
+        foreach (['uploaded', 'bytes', 'removed_local'] as $field) {
+            $result[$field] += $media[$field];
+        }
+        $result['errors'] = [...$result['errors'], ...$media['errors']];
+        $result['media_uploaded'] = $media['uploaded'];
         $state = $this->readSetting(self::COS_STATE_KEY);
         $state['last_sync_at'] = gmdate('Y-m-d H:i:s');
         $state['last_sync'] = $result;
@@ -565,6 +1131,10 @@ final class ConversationLogService
             abort_json('CONVERSATION_LOG_COS_NOT_CONFIGURED', '没有可用的腾讯云 COS 配置', 422);
         }
         $result = $this->store()->pullAll();
+        $media = $this->mediaStore()->pullAll();
+        $result['files'] += $media['files'];
+        $result['errors'] = [...$result['errors'], ...$media['errors']];
+        $result['media_files'] = $media['files'];
         $this->refreshCosStats();
         $this->remember('cos_pull', ['mode' => 'cos_pull', 'files' => $result['files']], 0);
         (new AuditService())->write('conversation_log.cos_pull', 'conversation_logs', null, ['files' => $result['files'], 'errors' => count($result['errors'])]);
@@ -612,7 +1182,8 @@ final class ConversationLogService
             foreach ($files as $variants) {
                 $bytes += ($variants['active'] ?? 0) + ($variants['packed'] ?? 0);
             }
-            $state['remote'] = ['files' => count($files), 'bytes' => $bytes, 'counted_at' => gmdate('Y-m-d H:i:s')];
+            $media = $this->mediaStore()->remoteFiles();
+            $state['remote'] = ['files' => count($files) + count($media), 'bytes' => $bytes + array_sum($media), 'media_files' => count($media), 'counted_at' => gmdate('Y-m-d H:i:s')];
         } catch (Throwable $throwable) {
             $state['last_error'] = $throwable->getMessage();
         }
@@ -877,8 +1448,9 @@ final class ConversationLogService
         );
         $total = $this->logs()->first("SELECT COUNT(*) AS total FROM conversation_logs c {$sqlWhere}", $bindings);
         $contents = $this->contents($rows);
+        $media = $this->mediaFor(array_map(static fn (array $row): int => (int) $row['id'], $rows));
         $items = array_map(fn (array $row): array => [
-            ...$this->turnRow($row, $contents[(int) $row['id']] ?? null),
+            ...$this->turnRow($row, $contents[(int) $row['id']] ?? null, $media[(int) $row['id']] ?? []),
             'session_key' => $row['session_key'],
             'system' => null,
         ], $rows);
@@ -933,7 +1505,7 @@ final class ConversationLogService
      * @param array<string, mixed> $row
      * @return array<string, mixed>
      */
-    private function turnRow(array $row, ?array $content): array
+    private function turnRow(array $row, ?array $content, array $media = []): array
     {
         return [
             'id' => (int) $row['id'],
@@ -954,6 +1526,8 @@ final class ConversationLogService
             'reply' => is_array($content['reply'] ?? null)
                 ? $content['reply']
                 : ($content === null || isset($content['missing']) ? ['error' => '会话记录文件缺失或无法读取'] : null),
+            'params' => is_array($content['params'] ?? null) ? $content['params'] : null,
+            'media' => $media,
         ];
     }
 
@@ -995,9 +1569,10 @@ final class ConversationLogService
         }
         $firstId = (int) $meta['first_id'];
         $contents = $this->contents($rows);
-        $turns = array_map(function (array $row) use ($firstId, $contents, $keyNames): array {
+        $media = $this->mediaFor(array_map(static fn (array $row): int => (int) $row['id'], $rows));
+        $turns = array_map(function (array $row) use ($firstId, $contents, $keyNames, $media): array {
             return [
-                ...$this->turnRow($row, $contents[(int) $row['id']] ?? null),
+                ...$this->turnRow($row, $contents[(int) $row['id']] ?? null, $media[(int) $row['id']] ?? []),
                 'api_key_id' => isset($row['api_key_id']) ? (int) $row['api_key_id'] : null,
                 'api_key_name' => $keyNames[(int) ($row['api_key_id'] ?? 0)] ?? null,
                 // History the client sent before logging saw this session.
@@ -1044,6 +1619,17 @@ final class ConversationLogService
         $today = $local->format('Y-m-d');
         $state = $this->readSetting(self::STATE_KEY);
         $cosMode = $settings['storage_driver'] === 'cos' && $this->cosClient() !== null;
+        if (!$force) {
+            // Every scheduler run: results of finished generation tasks.
+            try {
+                $this->processMedia(50);
+            } catch (Throwable $throwable) {
+                try {
+                    App::logger()->warning('worker', 'conversation log media copy failed', ['error' => $throwable->getMessage()]);
+                } catch (Throwable) {
+                }
+            }
+        }
         if ($cosMode && !$force) {
             // Every scheduler run: today's file and anything changed goes to COS.
             $this->syncCos($today);
@@ -1068,6 +1654,10 @@ final class ConversationLogService
             $deleted = $where === '' ? 0 : $this->deleteBatched($where, $bindings);
         }
         $orphans = $this->sweepOrphanFiles();
+        try {
+            $orphans += $this->sweepOrphanMedia($today, $now);
+        } catch (Throwable) {
+        }
         $indexBackup = $cosMode ? $this->backupIndexToCos() : null;
         if ($cosMode) {
             $this->refreshCosStats();
@@ -1250,6 +1840,8 @@ final class ConversationLogService
     {
         $this->requireSuperAdmin();
         $deleted = $this->deleteBatched('1 = 1', [], self::MAX_DELETE_BATCHES * 10, false);
+        $this->logs()->execute('DELETE FROM conversation_log_media');
+        $this->mediaStore()->deleteAllLocal();
         $this->store()->deleteAll();
         $this->remember($trigger, ['mode' => 'all'], $deleted);
         (new AuditService())->write('conversation_log.purge_all', 'conversation_logs', null, ['deleted' => $deleted, 'trigger' => $trigger]);
@@ -1415,6 +2007,14 @@ final class ConversationLogService
             $time = sprintf('%02d:%02d', (int) $match[1], (int) $match[2]);
         }
 
+        $mediaMax = $input['media_max_mb'] ?? $defaults['media_max_mb'];
+        if (!is_numeric($mediaMax) || (int) $mediaMax < 1 || (int) $mediaMax > self::MEDIA_MAX_MB) {
+            if ($strict) {
+                abort_json('CONVERSATION_LOG_INVALID_MEDIA_SIZE', '单个媒体文件上限需为 1～2048 MB', 422);
+            }
+            $mediaMax = $defaults['media_max_mb'];
+        }
+
         $timezone = trim((string) ($input['timezone'] ?? $defaults['timezone']));
         if (!in_array($timezone, DateTimeZone::listIdentifiers(), true) && $timezone !== 'UTC') {
             if ($strict) {
@@ -1433,6 +2033,8 @@ final class ConversationLogService
             'cleanup_time' => $time,
             'timezone' => $timezone,
             'storage_driver' => in_array($input['storage_driver'] ?? 'local', ['local', 'cos'], true) ? (string) ($input['storage_driver'] ?? 'local') : 'local',
+            'record_media' => $bool('record_media'),
+            'media_max_mb' => (int) $mediaMax,
         ];
     }
 
@@ -1533,6 +2135,7 @@ final class ConversationLogService
             if ($ids === []) {
                 break;
             }
+            $this->deleteMediaFor($ids, $pruneFiles);
             $deleted += $this->logs()->execute('DELETE FROM conversation_logs WHERE id IN (' . implode(', ', $ids) . ')');
             if (count($ids) < self::DELETE_BATCH) {
                 break;

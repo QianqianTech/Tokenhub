@@ -15,12 +15,28 @@ namespace TokenHub\Services\Gateway;
  * storing the history again on every request.
  *
  * Handles OpenAI Chat Completions, Responses and legacy Completions,
- * Anthropic Messages and Gemini generateContent payloads. Media are kept as
- * short placeholders (never base64) and long texts are cut.
+ * Anthropic Messages and Gemini generateContent payloads, plus the media
+ * calls (image / video / speech / music generation and speech recognition:
+ * prompt, reference media and parameters; the task's results are copied
+ * afterwards). Media parts carry a short placeholder; with a capture callback
+ * (ConversationMediaCapture) the media of the new turn are also kept and the
+ * part gets their key. Long texts are cut.
  */
 final class ConversationExtractor
 {
-    public const CAPABILITIES = ['text_generation', 'vision_understanding', 'audio_understanding', 'video_understanding'];
+    public const CAPABILITIES = ['text_generation', 'vision_understanding', 'audio_understanding', 'video_understanding', ...self::GENERATION];
+
+    /** Media calls: one turn per call; the generated files come from the task. */
+    public const GENERATION = ['image_generation', 'video_generation', 'tts', 'music_generation', 'asr'];
+
+    private const MEDIA_KEYS = [
+        'image' => ['image', 'images', 'image_url', 'image_urls', 'img_url', 'first_frame_image', 'first_frame_url', 'last_frame_image', 'last_frame_url', 'reference_image', 'reference_images', 'input_image', 'input_reference', 'mask', 'subject_reference', 'ref_image'],
+        'video' => ['video', 'video_url', 'reference_video', 'reference_videos', 'input_video'],
+        'audio' => ['audio_url', 'reference_audio', 'reference_audios', 'input_audio', 'audio_file'],
+    ];
+
+    /** Fields never shown as generation parameters. */
+    private const NOT_PARAMS = ['model', 'prompt', 'input', 'text', 'lyrics', 'stream', 'user', 'metadata', 'callback_url', 'content', 'messages', 'provider_options', 'vendor_options', 'rag', 'response_format'];
 
     private const MAX_TEXT = 20000;
     private const MAX_TOOL_TEXT = 4000;
@@ -33,10 +49,13 @@ final class ConversationExtractor
      * @param array<string, string> $hints client session ids taken from request headers
      * @return array<string, mixed>|null null when the request is not a conversation
      */
-    public static function extract(string $protocol, string $capability, array $payload, array $output, array $hints = []): ?array
+    public static function extract(string $protocol, string $capability, array $payload, array $output, array $hints = [], ?callable $capture = null): ?array
     {
         if (!in_array($capability, self::CAPABILITIES, true)) {
             return null;
+        }
+        if (in_array($capability, self::GENERATION, true)) {
+            return self::generation($capability, $payload, $output, $hints, $capture);
         }
 
         [$format, $system, $messages] = match (true) {
@@ -61,7 +80,7 @@ final class ConversationExtractor
         if ($tail === []) {
             $tail = [$messages[count($messages) - 1]];
         }
-        $tail = self::capParts($tail);
+        $tail = self::captureMessages(self::capParts($tail), $capture);
 
         $system = $system !== null && trim($system) !== '' ? self::cut($system, self::MAX_SYSTEM) : null;
         $firstUser = self::firstUserText($messages);
@@ -77,7 +96,7 @@ final class ConversationExtractor
             'system' => $system,
             'messages' => array_values($tail),
             'prior_count' => count($messages) - count($tail),
-            'reply' => self::reply($format, $output),
+            'reply' => self::captureReply(self::reply($format, $output), $capture),
             'title' => self::cut(trim((string) preg_replace('/\s+/u', ' ', $title)), 80),
             'session_hint' => $sessionHint,
             'session_source' => $sessionSource,
@@ -268,9 +287,9 @@ final class ConversationExtractor
             $type = (string) ($block['type'] ?? (isset($block['text']) ? 'text' : ''));
             $part = match ($type) {
                 'text', 'input_text', 'output_text' => self::text((string) ($block['text'] ?? '')),
-                'image_url', 'input_image', 'image' => ['type' => 'image', 'ref' => self::mediaRef($block['image_url'] ?? $block['source'] ?? $block['url'] ?? null)],
-                'input_audio', 'audio_url', 'audio' => ['type' => 'audio', 'ref' => self::mediaRef($block['audio_url'] ?? $block['source'] ?? null)],
-                'video_url', 'input_video', 'video' => ['type' => 'video', 'ref' => self::mediaRef($block['video_url'] ?? $block['source'] ?? null)],
+                'image_url', 'input_image', 'image' => self::mediaPart('image', $block['image_url'] ?? $block['source'] ?? $block['url'] ?? $block['image'] ?? null),
+                'input_audio', 'audio_url', 'audio' => self::mediaPart('audio', $block['input_audio'] ?? $block['audio_url'] ?? $block['source'] ?? $block['audio'] ?? null),
+                'video_url', 'input_video', 'video' => self::mediaPart('video', $block['video_url'] ?? $block['source'] ?? $block['video'] ?? null),
                 'input_file', 'file', 'document' => ['type' => 'file', 'ref' => self::fileRef($block)],
                 'tool_use', 'server_tool_use' => self::toolCall((string) ($block['name'] ?? 'tool'), $block['input'] ?? []),
                 'tool_result', 'web_search_tool_result' => self::toolResult((string) ($block['tool_use_id'] ?? ''), (string) self::blocksText($block['content'] ?? '')),
@@ -313,7 +332,7 @@ final class ConversationExtractor
                     default => 'file',
                 };
                 $uri = $data['fileUri'] ?? $data['file_uri'] ?? null;
-                $out[] = ['type' => $type, 'ref' => is_string($uri) ? self::mediaRef($uri) : ($mime !== '' ? $mime : '内联数据')];
+                $out[] = self::mediaPart($type, is_string($uri) ? $uri : ($data['data'] ?? null), $mime !== '' ? $mime : null);
             }
         }
 
@@ -410,8 +429,10 @@ final class ConversationExtractor
                     $text[] = (string) $part['text'];
                 } elseif (is_array($part['functionCall'] ?? null)) {
                     $calls[] = self::toolCall((string) ($part['functionCall']['name'] ?? 'tool'), $part['functionCall']['args'] ?? []);
-                } elseif (is_array($part['inlineData'] ?? null)) {
-                    $media[] = ['type' => 'image', 'ref' => (string) ($part['inlineData']['mimeType'] ?? '生成的媒体')];
+                } elseif (is_array($part['inlineData'] ?? $part['inline_data'] ?? null)) {
+                    $inline = $part['inlineData'] ?? $part['inline_data'];
+                    $mime = (string) ($inline['mimeType'] ?? $inline['mime_type'] ?? '');
+                    $media[] = self::mediaPart(str_starts_with($mime, 'audio/') ? 'audio' : (str_starts_with($mime, 'video/') ? 'video' : 'image'), $inline['data'] ?? null, $mime !== '' ? $mime : null);
                 }
             }
         } elseif (isset($output['output']) && is_array($output['output'])) {
@@ -447,6 +468,18 @@ final class ConversationExtractor
                     $text[] = $part['text'];
                 } else {
                     $media[] = $part;
+                }
+            }
+            // Image output on the chat message (OpenRouter and compatible gateways).
+            foreach ((array) ($message['images'] ?? []) as $image) {
+                if (is_array($image) || is_string($image)) {
+                    $media[] = self::mediaPart('image', is_array($image) ? ($image['image_url'] ?? $image['url'] ?? $image['b64_json'] ?? null) : $image);
+                }
+            }
+            if (is_array($message['audio'] ?? null) && is_string($message['audio']['data'] ?? null)) {
+                $media[] = self::mediaPart('audio', $message['audio']['data'], 'audio/' . (string) ($message['audio']['format'] ?? 'wav'));
+                if (is_string($message['audio']['transcript'] ?? null)) {
+                    $text[] = $message['audio']['transcript'];
                 }
             }
             foreach (['reasoning_content', 'reasoning'] as $key) {
@@ -585,6 +618,234 @@ final class ConversationExtractor
         }
 
         return self::mediaRef($block['source'] ?? $block['file_url'] ?? $block['file_id'] ?? null);
+    }
+
+    /**
+     * A media part: placeholder text plus, until captured, its source (_raw).
+     *
+     * @return array<string, mixed>
+     */
+    private static function mediaPart(string $type, mixed $raw, ?string $mime = null): array
+    {
+        $part = ['type' => $type, 'ref' => self::mediaRef($raw)];
+        if (is_array($raw) && $part['ref'] === '' && is_string($raw['filename'] ?? null)) {
+            $part['ref'] = self::cut($raw['filename'], 200);
+        }
+        if ($raw !== null && $raw !== '') {
+            $part['_raw'] = [$raw, $mime];
+        }
+
+        return $part;
+    }
+
+    /**
+     * Keeps the media of the new turn (capture) and drops the sources.
+     *
+     * @param list<array<string, mixed>> $messages
+     * @return list<array<string, mixed>>
+     */
+    private static function captureMessages(array $messages, ?callable $capture): array
+    {
+        foreach ($messages as $m => $message) {
+            $messages[$m]['parts'] = self::captureParts($message['parts'], $capture, 'input');
+        }
+
+        return $messages;
+    }
+
+    /**
+     * @param array<string, mixed> $reply
+     * @return array<string, mixed>
+     */
+    private static function captureReply(array $reply, ?callable $capture): array
+    {
+        if (isset($reply['media'])) {
+            $reply['media'] = self::captureParts($reply['media'], $capture, 'output');
+        }
+
+        return $reply;
+    }
+
+    /**
+     * @param list<array<string, mixed>> $parts
+     * @return list<array<string, mixed>>
+     */
+    private static function captureParts(array $parts, ?callable $capture, string $direction): array
+    {
+        foreach ($parts as $p => $part) {
+            if (!isset($part['_raw'])) {
+                continue;
+            }
+            if ($capture !== null) {
+                try {
+                    $key = $capture((string) $part['type'], $part['_raw'][0], $part['_raw'][1], $direction);
+                } catch (\Throwable) {
+                    $key = null;
+                }
+                if (is_string($key) && $key !== '') {
+                    $parts[$p]['media'] = $key;
+                }
+            }
+            unset($parts[$p]['_raw']);
+        }
+
+        return array_values($parts);
+    }
+
+    /**
+     * Image / video / speech / music generation and speech recognition: the
+     * prompt and reference media as the question, the recognized text (ASR)
+     * as the reply; generated files are attached from the task later.
+     *
+     * @param array<string, mixed> $payload
+     * @param array<string, mixed> $output
+     * @param array<string, string> $hints
+     * @return array<string, mixed>
+     */
+    private static function generation(string $capability, array $payload, array $output, array $hints, ?callable $capture): array
+    {
+        $parts = [];
+        $prompt = '';
+        foreach (['prompt' => '', 'input' => '', 'text' => '', 'lyrics' => '歌词：', 'negative_prompt' => '不希望出现：'] as $field => $label) {
+            $value = $payload[$field] ?? null;
+            if ($field === 'input' && !is_string($value)) {
+                continue;
+            }
+            $value = self::scalarText($value);
+            if (trim($value) === '') {
+                continue;
+            }
+            $parts[] = self::text($label . $value);
+            if ($prompt === '' && $label === '') {
+                $prompt = $value;
+            }
+        }
+        if (is_array($payload['content'] ?? null)) {
+            // Vendor-native content array (Seedance: text + image_url with role).
+            foreach (self::contentParts($payload['content']) as $part) {
+                $parts[] = $part;
+                if ($prompt === '' && $part['type'] === 'text') {
+                    $prompt = $part['text'];
+                }
+            }
+        }
+        foreach (self::MEDIA_KEYS as $kind => $fields) {
+            foreach ($fields as $field) {
+                foreach (self::mediaValues($payload[$field] ?? null) as $raw) {
+                    $parts[] = self::mediaPart($kind, $raw);
+                }
+            }
+        }
+        $fileName = '';
+        foreach ((array) ($payload[MultipartUpload::FILES_KEY] ?? []) as $file) {
+            if (!is_array($file)) {
+                continue;
+            }
+            $mime = (string) ($file['mime'] ?? '');
+            $kind = str_starts_with($mime, 'image/') ? 'image' : (str_starts_with($mime, 'video/') ? 'video' : (str_starts_with($mime, 'audio/') || $capability === 'asr' ? 'audio' : 'file'));
+            $parts[] = self::mediaPart($kind, $file, $mime !== '' ? $mime : null);
+            $fileName = $fileName !== '' ? $fileName : (string) ($file['filename'] ?? '');
+        }
+        $parts = self::captureParts(array_slice($parts, 0, self::MAX_PARTS), $capture, 'input');
+
+        $params = [];
+        foreach ($payload as $name => $value) {
+            if (count($params) >= 24 || !is_string($name) || str_starts_with($name, '__') || in_array($name, self::NOT_PARAMS, true)) {
+                continue;
+            }
+            if (array_filter(self::MEDIA_KEYS, static fn (array $fields): bool => in_array($name, $fields, true)) !== []) {
+                continue;
+            }
+            if (is_bool($value)) {
+                $params[$name] = $value ? 'true' : 'false';
+            } elseif (is_scalar($value) && (string) $value !== '') {
+                $params[$name] = self::cut((string) $value, 120);
+            }
+        }
+
+        $reply = [];
+        if ($capability === 'asr') {
+            $text = $output['text'] ?? null;
+            if (is_string($text) && $text !== '') {
+                $reply['text'] = self::cut($text, self::MAX_TEXT);
+            }
+        }
+        $revised = [];
+        foreach ((array) ($output['data'] ?? []) as $item) {
+            if (is_array($item) && is_string($item['revised_prompt'] ?? null) && $item['revised_prompt'] !== '') {
+                $revised[] = $item['revised_prompt'];
+            }
+        }
+        if ($revised !== []) {
+            $reply['note'] = self::cut('模型改写后的提示词：' . implode("\n", array_unique($revised)), 4000);
+        }
+        if (is_array($output['error'] ?? null)) {
+            $reply['error'] = self::cut((string) ($output['error']['message'] ?? self::encode($output['error'])), 2000);
+        }
+        if (isset($output['task_id']) && is_scalar($output['task_id'])) {
+            $reply['task'] = ['id' => substr((string) $output['task_id'], 0, 80), 'status' => is_string($output['status'] ?? null) ? $output['status'] : null];
+        }
+
+        [$sessionHint, $sessionSource] = self::sessionHint($payload, $hints);
+        $title = trim((string) preg_replace('/\s+/u', ' ', $prompt));
+        if ($title === '') {
+            $title = $fileName !== '' ? $fileName : '';
+        }
+
+        return [
+            'v' => 1,
+            'format' => $capability,
+            'system' => null,
+            'messages' => $parts === [] ? [] : [self::message('user', $parts)],
+            'prior_count' => 0,
+            'reply' => $reply,
+            'params' => $params,
+            'title' => self::cut($title, 80),
+            'session_hint' => $sessionHint,
+            'session_source' => $sessionSource,
+            // Unnamed sessions: the same prompt to the same kind of model is one session.
+            'session_seed' => hash('sha256', 'generation|' . $capability . '|' . mb_substr($prompt !== '' ? $prompt : $fileName, 0, 2000, 'UTF-8')),
+            'previous_response_id' => null,
+            'response_id' => null,
+        ];
+    }
+
+    /**
+     * Media sources in a request field: a string, a list, or nested objects.
+     *
+     * @return list<mixed>
+     */
+    private static function mediaValues(mixed $value, int $depth = 0): array
+    {
+        if (is_string($value)) {
+            return self::looksLikeMedia($value) ? [$value] : [];
+        }
+        if (!is_array($value) || $depth > 3) {
+            return [];
+        }
+        foreach (['url', 'data', 'image_url', 'video_url', 'audio_url'] as $key) {
+            $inner = $value[$key] ?? null;
+            if (is_string($inner) && self::looksLikeMedia($inner)) {
+                return [$value];
+            }
+            if (is_array($inner) && is_string($inner['url'] ?? null)) {
+                return [$inner];
+            }
+        }
+        $out = [];
+        foreach ($value as $item) {
+            array_push($out, ...self::mediaValues($item, $depth + 1));
+        }
+
+        return $out;
+    }
+
+    private static function looksLikeMedia(string $value): bool
+    {
+        return str_starts_with($value, 'data:')
+            || preg_match('#^https?://#i', $value) === 1
+            || preg_match('/^asset_[A-Za-z0-9_-]{6,80}$/', $value) === 1
+            || (strlen($value) > 120 && preg_match('#^[A-Za-z0-9+/=_-]+$#', substr($value, 0, 2048)) === 1);
     }
 
     private static function mediaRef(mixed $value): string

@@ -53,7 +53,7 @@ test("会话记录设置：启用功能、保存规则、手动清理（预览+�
   await page.getByRole("button", { name: "确认启用" }).click();
   await form.locator(".notice.success").waitFor();
   assert.deepEqual(body(lastRequest("PUT", "/admin-api/conversation-logs/settings")), {
-    enabled: true, compress_daily: true, retention_days: 14, max_records_per_key: 5000, purge_deleted_keys: true, auto_cleanup: true, cleanup_time: "02:30", timezone: "Asia/Shanghai", storage_driver: "local"
+    enabled: true, compress_daily: true, retention_days: 14, max_records_per_key: 5000, purge_deleted_keys: true, auto_cleanup: true, cleanup_time: "02:30", timezone: "Asia/Shanghai", storage_driver: "local", record_media: true, media_max_mb: 100
   });
   const status = await page.locator(".conversation-status").innerText();
   assert.match(status, /已启用/);
@@ -189,6 +189,56 @@ test("会话记录：按密钥逐条看问答和 Token，可删单条、整段�
   await confirm.getByRole("button", { name: "永久删除" }).click();
   await page.getByText("已删除 42 条记录").waitFor();
   assert.deepEqual(body(lastRequest("POST", "/admin-api/conversation-logs/cleanup")), { mode: "all", api_key_id: 1, confirm: "PURGE" });
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+test("会话记录 · 多模态：生成参数、参考图、生成的图片、超限说明、视频生成中", async () => {
+  const { page, errors, context } = await openPage(env);
+  await login(page, env.mock.baseUrl, { hash: "#/access/conversation-logs?api_key_id=1" });
+  const card = page.locator(".conversation-call", { hasText: "橘猫" });
+  await card.waitFor();
+  assert.match(await card.locator(".conversation-qa.is-answer").innerText(), /生成了 2 个图片/, "the answer line counts the generated files");
+  await card.locator(".conversation-thumb img").first().waitFor();
+  assert.equal(await card.locator(".conversation-thumb").count(), 1, "stored results are shown as thumbnails");
+
+  await card.getByRole("button", { name: "展开" }).click();
+  const question = card.locator(".conversation-message.is-user");
+  const referenceImage = question.locator(".conversation-media-image");
+  await referenceImage.scrollIntoViewIfNeeded();
+  await referenceImage.evaluate((img) => img.decode());
+  assert.ok(await referenceImage.evaluate((img) => img.naturalWidth > 0), "the reference image is loaded from the admin media link");
+  assert.match(await question.locator(".conversation-media-item.is-pending").innerText(), /正在保存/, "a linked reference that is still being copied says so");
+  assert.match(await question.locator(".conversation-params").innerText(), /size\s*1024x1024/, "generation parameters are shown");
+  const reply = card.locator(".conversation-message.is-reply");
+  assert.equal(await reply.locator(".conversation-media-image").count(), 1, "the generated image is shown in the answer");
+  assert.match(await reply.locator(".conversation-media-item.is-skipped").innerText(), /超过单个文件上限/, "files above the limit are explained");
+  assert.match(await reply.innerText(), /模型改写后的提示词/, "the revised prompt is shown");
+  assert.equal(await reply.locator('a.conversation-media-download').first().getAttribute("href"), "/admin-api/conversation-logs/media/d4d4d4d4d4d4d4d4d4d4d4d4");
+  if (shots) await page.screenshot({ path: `${shots}/conversation-logs-media.png`, fullPage: true });
+
+  const video = page.locator(".conversation-call", { hasText: "海边日落" });
+  assert.match(await video.locator(".conversation-qa.is-answer").innerText(), /生成中/, "a running video task is shown as running");
+  await video.getByRole("button", { name: "展开" }).click();
+  assert.match(await video.locator(".conversation-task-status").innerText(), /视频生成中/);
+  assert.match(await video.locator(".conversation-message.is-reply").innerText(), /视频生成/, "the call is labelled as video generation");
+
+  await page.goto(`${env.mock.baseUrl}/admin/#/system/conversation-log-settings`);
+  const form = page.locator(".conversation-settings-form");
+  await form.waitFor();
+  assert.equal(await form.locator('input[name="record_media"]').isChecked(), true, "media are recorded by default");
+  await form.locator('input[name="media_max_mb"]').fill("50");
+  await page.getByRole("button", { name: "保存设置" }).click();
+  await form.locator(".notice.success").waitFor();
+  const saved = body(lastRequest("PUT", "/admin-api/conversation-logs/settings"));
+  assert.equal(saved.record_media, true);
+  assert.equal(saved.media_max_mb, 50);
+  const status = page.locator(".conversation-status");
+  assert.match(await status.innerText(), /多模态内容[\s\S]*已保存\s*18 个/, "the settings page shows the stored media");
+  await status.getByRole("button", { name: "立即保存待处理的媒体" }).click();
+  await page.getByText("已保存 2 个，处理完成的任务 1 个").waitFor();
+  await form.locator('input[name="record_media"]').uncheck();
+  assert.equal(await form.locator('input[name="media_max_mb"]').isDisabled(), true, "the size limit is locked while media are off");
   assert.deepEqual(errors, []);
   await context.close();
 });

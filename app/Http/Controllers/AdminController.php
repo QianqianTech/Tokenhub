@@ -733,6 +733,16 @@ final class AdminController
         return Response::ok((new ConversationLogService())->session((string) $request->params['session_key'], $request->query));
     }
 
+    public function conversationLogMedia(Request $request): Response
+    {
+        return (new ConversationLogService())->mediaResponse((string) $request->params['media_key'], $request->header('range'));
+    }
+
+    public function processConversationLogMedia(Request $request): Response
+    {
+        return Response::ok((new ConversationLogService())->processMediaNow());
+    }
+
     public function contentArchive(Request $request): Response
     {
         return Response::ok((new ContentArchiveService())->list($request->query));

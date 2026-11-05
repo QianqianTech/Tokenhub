@@ -19,7 +19,8 @@ use RuntimeException;
  *   CONVERSATION_LOG_DB_DSN=mysql:host=...;port=3306;dbname=tokenhub_conversation;charset=utf8mb4
  *   CONVERSATION_LOG_DB_USER=... CONVERSATION_LOG_DB_PASSWORD=...
  * The schema is created on first use. It holds the index (key, session,
- * time, tokens, cost, title); questions and answers live in the day files
+ * time, tokens, cost, title) and the list of media files
+ * (conversation_log_media); questions and answers live in the day files
  * (ConversationLogStore) and only fall back to the encrypted columns here
  * when the directory cannot be written.
  */
@@ -224,6 +225,29 @@ final class ConversationLogDb
             ] as $index) {
                 $pdo->exec('CREATE INDEX IF NOT EXISTS ' . $index);
             }
+            $pdo->exec("CREATE TABLE IF NOT EXISTS conversation_log_media (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                log_id INTEGER NOT NULL,
+                api_key_id INTEGER NULL,
+                media_key TEXT NOT NULL UNIQUE,
+                direction TEXT NOT NULL DEFAULT 'input',
+                kind TEXT NOT NULL DEFAULT 'file',
+                source TEXT NOT NULL DEFAULT 'inline',
+                status TEXT NOT NULL DEFAULT 'pending',
+                task_id TEXT NULL,
+                encrypted_ref TEXT NULL,
+                encrypted_name TEXT NULL,
+                file TEXT NULL,
+                mime TEXT NULL,
+                size_bytes INTEGER NULL,
+                error TEXT NULL,
+                attempts INTEGER NOT NULL DEFAULT 0,
+                position INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NULL
+            )");
+            $pdo->exec('CREATE INDEX IF NOT EXISTS idx_conversation_log_media_log ON conversation_log_media (log_id, position)');
+            $pdo->exec('CREATE INDEX IF NOT EXISTS idx_conversation_log_media_status ON conversation_log_media (status, id)');
 
             return;
         }
@@ -267,6 +291,30 @@ final class ConversationLogDb
             INDEX idx_conversation_logs_created (created_at),
             INDEX idx_conversation_logs_response (response_id),
             INDEX idx_conversation_logs_content_file (content_file, id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+        $pdo->exec("CREATE TABLE IF NOT EXISTS conversation_log_media (
+            id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+            log_id BIGINT UNSIGNED NOT NULL,
+            api_key_id BIGINT UNSIGNED NULL,
+            media_key CHAR(24) NOT NULL,
+            direction VARCHAR(10) NOT NULL DEFAULT 'input',
+            kind VARCHAR(10) NOT NULL DEFAULT 'file',
+            source VARCHAR(10) NOT NULL DEFAULT 'inline',
+            status VARCHAR(10) NOT NULL DEFAULT 'pending',
+            task_id VARCHAR(80) NULL,
+            encrypted_ref TEXT NULL,
+            encrypted_name TEXT NULL,
+            file VARCHAR(120) NULL,
+            mime VARCHAR(120) NULL,
+            size_bytes BIGINT UNSIGNED NULL,
+            error VARCHAR(300) NULL,
+            attempts INT UNSIGNED NOT NULL DEFAULT 0,
+            position INT UNSIGNED NOT NULL DEFAULT 0,
+            created_at DATETIME NOT NULL,
+            updated_at DATETIME NULL,
+            UNIQUE KEY uniq_conversation_log_media_key (media_key),
+            INDEX idx_conversation_log_media_log (log_id, position),
+            INDEX idx_conversation_log_media_status (status, id)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
     }
 }

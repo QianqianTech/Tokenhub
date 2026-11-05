@@ -276,6 +276,37 @@ assert_true(str_contains((string) ($state['last_error'] ?? ''), 'connection refu
 FakeCos::$down = false;
 assert_same(3, (new ConversationLogService())->calls(3, ['limit' => 10])['total'], 'Records written while COS was down are kept locally.');
 
+// ---------------------------------------------------------------- media in COS
+// Uploaded with the scheduler run, removed from disk with the archives,
+// fetched back when an administrator opens them, deleted with their call.
+$mediaService = new ConversationLogService();
+$capture = $mediaService->mediaCapture(3, '2026-11-04 06:00:00');
+$withImage = ConversationExtractor::extract('openai', 'text_generation', ['messages' => [['role' => 'user', 'content' => [
+    ['type' => 'text', 'text' => '看图'], ['type' => 'image_url', 'image_url' => ['url' => 'data:image/png;base64,' . base64_encode('png-bytes-for-cos')]],
+]]]], ['choices' => [['message' => ['content' => '好']]]], [], $capture);
+$withImage['media'] = $capture->items();
+$mediaService->writeForRecord(['id' => 6], [...$record(6, '2026-11-04 06:00:00'), 'conversation' => $withImage]);
+$mediaRel = (string) $withImage['media'][0]['file'];
+$mediaService->cleanup(false, strtotime('2026-11-05 01:30:00 UTC'));
+assert_true(isset(FakeCos::$objects[$prefix . $mediaRel]), 'Media files are uploaded to COS.');
+assert_true(!str_contains(FakeCos::$objects[$prefix . $mediaRel], 'png-bytes-for-cos'), 'Media objects in COS are encrypted.');
+assert_true(!is_file($logDir . '/' . $mediaRel), 'Uploaded media of earlier days are removed from disk (keep 0 days).');
+$putsMedia = FakeCos::$puts;
+$mediaService->cleanup(false, strtotime('2026-11-05 01:35:00 UTC'));
+assert_same($putsMedia, FakeCos::$puts, 'Media are uploaded once.');
+$mediaResponse = (new ConversationLogService())->mediaResponse((string) $withImage['media'][0]['key'], null);
+$sent = '';
+ob_start(static function (string $buffer) use (&$sent): string {
+    $sent .= $buffer;
+    return '';
+});
+$mediaResponse->send();
+ob_end_clean();
+assert_same('png-bytes-for-cos', $sent, 'Media are fetched back from COS when opened.');
+$mediaLogId = (int) $logPdo->query('SELECT id FROM conversation_logs WHERE usage_record_id = 6')->fetchColumn();
+(new ConversationLogService())->deleteCall($mediaLogId);
+assert_true(!isset(FakeCos::$objects[$prefix . $mediaRel]), 'Deleting the call deletes its media in COS.');
+
 // ---------------------------------------------------------------- back to local storage
 $expect(static fn () => $service->pullFromCos(), 'CONVERSATION_LOG_COS_IN_USE', 409, 'Switch to local storage before moving files back.');
 $service->saveSettings(['storage_driver' => 'local']);

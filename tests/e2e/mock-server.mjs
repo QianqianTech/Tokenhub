@@ -226,7 +226,10 @@ const specialGet = {
 
 export const requestLog = [];
 let conversationCos = { configured: false, secret_id: "", secret_key_set: false, bucket: "", region: "", prefix: "tokenhub/conversation-logs", endpoint: "", storage_class: "STANDARD", keep_local_days: 0, backup_index: true, state: null };
-let conversationLogSettings = { enabled: false, storage_driver: "local", compress_daily: true, retention_days: 30, max_records_per_key: 0, purge_deleted_keys: true, auto_cleanup: true, cleanup_time: "03:00", timezone: "Asia/Shanghai" };
+let conversationLogSettings = { enabled: false, storage_driver: "local", compress_daily: true, retention_days: 30, max_records_per_key: 0, purge_deleted_keys: true, auto_cleanup: true, cleanup_time: "03:00", timezone: "Asia/Shanghai", record_media: true, media_max_mb: 100 };
+// 1x1 PNG served for every conversation log media file.
+const CONVERSATION_MEDIA_PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==", "base64");
+let conversationMediaProcessed = 0;
 const conversationCleanupHistory = [{ at: timestamp(600), trigger: "schedule", mode: "expired", deleted: 12 }];
 const conversationKeys = [
   { id: 1, name: "alice-key", display: "tkh_aaaa****a1b2", status: "active", username: "alice", department_name: "研发部", enabled: true, retention_days: 30, custom_retention: false, default_retention_days: 30 },
@@ -354,7 +357,7 @@ async function handleApi(req, res, url) {
       conversationLogSettings = { ...conversationLogSettings, ...rest };
       if (purge) conversationCleanupHistory.unshift({ at: timestamp(), trigger: "disable", mode: "all", actor: "admin", deleted: 42 });
     }
-    return ok(res, { ...conversationLogSettings, cos: conversationCos, storage: { path: "/srv/app/storage/conversation-logs", writable: true, files: 12, days: 6, active_bytes: 48213, packed_bytes: 182044, total_bytes: 230257, oldest_day: "2026-10-21" }, database: { driver: "sqlite", location: "/srv/app/storage/conversation-logs/index.sqlite", bytes: 1048576, error: null }, history: conversationCleanupHistory, last_cleanup: { last_run_at: timestamp(600), trigger: "schedule", deleted: 12 }, next_cleanup_at: conversationLogSettings.auto_cleanup ? timestamp(-600) : null, stats: { records: 42, keys: 1, enabled_keys: conversationKeys.filter((key) => key.enabled).length, oldest_at: timestamp(9000) } });
+    return ok(res, { ...conversationLogSettings, cos: conversationCos, storage: { path: "/srv/app/storage/conversation-logs", writable: true, files: 12, days: 6, active_bytes: 48213, packed_bytes: 182044, total_bytes: 230257, oldest_day: "2026-10-21" }, database: { driver: "sqlite", location: "/srv/app/storage/conversation-logs/index.sqlite", bytes: 1048576, error: null }, history: conversationCleanupHistory, media: { stored: 18, stored_bytes: 7340032, pending: 2 - conversationMediaProcessed, failed: 1, skipped: 1, local_files: 18, local_bytes: 7350000 }, last_cleanup: { last_run_at: timestamp(600), trigger: "schedule", deleted: 12 }, next_cleanup_at: conversationLogSettings.auto_cleanup ? timestamp(-600) : null, stats: { records: 42, keys: 1, enabled_keys: conversationKeys.filter((key) => key.enabled).length, oldest_at: timestamp(9000) } });
   }
   if (path === "/admin-api/conversation-logs/cos") {
     if (method === "PUT") {
@@ -386,6 +389,15 @@ async function handleApi(req, res, url) {
   if (/^\/admin-api\/conversation-logs\/sessions\/[0-9a-f]{64}$/.test(path) && method === "DELETE") return ok(res, { deleted: 2 });
   if (/^\/admin-api\/conversation-logs\/calls\/\d+$/.test(path) && method === "DELETE") return ok(res, { deleted: 1 });
   if (path === "/admin-api/conversation-logs/purge" && method === "POST") return ok(res, { deleted: 42 });
+  if (path === "/admin-api/conversation-logs/media/process" && method === "POST") {
+    conversationMediaProcessed = 2;
+    return ok(res, { tasks: 1, stored: 2, failed: 0, skipped: 0, media: { stored: 20, pending: 0 } });
+  }
+  if (/^\/admin-api\/conversation-logs\/media\/[0-9a-f]{24}$/.test(path) && method === "GET") {
+    res.writeHead(200, { "Content-Type": "image/png", "Content-Length": CONVERSATION_MEDIA_PNG.length, "Accept-Ranges": "bytes" });
+    res.end(CONVERSATION_MEDIA_PNG);
+    return;
+  }
   if (path === "/admin-api/conversation-logs/api-keys" && method === "GET") {
     const keys = conversationKeys.map((key) => ({ api_key_id: key.id, name: key.name, display: key.display, status: "active", username: key.username, department_name: "研发部", enabled: key.enabled, retention_days: key.retention_days, sessions: key.id === 1 ? 2 : 0, turns: key.id === 1 ? 5 : 0, total_tokens: key.id === 1 ? 1230 : 0, last_at: key.id === 1 ? timestamp(5) : null }))
       .filter((row) => !url.searchParams.get("keyword") || row.name.includes(url.searchParams.get("keyword")));
@@ -411,7 +423,22 @@ async function handleApi(req, res, url) {
       { id: 2, session_key: "a".repeat(64), request_id: "req_2", created_at: timestamp(5), model_name: "gpt-4.1", format: "openai_chat", status: "success", input_tokens: 520, output_tokens: 210, total_tokens: 730, cache_read_tokens: 300, cost_amount: "0.00412000", cost_currency: "USD", latency_ms: 2100,
         messages: [{ role: "user", parts: [{ type: "text", text: "再按小时统计一下 ERROR 的数量。" }] }], reply: { text: "按小时统计：09 点 2 条，10 点 1 条。" } },
       { id: 1, session_key: "a".repeat(64), request_id: "req_1", created_at: timestamp(30), model_name: "gpt-4.1", format: "openai_chat", status: "success", input_tokens: 300, output_tokens: 200, total_tokens: 500, cache_read_tokens: 0, cost_amount: "0.00220000", cost_currency: "USD", latency_ms: 1800,
-        messages: [{ role: "user", parts: [{ type: "text", text: "帮我写一个 Python 脚本统计日志里每种级别的数量。" }] }], reply: { text: "可以这样写：\n\n```python\nfrom collections import Counter\n```" } }
+        messages: [{ role: "user", parts: [{ type: "text", text: "帮我写一个 Python 脚本统计日志里每种级别的数量。" }] }], reply: { text: "可以这样写：\n\n```python\nfrom collections import Counter\n```" } },
+      { id: 3, session_key: "c".repeat(64), request_id: "req_3", created_at: timestamp(60), model_name: "gpt-image-1", format: "image_generation", status: "success", input_tokens: 0, output_tokens: 0, total_tokens: 0, cache_read_tokens: 0, cost_amount: "0.08000000", cost_currency: "USD", latency_ms: 9100,
+        messages: [{ role: "user", parts: [{ type: "text", text: "一只坐在窗台上的橘猫，水彩风格" }, { type: "image", ref: "image/png，约 1 KB", media: "a1a1a1a1a1a1a1a1a1a1a1a1" }, { type: "image", ref: "https://cdn.example.com/ref.png", media: "b2b2b2b2b2b2b2b2b2b2b2b2" }] }],
+        params: { size: "1024x1024", n: "2", quality: "high" },
+        reply: { note: "模型改写后的提示词：一只橘猫坐在窗台上，水彩画", task: { id: "task_img_1", status: "succeeded" } },
+        media: [
+          { key: "a1a1a1a1a1a1a1a1a1a1a1a1", direction: "input", kind: "image", source: "inline", status: "stored", mime: "image/png", size_bytes: 1024, url: "/admin-api/conversation-logs/media/a1a1a1a1a1a1a1a1a1a1a1a1" },
+          { key: "b2b2b2b2b2b2b2b2b2b2b2b2", direction: "input", kind: "image", source: "url", status: "pending", mime: null, size_bytes: null, url: null },
+          { key: "c3c3c3c3c3c3c3c3c3c3c3c3", direction: "output", kind: "image", source: "task", status: "done", url: null },
+          { key: "d4d4d4d4d4d4d4d4d4d4d4d4", direction: "output", kind: "image", source: "asset", status: "stored", mime: "image/png", size_bytes: 524288, url: "/admin-api/conversation-logs/media/d4d4d4d4d4d4d4d4d4d4d4d4" },
+          { key: "e5e5e5e5e5e5e5e5e5e5e5e5", direction: "output", kind: "image", source: "asset", status: "skipped", error: "too_large", size_bytes: 209715200, url: null }
+        ] },
+      { id: 4, session_key: "d".repeat(64), request_id: "req_4", created_at: timestamp(90), model_name: "seedance-2.0", format: "video_generation", status: "success", input_tokens: 0, output_tokens: 0, total_tokens: 0, cache_read_tokens: 0, cost_amount: "0.50000000", cost_currency: "USD", latency_ms: 1200,
+        messages: [{ role: "user", parts: [{ type: "text", text: "海边日落延时" }] }], params: { duration: "5", ratio: "16:9" },
+        reply: { task: { id: "task_vid_1", status: "processing" } },
+        media: [{ key: "f6f6f6f6f6f6f6f6f6f6f6f6", direction: "output", kind: "video", source: "task", status: "waiting", url: null }] }
     ] : [];
     return ok(res, { api_key: { ...key, feature_enabled: Boolean(conversationLogSettings.enabled) }, summary: { calls: calls.length, sessions: calls.length ? 1 : 0, input_tokens: 820, output_tokens: 410, total_tokens: 1230, cache_read_tokens: 300, cost_amount: calls.length ? "0.00632000" : null, currency: "USD" }, items: calls, total: calls.length, limit: 20, offset: 0 });
   }

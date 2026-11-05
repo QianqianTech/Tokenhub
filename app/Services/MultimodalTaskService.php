@@ -61,6 +61,8 @@ final class MultimodalTaskService
                 $task['task_id'],
             ]
         );
+        // Conversation log: the generated files can be copied now.
+        ConversationLogService::nudgeMedia();
     }
 
     /**
@@ -89,6 +91,7 @@ final class MultimodalTaskService
             'UPDATE multimodal_tasks SET status = "failed", error_code = ?, error_message = ?, latency_ms = COALESCE(?, latency_ms), finished_at = UTC_TIMESTAMP() WHERE task_id = ?',
             [$errorCode, substr($errorMessage, 0, 255), $latencyMs, $task['task_id']]
         );
+        ConversationLogService::nudgeMedia();
     }
 
     /**

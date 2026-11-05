@@ -220,6 +220,8 @@ final class Kernel
         $router->get('/admin-api/conversation-logs/api-keys/{id}/sessions', [$admin, 'conversationLogSessions'], [new AdminAuthMiddleware()]);
         $router->get('/admin-api/conversation-logs/api-keys/{id}/calls', [$admin, 'conversationLogCalls'], [new AdminAuthMiddleware()]);
         $router->get('/admin-api/conversation-logs/sessions/{session_key}', [$admin, 'conversationLogSession'], [new AdminAuthMiddleware()]);
+        $router->get('/admin-api/conversation-logs/media/{media_key}', [$admin, 'conversationLogMedia'], [new AdminAuthMiddleware()]);
+        $router->post('/admin-api/conversation-logs/media/process', [$admin, 'processConversationLogMedia'], [new AdminAuthMiddleware(), new CsrfMiddleware()]);
         $router->get('/admin-api/content-archive', [$admin, 'contentArchive'], [new AdminAuthMiddleware()]);
         $router->get('/admin-api/content-archive/{id}', [$admin, 'contentArchiveDetail'], [new AdminAuthMiddleware()]);
         $router->get('/admin-api/dashboard/realtime', [$admin, 'dashboardRealtime'], [new AdminAuthMiddleware()]);

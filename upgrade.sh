@@ -21,8 +21,8 @@ Usage: bash upgrade.sh [--dir PATH] (--tag TAG | --ref vX.Y.Z) [--check | --yes]
   -h, --help    Show this help.
 
 Examples:
-  bash upgrade.sh --dir /opt/tokenhub --tag 1.0.2 --check
-  bash upgrade.sh --dir /opt/tokenhub --ref v1.0.2
+  bash upgrade.sh --dir /opt/tokenhub --tag 1.0.3 --check
+  bash upgrade.sh --dir /opt/tokenhub --ref v1.0.3
 TXT
 }
 

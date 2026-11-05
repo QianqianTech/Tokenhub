@@ -101,7 +101,7 @@ assert_same('流式回复', $stream['reply']['text'], 'Stream summaries are used
 assert_same('f', $stream['reply']['tool_calls'][0]['name'], 'Streamed tool calls are kept.');
 
 assert_same(null, ConversationExtractor::extract('openai', 'embedding', ['input' => 'x'], []), 'Embeddings are not conversations.');
-assert_same(null, ConversationExtractor::extract('openai', 'image_generation', ['prompt' => 'cat'], []), 'Image generation is not logged.');
+assert_same('image_generation', ConversationExtractor::extract('openai', 'image_generation', ['prompt' => 'cat'], [])['format'], 'Image generation is logged as a generation turn.');
 $long = ConversationExtractor::extract('openai', 'text_generation', ['messages' => [['role' => 'user', 'content' => str_repeat('长', 30000)]]], []);
 assert_true(mb_strlen($long['messages'][0]['parts'][0]['text']) < 20100, 'Long texts are cut.');
 

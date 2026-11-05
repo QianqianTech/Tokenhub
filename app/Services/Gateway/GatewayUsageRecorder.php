@@ -82,13 +82,20 @@ final class GatewayUsageRecorder
             // new turn from the full payload here, before the size bound below
             // can cut the history.
             try {
+                // Images, audio and video of the new turn are written to the
+                // media directory now (the bytes never go through the queue).
+                $capture = (new ConversationLogService())->mediaCapture(isset($apiKey['id']) ? (int) $apiKey['id'] : null, $record['created_at']);
                 $conversation = ConversationExtractor::extract(
                     $gatewayRequest->protocol,
                     $gatewayRequest->capability,
                     $gatewayRequest->payload,
                     is_array($content['output'] ?? null) ? $content['output'] : [],
-                    self::sessionHeaders($httpRequest)
+                    self::sessionHeaders($httpRequest),
+                    $capture
                 );
+                if ($conversation !== null && $capture !== null) {
+                    $conversation['media'] = $capture->items();
+                }
                 if ($conversation !== null) {
                     $record['conversation_encrypted'] = Crypto::encrypt((string) json_encode($conversation, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE));
                 }

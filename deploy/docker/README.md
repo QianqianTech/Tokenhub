@@ -33,7 +33,7 @@ powershell -ExecutionPolicy Bypass -File .\install.ps1 -Build -Site tokenhub.exa
 | 来源 | 参数 |
 | --- | --- |
 | 离线包 | 先在包根目录执行 `load-images.sh` 或 `load-images.ps1`，然后直接运行 `install.sh` |
-| [Docker Hub 预构建镜像](../../docs/deployment/README.md#从-docker-hub-部署)（`linux/arm64`） | `--image-prefix docker.io/leofan2022/ --tag 1.0.2`。PowerShell 使用 `-ImagePrefix` 和 `-Tag` |
+| [Docker Hub 预构建镜像](../../docs/deployment/README.md#从-docker-hub-部署)（`linux/arm64`） | `--image-prefix docker.io/leofan2022/ --tag 1.0.3`。PowerShell 使用 `-ImagePrefix` 和 `-Tag` |
 | 源码构建 | 在完整源码树中执行 `deploy/docker/install.sh --build` |
 
 安装脚本依次执行以下步骤：

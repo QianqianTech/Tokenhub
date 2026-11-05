@@ -19,7 +19,7 @@ TokenHub 提供两种交付方式，两者使用同一套安装逻辑（`bin/ins
 
 ## 从 Docker Hub 部署
 
-这批预构建镜像统一使用标签 `1.0.2`，适用于 **`linux/arm64`**。安装脚本直接拉取镜像并初始化服务，省去本地构建。[Docker Hub 镜像](https://hub.docker.com/u/leofan2022) · [v1.0.2 发布说明与镜像摘要](https://github.com/QianqianTech/Tokenhub/releases/tag/v1.0.2) · [1.0.0 镜像摘要](docker-hub-1.0.0-bcc60e571698-arm64-cache.tsv)
+这批预构建镜像统一使用标签 `1.0.3`，适用于 **`linux/arm64`**。安装脚本直接拉取镜像并初始化服务，省去本地构建。[Docker Hub 镜像](https://hub.docker.com/u/leofan2022) · [v1.0.3 发布说明与镜像摘要](https://github.com/QianqianTech/Tokenhub/releases/tag/v1.0.3) · [1.0.0 镜像摘要](docker-hub-1.0.0-bcc60e571698-arm64-cache.tsv)
 
 在 ARM64 Linux 或使用 Docker Desktop 的 Apple 芯片 Mac 上，先确认 Docker 服务端的系统和架构：
 
@@ -33,11 +33,11 @@ Docker 服务端应显示 `linux/arm64`，Compose 需要 2.20 或以上。AMD64 
 首次安装时，从 GitHub 取出与镜像配套的部署文件。下面的示例仅开放本机访问：
 
 ```bash
-git clone --branch v1.0.2 --depth 1 https://github.com/QianqianTech/Tokenhub.git tokenhub &&
+git clone --branch v1.0.3 --depth 1 https://github.com/QianqianTech/Tokenhub.git tokenhub &&
 cd tokenhub &&
 bash deploy/docker/install.sh \
   --image-prefix docker.io/leofan2022/ \
-  --tag 1.0.2 \
+  --tag 1.0.3 \
   --site http://localhost --http-port 8080 --https-port 8443 \
   --bind 127.0.0.1 --yes
 ```

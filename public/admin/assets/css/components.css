@@ -863,6 +863,123 @@ button.conversation-item.is-active {
   opacity: 0.85;
   overflow-wrap: anywhere;
 }
+
+/* 会话记录 · 多模态: stored images / video / audio and their status */
+.conversation-media-gallery {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 6px;
+}
+
+.conversation-media-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 6px 0;
+  max-width: min(100%, 420px);
+}
+
+.conversation-media-gallery .conversation-media-item {
+  margin: 0;
+}
+
+.conversation-media-item.is-pending {
+  padding: 6px 10px;
+  border: 1px dashed var(--border-soft);
+  border-radius: 8px;
+}
+
+.conversation-media-item figcaption {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.conversation-media-link {
+  display: block;
+  line-height: 0;
+}
+
+.conversation-media-image {
+  min-width: 96px;
+  min-height: 96px;
+  max-width: 100%;
+  max-height: 320px;
+  border-radius: 8px;
+  border: 1px solid var(--border-soft);
+  background: var(--surface-soft);
+  object-fit: contain;
+}
+
+.conversation-media-video {
+  width: 100%;
+  max-height: 320px;
+  border-radius: 8px;
+  background: var(--surface-soft);
+}
+
+.conversation-media-audio {
+  width: min(100%, 360px);
+}
+
+.conversation-params {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.conversation-note,
+.conversation-task-status {
+  margin: 6px 0 0;
+  font-size: 13px;
+}
+
+.conversation-thumbs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 2px 0 6px;
+}
+
+.conversation-thumb {
+  display: block;
+  width: 64px;
+  height: 64px;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid var(--border-soft);
+  background: var(--surface-soft);
+}
+
+.conversation-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.conversation-thumb-chip {
+  align-self: center;
+}
+
+/* Question bubbles are filled with the primary colour: keep chips and captions readable. */
+.app-shell .admin-chat-message.user .conversation-chip {
+  color: var(--text);
+}
+.app-shell .admin-chat-message.user .conversation-media-item figcaption,
+.app-shell .admin-chat-message.user .conversation-media-item .conversation-muted {
+  color: inherit;
+  opacity: 0.85;
+}
+.app-shell .admin-chat-message.user .conversation-media-download {
+  color: inherit;
+}
+.app-shell .admin-chat-message.user .conversation-media-item.is-pending {
+  border-color: currentColor;
+}
 .conversation-error {
   margin: 0;
   color: var(--danger);

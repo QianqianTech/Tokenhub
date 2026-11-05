@@ -24,7 +24,12 @@ const FORMAT_LABELS = {
   openai_responses: "Responses",
   openai_completions: "Completions",
   anthropic: "Anthropic Messages",
-  gemini: "Gemini"
+  gemini: "Gemini",
+  image_generation: "图片生成",
+  video_generation: "视频生成",
+  tts: "语音合成",
+  music_generation: "音乐生成",
+  asr: "语音识别"
 };
 
 const PART_LABELS = { image: "图片", audio: "音频", video: "视频", file: "文件" };
@@ -67,11 +72,101 @@ function questionText(messages = []) {
   return preview(messages.map((message) => plainText(message.parts)).filter(Boolean).join(" ")) || "（无文本内容）";
 }
 
-function answerText(reply = {}) {
+function answerText(reply = {}, media = []) {
   if (reply.text) return preview(reply.text);
   if ((reply.tool_calls || []).length) return `调用工具：${reply.tool_calls.map((call) => call.name).join("、")}`;
   if (reply.error) return `错误：${preview(reply.error)}`;
+  const outputs = media.filter((item) => item.direction === "output" && item.source !== "task");
+  if (outputs.length) {
+    const counts = {};
+    for (const item of outputs) counts[item.kind] = (counts[item.kind] || 0) + 1;
+    return `生成了 ${Object.entries(counts).map(([kind, count]) => `${count} 个${PART_LABELS[kind] || kind}`).join("、")}`;
+  }
+  const task = media.find((item) => item.source === "task");
+  if (task?.status === "waiting") return "生成中，完成后自动保存结果";
+  if (task?.status === "failed") return task.error || "生成失败";
   return "（无文本回复）";
+}
+
+const MEDIA_ERRORS = {
+  too_large: "超过单个文件上限，未保存",
+  asset_missing: "素材已被删除，无法保存",
+  asset_unreadable: "素材文件无法读取",
+  unsupported_source: "来源不支持保存",
+  task_missing: "找不到生成任务",
+  no_assets: "任务完成，但没有返回文件",
+  empty_download: "下载到的文件为空"
+};
+
+function mediaError(item) {
+  return MEDIA_ERRORS[item.error] || item.error || "";
+}
+
+function mediaMap(turn) {
+  return new Map((turn.media || []).map((item) => [item.key, item]));
+}
+
+// A stored image / video / audio, or its status while it is being saved.
+function mediaItem(item, part = null) {
+  const label = PART_LABELS[item.kind] || item.kind || "文件";
+  const caption = [label, item.name || null, item.size_bytes ? formatBytes(item.size_bytes) : null].filter(Boolean).join(" · ");
+  if (item.status === "stored" && item.url) {
+    let media;
+    if (item.kind === "image") {
+      media = el("a", { href: item.url, target: "_blank", rel: "noopener", className: "conversation-media-link", title: "在新标签页打开原图" }, [
+        el("img", { src: item.url, alt: part?.ref ? `${label}：${part.ref}` : label, loading: "lazy", className: "conversation-media-image" })
+      ]);
+    } else if (item.kind === "video") {
+      media = el("video", { src: item.url, controls: true, preload: "metadata", className: "conversation-media-video" });
+    } else if (item.kind === "audio") {
+      media = el("audio", { src: item.url, controls: true, preload: "none", className: "conversation-media-audio" });
+    }
+    return el("figure", { className: `conversation-media-item is-${item.kind}` }, [
+      media,
+      el("figcaption", {}, [
+        el("span", { text: caption }),
+        el("a", { href: item.url, download: "", className: "conversation-media-download", text: "下载" })
+      ])
+    ].filter(Boolean));
+  }
+  const status = item.status === "skipped"
+    ? mediaError(item) || "未保存"
+    : item.status === "failed"
+      ? `保存失败${mediaError(item) ? `：${mediaError(item)}` : ""}`
+      : "正在保存…";
+  return el("div", { className: `conversation-media-item is-pending is-${item.status}` }, [
+    el("span", { className: "conversation-media", text: `[${label}] ${part?.ref || ""}`.trim() }),
+    el("small", { className: item.status === "failed" ? "conversation-error" : "conversation-muted", text: status })
+  ]);
+}
+
+// Result of a generation task: waiting / failed / nothing returned.
+function taskStatusNode(item) {
+  if (item.status === "waiting") {
+    return el("p", { className: "conversation-muted conversation-task-status", text: `${PART_LABELS[item.kind] || ""}生成中，完成后自动保存到会话记录。` });
+  }
+  if (item.status === "failed") {
+    return el("p", { className: "conversation-error conversation-task-status", text: item.error || "生成失败" });
+  }
+  if (item.error === "no_assets") {
+    return el("p", { className: "conversation-muted conversation-task-status", text: MEDIA_ERRORS.no_assets });
+  }
+  return null;
+}
+
+function paramsNode(params) {
+  const entries = Object.entries(params || {});
+  if (!entries.length) return null;
+  return el("div", { className: "conversation-params", "aria-label": "生成参数" }, entries.map(([name, value]) =>
+    el("span", { className: "conversation-chip" }, [el("small", { text: name }), el("strong", { text: String(value) })])));
+}
+
+function mediaThumbs(row) {
+  const items = (row.media || []).filter((item) => item.direction === "output" && item.source !== "task" && item.status === "stored" && item.url);
+  if (!items.length) return null;
+  return el("div", { className: "conversation-thumbs" }, items.slice(0, 6).map((item) => item.kind === "image"
+    ? el("a", { href: item.url, target: "_blank", rel: "noopener", className: "conversation-thumb", title: "打开原图" }, [el("img", { src: item.url, alt: "生成的图片", loading: "lazy" })])
+    : el("span", { className: "conversation-chip conversation-thumb-chip" }, [el("small", { text: PART_LABELS[item.kind] || item.kind }), el("strong", { text: item.size_bytes ? formatBytes(item.size_bytes) : "已保存" })])));
 }
 
 export async function renderConversationLogsPage(content, initialFilters = {}, context = {}) {
@@ -337,8 +432,9 @@ export async function renderConversationLogsPage(content, initialFilters = {}, c
       detail.hidden = !open;
       toggle.textContent = open ? "收起" : "展开";
       if (open && detail.childElementCount === 0) {
+        const media = mediaMap(row);
         for (const message of row.messages || []) {
-          detail.append(messageNode(message));
+          detail.append(messageNode(message, media, row.params));
         }
         detail.append(replyNode(row));
       }
@@ -349,7 +445,8 @@ export async function renderConversationLogsPage(content, initialFilters = {}, c
         tokenChips(row, currency)
       ]),
       el("p", { className: "conversation-qa" }, [el("span", { className: "conversation-qa-label", text: "问" }), el("span", { text: questionText(row.messages) })]),
-      el("p", { className: "conversation-qa is-answer" }, [el("span", { className: "conversation-qa-label", text: "答" }), el("span", { text: answerText(row.reply) })]),
+      el("p", { className: "conversation-qa is-answer" }, [el("span", { className: "conversation-qa-label", text: "答" }), el("span", { text: answerText(row.reply, row.media || []) })]),
+      mediaThumbs(row),
       el("div", { className: "conversation-call-actions" }, [
         toggle,
         button("查看整段会话", () => {
@@ -421,8 +518,9 @@ export async function renderConversationLogsPage(content, initialFilters = {}, c
         lastSystem = turn.system;
         thread.append(collapsible("系统提示词", turn.system, "conversation-system"));
       }
+      const media = mediaMap(turn);
       for (const message of turn.messages || []) {
-        thread.append(messageNode(message));
+        thread.append(messageNode(message, media, turn.params));
       }
       thread.append(replyNode(turn, data.currency));
     }
@@ -449,11 +547,15 @@ export async function renderConversationLogsPage(content, initialFilters = {}, c
   await loadKeys();
 }
 
-function messageNode(message) {
+function messageNode(message, media = new Map(), params = null) {
   const role = message.role === "tool" ? "tool" : (message.role === "assistant" ? "assistant" : "user");
   const label = role === "tool" ? "工具结果" : (role === "assistant" ? "助手（历史）" : "提问");
   const bubble = el("div", { className: "admin-chat-bubble" });
-  appendParts(bubble, message.parts || []);
+  appendParts(bubble, message.parts || [], media);
+  if (role === "user" && params) {
+    const chips = paramsNode(params);
+    if (chips) bubble.append(chips);
+  }
   return chatMessage(role === "user" ? "user" : "assistant", `conversation-message is-${role}`, role === "user" ? "问" : (role === "tool" ? "工" : "AI"), label, bubble);
 }
 
@@ -471,13 +573,36 @@ function replyNode(turn, currency = "") {
   for (const call of reply.tool_calls || []) {
     bubble.append(toolCallNode(call));
   }
-  for (const media of reply.media || []) {
-    bubble.append(mediaNode(media));
+  const media = mediaMap(turn);
+  const shown = new Set();
+  const gallery = el("div", { className: "conversation-media-gallery" });
+  for (const part of reply.media || []) {
+    const item = part.media ? media.get(part.media) : null;
+    if (item) shown.add(item.key);
+    gallery.append(item ? mediaItem(item, part) : mediaNode(part));
+  }
+  // Generated files copied from the task, and the task's own state.
+  let taskNodes = 0;
+  for (const item of turn.media || []) {
+    if (item.direction !== "output" || shown.has(item.key)) continue;
+    if (item.source === "task") {
+      const node = taskStatusNode(item);
+      if (node) {
+        bubble.append(node);
+        taskNodes += 1;
+      }
+      continue;
+    }
+    gallery.append(mediaItem(item));
+  }
+  if (gallery.childElementCount) bubble.append(gallery);
+  if (reply.note) {
+    bubble.append(el("p", { className: "conversation-muted conversation-note", text: reply.note }));
   }
   if (reply.error) {
     bubble.append(el("p", { className: "conversation-error", text: `错误：${reply.error}` }));
   }
-  if (!reply.text && !(reply.tool_calls || []).length && !(reply.media || []).length && !reply.error) {
+  if (!reply.text && !(reply.tool_calls || []).length && !gallery.childElementCount && !taskNodes && !reply.note && !reply.error) {
     bubble.append(el("span", { className: "conversation-muted", text: "（无文本回复）" }));
   }
   const meta = [
@@ -506,11 +631,16 @@ function chatMessage(side, className, avatar, label, bubble, meta = null) {
   ]);
 }
 
-function appendParts(bubble, parts) {
+function appendParts(bubble, parts, media = new Map()) {
   if (parts.length === 0) {
     bubble.append(el("span", { className: "conversation-muted", text: "（空消息）" }));
   }
   for (const part of parts) {
+    const item = part.media ? media.get(part.media) : null;
+    if (item) {
+      bubble.append(mediaItem(item, part));
+      continue;
+    }
     if (part.type === "text") {
       bubble.append(el("div", { className: "conversation-text", text: part.text }));
     } else if (part.type === "tool_call") {
@@ -692,6 +822,10 @@ export async function renderConversationLogSettingsPage(content, context = {}) {
   const purgeDeleted = checkboxField("purge_deleted_keys", "密钥删除后清除它的记录", "在下一次清理时删除已删除密钥的全部会话记录。", data.purge_deleted_keys !== false);
   const autoCleanup = checkboxField("auto_cleanup", "每天自动清理", "按保存天数、条数上限和上面的规则自动删除过期记录。", data.auto_cleanup !== false);
   const compressDaily = checkboxField("compress_daily", "每天压缩记录文件", "会话内容按「日期/密钥」存放在独立目录中；每天把前一天及更早的文件压缩并加密成一个文件，节省磁盘空间。", data.compress_daily !== false);
+  const recordMedia = checkboxField("record_media", "记录图片、视频、音频",
+    "保存提问中的图片、音频、视频，以及图片 / 视频 / 语音 / 音乐生成的结果和语音识别上传的音频。文件加密后放在会话记录目录（选用 COS 时一并上传），随记录一起清理。", data.record_media !== false);
+  const mediaMax = el("input", { type: "number", name: "media_max_mb", min: "1", max: "2048", step: "1", required: true, value: String(data.media_max_mb ?? 100) });
+  const mediaMaxField = el("label", { className: "field is-required" }, [el("span", { className: "field-label", text: "单个媒体文件上限（MB）" }), mediaMax, el("small", { className: "field-hint", text: "超过的文件不保存，只记一条说明；可填 1～2048。" })]);
   const time = el("input", { type: "time", name: "cleanup_time", required: true, value: data.cleanup_time || "03:00" });
   const zones = [...TIMEZONES];
   if (data.timezone && !zones.some(([value]) => value === data.timezone)) {
@@ -718,6 +852,9 @@ export async function renderConversationLogSettingsPage(content, context = {}) {
     el("label", { className: "field is-required" }, [el("span", { className: "field-label", text: "默认保存天数" }), days, el("small", { className: "field-hint", text: "密钥没有单独设置保存天数时使用，可填 1～3650。" })]),
     el("label", { className: "field is-required" }, [el("span", { className: "field-label", text: "每个密钥最多保留条数" }), cap, el("small", { className: "field-hint", text: "超过时删除最早的记录；0 表示不限制。" })]),
     purgeDeleted,
+    el("h4", { className: "conversation-form-heading", text: "多模态内容" }),
+    recordMedia,
+    mediaMaxField,
     el("h4", { className: "conversation-form-heading", text: "每日任务" }),
     compressDaily,
     autoCleanup,
@@ -731,6 +868,11 @@ export async function renderConversationLogSettingsPage(content, context = {}) {
     time.disabled = !daily;
     timezone.disabled = !daily;
   };
+  const syncMediaFields = () => {
+    mediaMax.disabled = !checked(recordMedia);
+  };
+  recordMedia.querySelector("input").addEventListener("change", syncMediaFields);
+  syncMediaFields();
   autoCleanup.querySelector("input").addEventListener("change", syncAutoFields);
   compressDaily.querySelector("input").addEventListener("change", syncAutoFields);
   syncAutoFields();
@@ -748,7 +890,9 @@ export async function renderConversationLogSettingsPage(content, context = {}) {
       auto_cleanup: checked(autoCleanup),
       cleanup_time: time.value,
       timezone: timezone.value,
-      storage_driver: selectedDriver()
+      storage_driver: selectedDriver(),
+      record_media: checked(recordMedia),
+      media_max_mb: Number(mediaMax.value)
     };
     if (payload.storage_driver === "cos" && data.storage_driver !== "cos") {
       const ok = await confirmDialog({
@@ -817,6 +961,7 @@ export async function renderConversationLogSettingsPage(content, context = {}) {
     const stats = data.stats || {};
     const storage = data.storage || {};
     const database = data.database || {};
+    const media = data.media || {};
     const last = data.last_cleanup;
     statusPanel.replaceChildren(...[
       el("h3", { text: "存储状态" }),
@@ -844,7 +989,17 @@ export async function renderConversationLogSettingsPage(content, context = {}) {
         el("dt", { text: "合计占用" }), el("dd", { text: formatBytes(storage.total_bytes) }),
         el("dt", { text: "最早一天" }), el("dd", { text: storage.oldest_day || "—" })
       ]),
-      el("p", { className: "conversation-muted", text: "目录结构：年/月/日/key-密钥ID.jsonl（当天，逐条加密）→ 次日压缩为 .jsonl.gz.enc（整体加密）。Docker 部署时位于 storage 数据卷中，会随 backup.sh 一起备份。" }),
+      el("p", { className: "conversation-muted", text: "目录结构：年/月/日/key-密钥ID.jsonl（当天，逐条加密）→ 次日压缩为 .jsonl.gz.enc（整体加密）；图片、视频、音频在 media/年/月/日/key-密钥ID/ 下，每个文件单独加密。Docker 部署时位于 storage 数据卷中，会随 backup.sh 一起备份。" }),
+      el("h3", { text: "多模态内容" }),
+      media.error ? el("p", { className: "notice error", text: `媒体文件统计失败：${media.error}` }) : null,
+      el("dl", { className: "conversation-stats" }, [
+        el("dt", { text: "记录多模态内容" }), el("dd", {}, [el("span", { className: `status-pill ${data.record_media !== false ? "is-positive" : "is-muted"}`, text: data.record_media !== false ? `已开启（单个文件上限 ${formatNumber(data.media_max_mb ?? 100)} MB）` : "已关闭（只记占位说明）" })]),
+        el("dt", { text: "已保存" }), el("dd", { text: `${formatNumber(media.stored || 0)} 个（${formatBytes(media.stored_bytes)}）` }),
+        el("dt", { text: "服务器上的媒体文件" }), el("dd", { text: `${formatNumber(media.local_files || 0)} 个（${formatBytes(media.local_bytes)}）` }),
+        el("dt", { text: "等待保存" }), el("dd", { text: `${formatNumber(media.pending || 0)} 个（生成中的任务、待下载的链接）` }),
+        el("dt", { text: "超过上限未保存" }), el("dd", { text: `${formatNumber(media.skipped || 0)} 个` }),
+        el("dt", { text: "保存失败" }), el("dd", { text: `${formatNumber(media.failed || 0)} 个` })
+      ]),
       el("h3", { text: "独立数据库" }),
       database.error
         ? el("p", { className: "notice error", text: `会话记录数据库无法连接：${database.error}` })
@@ -865,6 +1020,15 @@ export async function renderConversationLogSettingsPage(content, context = {}) {
             await refresh();
           } catch (error) {
             toast(adminErrorMessage(error, "压缩失败"), { tone: "error" });
+          }
+        }, "secondary"),
+        button("立即保存待处理的媒体", async () => {
+          try {
+            const result = (await api("/admin-api/conversation-logs/media/process", { method: "POST", body: "{}" })).data || {};
+            toast(`已保存 ${formatNumber(result.stored || 0)} 个，处理完成的任务 ${formatNumber(result.tasks || 0)} 个${result.failed ? `，失败 ${formatNumber(result.failed)} 个` : ""}`, { tone: result.failed ? "error" : "success" });
+            await refresh();
+          } catch (error) {
+            toast(adminErrorMessage(error, "处理失败"), { tone: "error" });
           }
         }, "secondary"),
         button("立即清理过期记录", async () => {

@@ -106,14 +106,34 @@ foreach (array_keys($conversationStore->files()) as $relative) {
 }
 $report['conversation_log_files'] = $conversationStats;
 
+// Conversation log media (images / audio / video): each file's own key is
+// wrapped with APP_KEY in the header; only the header is rewritten.
+$mediaStats = ['files' => 0, 'rewrapped' => 0, 'failed' => 0];
+$mediaStore = new \TokenHub\Services\ConversationLogMediaStore($conversationStore->root());
+foreach (array_keys($mediaStore->files()) as $relative) {
+    $mediaStats['files']++;
+    if ($dryRun) {
+        continue;
+    }
+    try {
+        $mediaStore->rewrap($relative);
+        $mediaStats['rewrapped']++;
+    } catch (Throwable) {
+        $mediaStats['failed']++;
+    }
+}
+$report['conversation_log_media_files'] = $mediaStats;
+
 // Conversation log database (its own database, not this one): encrypted columns.
 $logDb = new \TokenHub\Services\ConversationLogDb();
-foreach (['encrypted_title', 'encrypted_system', 'encrypted_messages', 'encrypted_reply'] as $column) {
+foreach (['encrypted_title', 'encrypted_system', 'encrypted_messages', 'encrypted_reply', 'conversation_log_media.encrypted_ref', 'conversation_log_media.encrypted_name'] as $column) {
+    $table = str_contains($column, '.') ? explode('.', $column)[0] : 'conversation_logs';
+    $column = str_contains($column, '.') ? explode('.', $column)[1] : $column;
     $stats = ['scanned' => 0, 'reencrypted' => 0, 'undecryptable' => 0, 'current' => 0];
     $lastId = 0;
     try {
         do {
-            $rows = $logDb->select("SELECT id, {$column} AS value FROM conversation_logs WHERE id > ? AND {$column} IS NOT NULL AND {$column} <> '' ORDER BY id ASC LIMIT {$batch}", [$lastId]);
+            $rows = $logDb->select("SELECT id, {$column} AS value FROM {$table} WHERE id > ? AND {$column} IS NOT NULL AND {$column} <> '' ORDER BY id ASC LIMIT {$batch}", [$lastId]);
             foreach ($rows as $row) {
                 $lastId = (int) $row['id'];
                 $stats['scanned']++;
@@ -128,7 +148,7 @@ foreach (['encrypted_title', 'encrypted_system', 'encrypted_messages', 'encrypte
                     continue;
                 }
                 if (!$dryRun) {
-                    $logDb->execute("UPDATE conversation_logs SET {$column} = ? WHERE id = ?", [Crypto::encrypt($plain), $lastId]);
+                    $logDb->execute("UPDATE {$table} SET {$column} = ? WHERE id = ?", [Crypto::encrypt($plain), $lastId]);
                 }
                 $stats['reencrypted']++;
             }
@@ -136,7 +156,7 @@ foreach (['encrypted_title', 'encrypted_system', 'encrypted_messages', 'encrypte
     } catch (Throwable $throwable) {
         $stats['error'] = $throwable->getMessage();
     }
-    $report['conversation_log_db.' . $column] = $stats;
+    $report['conversation_log_db.' . ($table === 'conversation_logs' ? '' : $table . '.') . $column] = $stats;
 }
 
 echo json_encode(['dry_run' => $dryRun, 'key_id' => Crypto::keyIdOf(Crypto::encrypt('probe')), 'report' => $report], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . PHP_EOL;
