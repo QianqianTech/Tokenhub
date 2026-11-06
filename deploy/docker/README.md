@@ -42,12 +42,30 @@ powershell -ExecutionPolicy Bypass -File .\install.ps1 -Build -Site tokenhub.exa
 2. 启动 MySQL、Redis 和 Qdrant。
 3. 由 `init` 容器执行数据库迁移，并创建第一个超级管理员。
 4. 启动 php、queue-worker、scheduler、rag-worker 和 caddy。
-5. 运行自检，并打印访问地址和管理员密码。
+5. 运行自检，并打印访问地址和初始管理员凭据。
 
 安装后需要完成两件事：
 
 - 首次登录后修改管理员密码，然后从 `.env` 中删除 `TOKENHUB_ADMIN_PASSWORD`。
 - 妥善备份 `.env`。其中的 `APP_KEY` 用于加密厂商密钥，丢失后已保存的密钥无法解密。
+
+## 管理员密码
+
+首次安装默认创建 `admin`，未指定密码时自动生成 20 位随机密码。若找不到安装终端的记录，在 `compose.yml` 所在目录执行以下命令查看 `.env` 中的初始凭据。
+
+```sh
+grep -E '^TOKENHUB_ADMIN_(USERNAME|PASSWORD)=' .env
+```
+
+Windows PowerShell 可用 `Select-String -Path .env -Pattern '^TOKENHUB_ADMIN_(USERNAME|PASSWORD)='`。请在自己的终端查看，并在分享日志时删除任何凭据。
+
+原地升级保留当前密码，`.env` 里的密码仅用于初始化。忘记现用密码时，可在 SMTP 可用且已绑定邮箱的情况下通过登录页“忘记密码？”重置，或请另一位超级管理员在后台重置。需要从服务器恢复超级管理员访问时，在同一目录运行以下命令，并在提示时输入至少 12 个字符的新密码。
+
+```sh
+docker compose exec php php bin/install.php admin --username=admin
+```
+
+如果部署时自定义了超级管理员用户名，请将 `admin` 换成实际用户名。命令也能创建超级管理员，填错用户名可能新增账号。
 
 ## 安装后验收
 
@@ -64,7 +82,6 @@ Windows 使用 `verify.ps1`。检查结果会写入 `verify-report-<时间>.txt`
 docker compose ps                      # 查看状态，所有服务应显示 healthy
 docker compose logs -f php             # 查看日志
 docker compose exec php php bin/doctor.php           # 自检
-docker compose exec php php bin/install.php admin --username=admin   # 重置管理员密码
 ```
 
 ## 升级、备份与恢复

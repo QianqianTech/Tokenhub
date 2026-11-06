@@ -49,25 +49,15 @@ docker compose exec -T php php bin/run-tests.php
 
 ### 2.2 初始化超级管理员密码
 
-首次部署后必须创建超级管理员。脚本会写入或更新 `users` 表中的超级管理员账号，并绑定根部门 `id=1`：
+使用生产部署脚本时，安装流程会自动创建第一个超级管理员。[获取或重置管理员密码](../README.md#获取或重置管理员密码)
+
+如果按上一节在仓库根目录手动启动了本地开发环境并完成迁移，可运行以下命令创建本地超级管理员。终端提示时输入至少 12 个字符的密码。
 
 ```bash
-docker compose exec -T php php scripts/create-admin.php admin 'change-this-password'
+docker compose exec php php bin/install.php admin --username=admin
 ```
 
-生产环境示例：
-
-```bash
-cd /var/www/tokenhub
-sudo -u www-data php scripts/create-admin.php admin 'change-this-password'
-```
-
-要求：
-
-- 密码长度至少 12 位。
-- 该命令创建的账号角色为 `super_admin`。
-- 如用户名已存在，脚本会重置该用户密码、角色和状态。
-- 根部门由迁移脚本初始化：`id=1`、`name=Root`、`path=/1/`。
+新账号的角色为 `super_admin`，归属迁移创建的根部门 `id=1`。用户名已存在时，命令会将该账号设为启用的超级管理员，并更新密码。
 
 ### 2.3 登录后台
 
@@ -79,8 +69,8 @@ http://localhost:8080/admin/
 
 输入：
 
-- 用户名：初始化时传给 `scripts/create-admin.php` 的用户名，例如 `admin`。
-- 密码：初始化时传入的密码。
+- 用户名为安装终端显示的账号，或手动创建时指定的用户名，例如 `admin`。
+- 初次登录使用初始密码，修改后使用现用密码。
 
 登录成功后，服务端设置 `tokenhub_admin_session` Cookie，并返回 CSRF Token。后台前端会在后续写操作中自动附带 `x-csrf-token`。
 
@@ -107,13 +97,7 @@ http://localhost:8080/admin/
 
 SMTP 密码通过 `APP_KEY` 加密保存，读取配置不会返回原文；密码框留空会保留已保存的密码，勾选“清除已保存的 SMTP 密码”可移除。配置修改和测试仅允许超级管理员操作；测试使用已保存的配置。找回邮件依赖队列 worker 正常运行，可在 worker 失败任务中检查邮件发送错误。
 
-如果未绑定邮箱或邮件服务不可用，可以在服务器上重新执行初始化脚本：
-
-```bash
-docker compose exec -T php php scripts/create-admin.php admin 'new-strong-password'
-```
-
-这会将 `admin` 更新为可用的 `super_admin`，适合首次初始化和紧急找回。
+如果未绑定邮箱或邮件服务不可用，可请另一位超级管理员在“组织与权限 → 管理员管理”中重置。需要从服务器恢复超级管理员访问时，按部署方式执行交互式重置命令。[Docker 重置命令](../deploy/docker/README.md#管理员密码) · [Linux 重置命令](deployment/linux-source.md#管理员密码)
 
 ### 3.2 普通用户初始密码
 

@@ -60,11 +60,24 @@ systemd 服务：
 
 此外，安装脚本会添加 sudoers 规则，允许 `tokenhub` 用户执行 `systemctl reload caddy`。证书中心更换证书后，依靠这条规则重载 Caddy。
 
+## 管理员密码
+
+首次安装时，终端会显示后台地址、超级管理员用户名和初始密码。找不到终端记录时，可在服务器查看这两个配置项。
+
+```sh
+sudo grep -E '^TOKENHUB_ADMIN_(USERNAME|PASSWORD)=' /etc/tokenhub/tokenhub.env
+```
+
+原地升级保留当前账号和密码，配置文件中的密码仅用于初始化。忘记现用密码时，已绑定邮箱且 SMTP 可用的管理员可以在登录页找回密码。需要从服务器恢复超级管理员访问时，运行以下命令并按提示输入至少 12 个字符的新密码。请确认 `--username` 是现有超级管理员的用户名，填错可能新增超级管理员。如果自定义过应用目录，请替换 `/var/www/tokenhub`。
+
+```sh
+sudo -u tokenhub php /var/www/tokenhub/bin/install.php admin --username=admin
+```
+
 ## 运维
 
 ```sh
 sudo -u tokenhub php /var/www/tokenhub/bin/doctor.php           # 自检
-sudo -u tokenhub php /var/www/tokenhub/bin/install.php admin --username=admin   # 重置管理员密码
 sudo systemctl status 'tokenhub-*' caddy qdrant
 sudo journalctl -u 'tokenhub-worker@*' -n 100
 ```
