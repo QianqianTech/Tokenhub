@@ -4,7 +4,7 @@
 
 TokenHub 部署在自己的服务器上，负责在业务应用与多个模型供应商之间转发请求。平台管理员配置供应商、模型和访问规则，开发者用 TokenHub 签发的 API Key 接入，运维人员可按部门、模型或请求编号追踪调用、费用和故障。
 
-[软件功能](#可以做什么) · [界面截图](#界面截图) · [Docker Hub 快速安装](#docker-hub-快速安装) · [从源码构建](#从源码构建) · [首次使用](#首次使用) · [管理员密码](#获取或重置管理员密码) · [升级与备份](#升级与备份) · [版本与新增功能](docs/deployment/versions.md) · [常见问题](#常见问题) · [文档](#文档) · [公司信息](#公司信息) · [许可](#许可--license)
+[软件功能](#可以做什么) · [界面截图](#界面截图) · [Docker Hub 快速安装](#docker-hub-快速安装) · [从源码构建](#从源码构建) · [首次使用](#首次使用) · [初始管理员密码](docs/deployment/initial-admin-password.md) · [升级与备份](#升级与备份) · [版本与新增功能](docs/deployment/versions.md) · [常见问题](#常见问题) · [文档](#文档) · [公司信息](#公司信息) · [许可](#许可--license)
 
 ## 可以做什么
 
@@ -255,7 +255,7 @@ bash deploy/docker/install.sh \
   --bind 127.0.0.1 --yes
 ```
 
-安装成功后，用终端显示的初始账号和密码登录 `http://localhost:8080/admin/`。在安装目录运行 `bash deploy/docker/verify.sh` 可检查服务状态。[获取或重置管理员密码](#获取或重置管理员密码) · [完整 Docker Hub 部署指南](docs/deployment/README.md#从-docker-hub-部署) · [镜像摘要](https://github.com/QianqianTech/Tokenhub/releases/download/v1.0.3/docker-hub-digests.tsv) · [1.0.3 更新说明](CHANGELOG.md#103---2026-11-05)
+安装成功后，用终端显示的初始账号和密码登录 `http://localhost:8080/admin/`。在安装目录运行 `bash deploy/docker/verify.sh` 可检查服务状态。[初始管理员密码](docs/deployment/initial-admin-password.md) · [完整 Docker Hub 部署指南](docs/deployment/README.md#从-docker-hub-部署) · [镜像摘要](https://github.com/QianqianTech/Tokenhub/releases/download/v1.0.3/docker-hub-digests.tsv) · [1.0.3 更新说明](CHANGELOG.md#103---2026-11-05)
 
 ### 从源码构建
 
@@ -372,7 +372,7 @@ bash tokenhub-install.sh --dir ./tokenhub-source --download-only
 | OpenAI 兼容 Base URL | `http://localhost:8080/v1` |
 | 存活 / 就绪检查 | <http://localhost:8080/health> / <http://localhost:8080/ready> |
 
-1. 登录后台并修改初始密码。用新密码登录成功后，从部署配置中删除 `TOKENHUB_ADMIN_PASSWORD` 这一行。妥善保管配置文件，特别是用于解密厂商密钥的 `APP_KEY`。[管理员密码说明](#获取或重置管理员密码)
+1. 用初始账号和密码登录后台，设置新密码并验证登录。[初始管理员密码](docs/deployment/initial-admin-password.md)
 2. 在“厂商”配置自己的模型服务地址、协议与 Key；在“模型”导入或添加模型，确认上游模型名、能力和启用状态。
 3. 建立部门和用户，为其创建 API Key，授权可用模型并设置适当的额度和价格。
 4. 通过模型列表确认权限，再发起一次调用。在用量明细中检查记录、计价和错误信息。
@@ -398,22 +398,7 @@ curl --fail-with-body "$TOKENHUB_BASE_URL/chat/completions" \
 
 ### 获取或重置管理员密码
 
-首次通过 Docker 安装脚本部署时，默认超级管理员用户名为 `admin`，未指定密码时自动生成 20 位随机密码。安装终端末尾的 `Administrator` 和 `Password` 会显示初始凭据。终端记录找不到时，可在实际部署服务器的 `deploy/docker` 目录查看配置。独立 Docker 运维包使用 `compose.yml` 同目录的 `.env`。
-
-```bash
-grep -E '^TOKENHUB_ADMIN_(USERNAME|PASSWORD)=' .env
-```
-
-Windows PowerShell 可用 `Select-String -Path .env -Pattern '^TOKENHUB_ADMIN_(USERNAME|PASSWORD)='`。请在自己的终端查看，避免将输出或配置文件贴到工单或聊天中。Linux 原生安装的配置文件为 `/etc/tokenhub/tokenhub.env`。[Linux 原生安装指南](docs/deployment/linux-source.md#管理员密码)
-
-原地升级保留现有账号和密码。`.env` 中的密码仅用于初始化，改过密码后该值可能已失效。系统在数据库中保存密码哈希，忘记现用密码时需要设置新密码。
-
-- 已绑定找回邮箱且 SMTP 可用时，在 `/admin/` 登录页点击“忘记密码？”。也可以请另一位能登录的超级管理员在“组织与权限 → 管理员管理”中重置。[邮件找回配置](docs/tokenhub-usage-management-guide.md#31-超级管理员密码初始化或找回)
-- 需要从服务器恢复超级管理员访问时，在实际部署的 `compose.yml` 所在目录运行以下命令。将 `admin` 替换为现有超级管理员的实际用户名，并在终端提示时输入至少 12 个字符的新密码。该命令也能创建超级管理员，填错用户名可能新增账号。
-
-```bash
-docker compose exec php php bin/install.php admin --username=admin
-```
+安装脚本会在终端显示初始账号和密码。Docker 和 Linux 的配置位置、安装时如何指定初始密码，以及找不到初始密码时的处理方法都在独立指南中。[初始管理员密码](docs/deployment/initial-admin-password.md)
 
 ## 日常管理
 
@@ -454,7 +439,7 @@ Windows 可以使用相同的 `docker compose` 命令，验证脚本使用 `powe
 | 80 / 443 被占用 | 本机体验改用 8080 / 8443；域名自动证书需要公网可达的 80 / 443，已有代理时按部署文档配置 |
 | `init` 失败或 `/ready` 异常 | 在 `deploy/docker` 查看 `docker compose logs --tail=100 init php mysql redis qdrant`，再运行 `bin/doctor.php` |
 | 安装成功但模型不能调用 | 检查厂商地址和 Key、模型名称、能力、Key 授权、额度、上游余额及网络；TokenHub 不自带模型服务 |
-| 找不到初始密码或忘记现用密码 | [获取或重置管理员密码](#获取或重置管理员密码) |
+| 找不到初始密码或忘记现用密码 | [查看初始密码和恢复方式](docs/deployment/initial-admin-password.md) |
 | HTTPS IP 出现证书警告 | 内部 CA 证书需导入客户端信任，或在证书中心配置适用证书；公网推荐使用域名 |
 | APP 推送或 Passkey 不可用 | 检查 HTTPS、安全上下文、设备权限和对应推送凭证，见 [APP 管理端文档](docs/app-admin.md) |
 

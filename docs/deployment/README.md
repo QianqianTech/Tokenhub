@@ -81,7 +81,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\deploy\docker\install.ps1 
 
 部署到公网服务器时，将示例中的站点、端口及绑定参数替换为 `--site tokenhub.example.com --yes`，PowerShell 对应 `-Site tokenhub.example.com -Yes`。请用自己的域名，并将域名解析到服务器，开放公网 80 和 443 端口。
 
-安装完成后用终端显示的账号和初始密码登录 `http://localhost:8080/admin/`，然后修改密码。可从安装目录执行下面的命令，检查容器、数据库迁移以及 `/health` 和 `/ready`。[获取或重置管理员密码](../../README.md#获取或重置管理员密码)
+安装完成后用终端显示的账号和初始密码登录 `http://localhost:8080/admin/`，然后修改密码。可从安装目录执行下面的命令，检查容器、数据库迁移以及 `/health` 和 `/ready`。[初始管理员密码](initial-admin-password.md)
 
 ```bash
 bash deploy/docker/verify.sh
