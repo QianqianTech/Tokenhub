@@ -12,6 +12,7 @@ use TokenHub\Services\SmtpSettingsService;
 use TokenHub\Support\App;
 use TokenHub\Support\Request;
 use TokenHub\Support\Response;
+use TokenHub\Support\UiLocale;
 
 final class AdminRecoveryController
 {
@@ -33,6 +34,7 @@ final class AdminRecoveryController
             return $limited;
         }
         $email = AdminPasswordResetService::normalizeEmail($request->json()['email'] ?? null);
+        $locale = UiLocale::fromRequest($request);
         (new SmtpSettingsService())->transportSettings();
         $attempt = (new ExternalRateLimitService())->attempt('admin-recovery-email', $email, 5, 3600);
         if ($attempt['allowed']) {
@@ -44,9 +46,10 @@ final class AdminRecoveryController
                 'request_id' => $requestId,
                 'requested_at' => time(),
                 'email' => $email,
+                'locale' => $locale,
             ]);
         }
-        return Response::ok(['message' => AdminPasswordResetService::REQUEST_MESSAGE])->withHeader('Cache-Control', 'no-store');
+        return Response::ok(['message' => AdminPasswordResetService::requestMessage($locale)])->withHeader('Cache-Control', 'no-store');
     }
 
     public function resetPassword(Request $request): Response
@@ -71,7 +74,12 @@ final class AdminRecoveryController
         $recipient = AdminPasswordResetService::normalizeEmail($request->json()['recipient'] ?? null);
         $settings = $service->transportSettings();
         try {
-            (new SmtpMailer())->send($settings, $recipient, 'TokenHub SMTP 测试邮件', "这是一封来自 TokenHub 的测试邮件。\n\n收到此邮件表示当前 SMTP 配置已成功发送邮件。\n");
+            $english = UiLocale::fromRequest($request) === 'en-US';
+            (new SmtpMailer())->send($settings, $recipient,
+                $english ? 'TokenHub SMTP test' : 'TokenHub SMTP 测试邮件',
+                $english ? "TokenHub successfully sent this test email using the current SMTP settings.\n"
+                    : "这是一封来自 TokenHub 的测试邮件。\n\n收到此邮件表示当前 SMTP 配置已成功发送邮件。\n"
+            );
         } catch (\RuntimeException $exception) {
             $code = $exception->getMessage();
             if (!in_array($code, ['SMTP_CONNECT_FAILED', 'SMTP_TLS_FAILED', 'SMTP_AUTH_FAILED', 'SMTP_SEND_FAILED'], true)) {

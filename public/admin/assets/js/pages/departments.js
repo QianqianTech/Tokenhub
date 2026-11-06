@@ -1,3 +1,4 @@
+import { localize } from "../i18n.js";
 import { adminErrorMessage, api, isAbortError } from "../api.js";
 import { button, el, readFields, showModal } from "../dom.js";
 import { errorState, loadingState, emptyState, toast } from "../components/feedback.js";
@@ -11,18 +12,18 @@ import { valueLabel } from "../resources.js";
 // Organisation workspace: a searchable department tree on the left and the
 // selected department's details, path and direct children on the right.
 
-const DISABLE_IMPACT = "停用后该部门下的 API 密钥将立即失效，成员无法继续调用。可以稍后重新启用。";
+const DISABLE_IMPACT = localize("停用后该部门下的 API 密钥将立即失效，成员无法继续调用。可以稍后重新启用。");
 
 // Parent pickers list the tree with indentation; editing a department hides
 // itself and its descendants so a cycle cannot be chosen.
 function parentOptions(roots, excludedIds = new Set()) {
-  const options = [["", "无（顶级部门）"]];
+  const options = [["", localize("无（顶级部门）")]];
   const walk = (rows, depth) => {
     for (const row of rows) {
       if (excludedIds.has(Number(row.id))) {
         continue;
       }
-      options.push([String(row.id), `${"　".repeat(depth)}${row.name || `#${row.id}`}${row.status === "disabled" ? "（已停用）" : ""}`]);
+      options.push([String(row.id), `${"　".repeat(depth)}${row.name || `#${row.id}`}${row.status === "disabled" ? localize("（已停用）") : ""}`]);
       walk(row.children || [], depth + 1);
     }
   };
@@ -32,9 +33,9 @@ function parentOptions(roots, excludedIds = new Set()) {
 
 function departmentFields(roots, excludedIds) {
   return [
-    { name: "name", label: "部门名称", placeholder: "例如：政务服务数据管理局" },
-    { name: "parent_id", label: "上级部门", type: "select", coerce: "number", options: parentOptions(roots, excludedIds), optional: true },
-    { name: "sort_order", label: "排序（数字越小越靠前，留空为 0）", type: "number", optional: true }
+    { name: "name", label: localize("部门名称"), placeholder: localize("例如：政务服务数据管理局") },
+    { name: "parent_id", label: localize("上级部门"), type: "select", coerce: "number", options: parentOptions(roots, excludedIds), optional: true },
+    { name: "sort_order", label: localize("排序（数字越小越靠前，留空为 0）"), type: "number", optional: true }
   ];
 }
 
@@ -52,7 +53,7 @@ function descendantCount(row) {
 
 function initialOf(name) {
   const text = String(name || "").trim();
-  return text ? Array.from(text)[0] : "部";
+  return text ? Array.from(text)[0] : localize("部");
 }
 
 function highlight(text, query) {
@@ -77,28 +78,28 @@ export async function renderDepartmentTree(content, _config, context = {}) {
     hideDisabled: false
   };
 
-  const createButton = button("新增部门", () => showDepartmentCreate(state.selectedId), "", { "aria-haspopup": "dialog" });
-  const stats = el("div", { className: "department-stats", role: "list", "aria-label": "部门概况" });
+  const createButton = button(localize("新增部门"), () => showDepartmentCreate(state.selectedId), "", { "aria-haspopup": "dialog" });
+  const stats = el("div", { className: "department-stats", role: "list", "aria-label": localize("部门概况") });
   const searchInput = el("input", {
     type: "search",
     className: "department-search",
-    placeholder: "搜索部门名称",
-    "aria-label": "搜索部门",
+    placeholder: localize("搜索部门名称"),
+    "aria-label": localize("搜索部门"),
     autocomplete: "off"
   });
   const hideDisabledToggle = el("input", { type: "checkbox", className: "department-hide-disabled" });
-  const tree = el("ul", { className: "department-tree", role: "tree", "aria-label": "部门树" });
+  const tree = el("ul", { className: "department-tree", role: "tree", "aria-label": localize("部门树") });
   const treeBody = el("div", { className: "department-tree-body" }, [tree]);
-  const treePanel = el("section", { className: "panel department-tree-panel", "aria-label": "组织架构" }, [
+  const treePanel = el("section", { className: "panel department-tree-panel", "aria-label": localize("组织架构") }, [
     el("div", { className: "department-tree-toolbar" }, [
       el("label", { className: "department-search-field" }, [
-        el("span", { className: "visually-hidden", text: "搜索部门" }),
+        el("span", { className: "visually-hidden", text: localize("搜索部门") }),
         searchInput
       ]),
       el("div", { className: "department-tree-tools" }, [
-        button("全部展开", () => setAllExpanded(true), "ghost department-tree-tool"),
-        button("全部收起", () => setAllExpanded(false), "ghost department-tree-tool"),
-        el("label", { className: "department-toggle" }, [hideDisabledToggle, el("span", { text: "隐藏已停用" })])
+        button(localize("全部展开"), () => setAllExpanded(true), "ghost department-tree-tool"),
+        button(localize("全部收起"), () => setAllExpanded(false), "ghost department-tree-tool"),
+        el("label", { className: "department-toggle" }, [hideDisabledToggle, el("span", { text: localize("隐藏已停用") })])
       ])
     ]),
     treeBody
@@ -108,8 +109,8 @@ export async function renderDepartmentTree(content, _config, context = {}) {
   content.replaceChildren(
     el("header", { className: "page-head" }, [
       el("div", { className: "page-head-text" }, [
-        el("h2", { text: "部门管理" }),
-        el("p", { text: "维护组织层级。用户归属部门后，其 API 密钥用量计入该部门；停用部门会让部门下的密钥立即失效。" })
+        el("h2", { text: localize("部门管理") }),
+        el("p", { text: localize("维护组织层级。用户归属部门后，其 API 密钥用量计入该部门；停用部门会让部门下的密钥立即失效。") })
       ]),
       el("div", { className: "page-head-actions" }, [createButton])
     ]),
@@ -151,7 +152,7 @@ export async function renderDepartmentTree(content, _config, context = {}) {
   async function load() {
     clearLookupCache("departments");
     tree.replaceChildren();
-    treeBody.replaceChildren(loadingState("正在加载部门树…"));
+    treeBody.replaceChildren(loadingState(localize("正在加载部门树…")));
     detail.replaceChildren();
     try {
       const result = await api("/admin-api/departments/tree");
@@ -160,7 +161,7 @@ export async function renderDepartmentTree(content, _config, context = {}) {
       if (isAbortError(error)) {
         return;
       }
-      treeBody.replaceChildren(errorState(error, { fallback: "部门树加载失败", onRetry: () => load() }));
+      treeBody.replaceChildren(errorState(error, { fallback: localize("部门树加载失败"), onRetry: () => load() }));
       return;
     }
     treeBody.replaceChildren(tree);
@@ -192,10 +193,10 @@ export async function renderDepartmentTree(content, _config, context = {}) {
       el("span", { text: label })
     ]);
     stats.replaceChildren(
-      stat("个部门", entries.length),
-      stat("启用中", entries.length - disabled, "is-positive"),
-      stat("已停用", disabled, disabled ? "is-muted" : ""),
-      stat("级组织层级", depth)
+      stat(localize("个部门"), entries.length),
+      stat(localize("启用中"), entries.length - disabled, "is-positive"),
+      stat(localize("已停用"), disabled, disabled ? "is-muted" : ""),
+      stat(localize("级组织层级"), depth)
     );
   }
 
@@ -260,8 +261,8 @@ export async function renderDepartmentTree(content, _config, context = {}) {
           caret,
           el("span", { className: "department-node-icon", "aria-hidden": "true", text: initialOf(row.name) }),
           el("span", { className: "department-node-name" }, highlight(row.name || `#${id}`, state.query)),
-          disabled ? el("span", { className: "department-node-tag", text: "已停用" }) : null,
-          (row.children || []).length ? el("span", { className: "department-child-count", title: `${(row.children || []).length} 个直属子部门`, text: String((row.children || []).length) }) : null
+          disabled ? el("span", { className: "department-node-tag", text: localize("已停用") }) : null,
+          (row.children || []).length ? el("span", { className: "department-child-count", title: localize`${(row.children || []).length} 个直属子部门`, text: String((row.children || []).length) }) : null
         ])
       ]);
       if (hasChildren) {
@@ -274,8 +275,8 @@ export async function renderDepartmentTree(content, _config, context = {}) {
     if (items.length === 0) {
       tree.replaceChildren(el("li", { className: "department-tree-empty", role: "presentation" }, [
         state.roots.length
-          ? emptyState({ title: "没有匹配的部门", description: "换个关键词试试，或取消“隐藏已停用”。" })
-          : emptyState({ title: "还没有部门", description: "点击右上角“新增部门”创建第一个部门。" })
+          ? emptyState({ title: localize("没有匹配的部门"), description: localize("换个关键词试试，或取消“隐藏已停用”。") })
+          : emptyState({ title: localize("还没有部门"), description: localize("点击右上角“新增部门”创建第一个部门。") })
       ]));
       return;
     }
@@ -343,7 +344,7 @@ export async function renderDepartmentTree(content, _config, context = {}) {
   function drawDetail() {
     const entry = state.index.get(state.selectedId);
     if (!entry) {
-      detail.replaceChildren(emptyState({ title: "选择一个部门", description: "在左侧部门树中点击部门，查看它的层级、子部门并进行维护。" }));
+      detail.replaceChildren(emptyState({ title: localize("选择一个部门"), description: localize("在左侧部门树中点击部门，查看它的层级、子部门并进行维护。") }));
       return;
     }
     const { row, depth } = entry;
@@ -356,7 +357,7 @@ export async function renderDepartmentTree(content, _config, context = {}) {
       cursor = state.index.get(Number(cursor.id))?.parent || null;
     }
     const disabledAncestor = ancestors.find((item) => item.status === "disabled");
-    const path = el("nav", { className: "department-path", "aria-label": "部门路径" }, [
+    const path = el("nav", { className: "department-path", "aria-label": localize("部门路径") }, [
       ...ancestors.flatMap((item) => [
         el("button", { type: "button", className: "department-path-link", text: item.name, onClick: () => select(item.id, { focus: true }) }),
         el("span", { className: "department-path-sep", "aria-hidden": "true", text: "›" })
@@ -364,11 +365,11 @@ export async function renderDepartmentTree(content, _config, context = {}) {
       el("span", { className: "department-path-current", "aria-current": "page", text: row.name })
     ]);
     const actions = el("div", { className: "department-detail-actions" }, [
-      button("新增子部门", () => showDepartmentCreate(Number(row.id)), "secondary", { disabled }),
-      button("编辑", () => showDepartmentEdit(row, { roots: state.roots, refresh: load }), "secondary", { "aria-label": `编辑部门 ${row.name}` }),
+      button(localize("新增子部门"), () => showDepartmentCreate(Number(row.id)), "secondary", { disabled }),
+      button(localize("编辑"), () => showDepartmentEdit(row, { roots: state.roots, refresh: load }), "secondary", { "aria-label": localize`编辑部门 ${row.name}` }),
       disabled
-        ? button("启用", () => enableDepartment(row), "secondary", { "aria-label": `启用部门 ${row.name}` })
-        : button("停用", () => disableDepartment(row), "danger", { "aria-label": `停用部门 ${row.name}` })
+        ? button(localize("启用"), () => enableDepartment(row), "secondary", { "aria-label": localize`启用部门 ${row.name}` })
+        : button(localize("停用"), () => disableDepartment(row), "danger", { "aria-label": localize`停用部门 ${row.name}` })
     ]);
     const fact = (label, value, mono = false) => el("div", { className: "department-fact" }, [
       el("dt", { text: label }),
@@ -383,14 +384,14 @@ export async function renderDepartmentTree(content, _config, context = {}) {
         }, [
           el("span", { className: "department-node-icon", "aria-hidden": "true", text: initialOf(child.name) }),
           el("span", { className: "department-child-name", text: child.name }),
-          el("span", { className: "department-child-meta", text: (child.children || []).length ? `${(child.children || []).length} 个子部门` : "无子部门" }),
+          el("span", { className: "department-child-meta", text: (child.children || []).length ? localize`${(child.children || []).length} 个子部门` : localize("无子部门") }),
           el("span", { className: `status-pill ${child.status === "disabled" ? "is-muted" : "is-positive"}`, text: valueLabel("status", child.status) }),
           el("span", { className: "department-child-chevron", "aria-hidden": "true", text: "›" })
         ])
       ])))
       : el("div", { className: "department-child-empty" }, [
-        el("p", { text: disabled ? "该部门已停用，启用后才能添加子部门。" : "还没有子部门。" }),
-        disabled ? null : button("新增子部门", () => showDepartmentCreate(Number(row.id)), "ghost")
+        el("p", { text: disabled ? localize("该部门已停用，启用后才能添加子部门。") : localize("还没有子部门。") }),
+        disabled ? null : button(localize("新增子部门"), () => showDepartmentCreate(Number(row.id)), "ghost")
       ]);
     detail.replaceChildren(...[
       el("header", { className: "department-detail-head" }, [
@@ -405,18 +406,18 @@ export async function renderDepartmentTree(content, _config, context = {}) {
         ])
       ]),
       disabledAncestor
-        ? el("p", { className: "department-warning", role: "note", text: `上级部门「${disabledAncestor.name}」已停用，本部门的密钥同样无法调用。` })
+        ? el("p", { className: "department-warning", role: "note", text: localize`上级部门「${disabledAncestor.name}」已停用，本部门的密钥同样无法调用。` })
         : null,
       el("dl", { className: "department-facts" }, [
-        fact("上级部门", entry.parent ? entry.parent.name : "无（顶级部门）"),
-        fact("所在层级", `第 ${depth + 1} 级`),
-        fact("直属子部门", `${children.length} 个`),
-        fact("下属部门合计", `${descendantCount(row)} 个`),
-        fact("排序", String(row.sort_order ?? 0), true),
-        fact("部门编号", `#${row.id}`, true)
+        fact(localize("上级部门"), entry.parent ? entry.parent.name : localize("无（顶级部门）")),
+        fact(localize("所在层级"), localize`第 ${depth + 1} 级`),
+        fact(localize("直属子部门"), localize`${children.length} 个`),
+        fact(localize("下属部门合计"), localize`${descendantCount(row)} 个`),
+        fact(localize("排序"), String(row.sort_order ?? 0), true),
+        fact(localize("部门编号"), `#${row.id}`, true)
       ]),
-      el("section", { className: "department-children-section", "aria-label": "直属子部门" }, [
-        el("h4", { text: `直属子部门 · ${children.length}` }),
+      el("section", { className: "department-children-section", "aria-label": localize("直属子部门") }, [
+        el("h4", { text: localize`直属子部门 · ${children.length}` }),
         childRows
       ])
     ].filter(Boolean));
@@ -425,30 +426,30 @@ export async function renderDepartmentTree(content, _config, context = {}) {
   async function enableDepartment(row) {
     try {
       await api(`/admin-api/departments/${row.id}`, { method: "PUT", body: JSON.stringify({ status: "active" }) });
-      toast(`部门「${row.name}」已启用`, { tone: "success" });
+      toast(localize`部门「${row.name}」已启用`, { tone: "success" });
       await load();
     } catch (error) {
-      toast(adminErrorMessage(error, "启用部门失败"), { tone: "error" });
+      toast(adminErrorMessage(error, localize("启用部门失败")), { tone: "error" });
     }
   }
 
   async function disableDepartment(row) {
     const descendants = descendantCount(row);
     const confirmed = await confirmDialog({
-      title: "停用部门",
+      title: localize("停用部门"),
       message: DISABLE_IMPACT,
-      details: [["部门", row.name], ["下属部门", `${descendants} 个`]],
-      confirmLabel: "停用"
+      details: [[localize("部门"), row.name], [localize("下属部门"), localize`${descendants} 个`]],
+      confirmLabel: localize("停用")
     });
     if (!confirmed) {
       return;
     }
     try {
       await api(`/admin-api/departments/${row.id}`, { method: "DELETE" });
-      toast(`部门「${row.name}」已停用`, { tone: "success" });
+      toast(localize`部门「${row.name}」已停用`, { tone: "success" });
       await load();
     } catch (error) {
-      toast(adminErrorMessage(error, "停用部门失败"), { tone: "error" });
+      toast(adminErrorMessage(error, localize("停用部门失败")), { tone: "error" });
     }
   }
 
@@ -459,7 +460,7 @@ export async function renderDepartmentTree(content, _config, context = {}) {
     const output = el("p", { className: "notice", hidden: true });
     let modal = null;
     form.append(el("div", { className: "form-actions" }, [
-      button("创建", async () => {
+      button(localize("创建"), async () => {
         let payload;
         try {
           payload = readFields(form, fields, { validate: true });
@@ -472,10 +473,10 @@ export async function renderDepartmentTree(content, _config, context = {}) {
           const result = await api("/admin-api/departments", { method: "POST", body: JSON.stringify(payload) });
           created = result.data || null;
         } catch (error) {
-          setErrorOutput(output, adminErrorMessage(error, "新增部门失败，请检查输入内容"));
+          setErrorOutput(output, adminErrorMessage(error, localize("新增部门失败，请检查输入内容")));
           return;
         }
-        toast(`部门「${payload.name}」已新增`, { tone: "success" });
+        toast(localize`部门「${payload.name}」已新增`, { tone: "success" });
         modal?.markClean?.();
         await modal?.close?.({ force: true });
         if (created?.id) {
@@ -488,7 +489,7 @@ export async function renderDepartmentTree(content, _config, context = {}) {
       }, "", { type: "submit" })
     ]), output);
     const parentName = parentId ? state.index.get(Number(parentId))?.row.name : "";
-    modal = showModal(parentName ? `在「${parentName}」下新增部门` : "新增部门", form);
+    modal = showModal(parentName ? localize`在「${parentName}」下新增部门` : localize("新增部门"), form);
     form.querySelector('[name="name"]')?.focus();
   }
 
@@ -498,16 +499,16 @@ export async function renderDepartmentTree(content, _config, context = {}) {
 function showDepartmentEdit(row, context) {
   const fields = [
     ...departmentFields(context.roots, new Set(subtreeIds(row))),
-    { name: "status", label: "状态", type: "select", options: ["active", "disabled"].map((value) => [value, valueLabel("status", value)]) }
+    { name: "status", label: localize("状态"), type: "select", options: ["active", "disabled"].map((value) => [value, valueLabel("status", value)]) }
   ];
   const values = { ...row, parent_id: row.parent_id ? String(row.parent_id) : "" };
   formDialog({
-    title: `编辑部门：${row.name}`,
+    title: localize`编辑部门：${row.name}`,
     fields,
     values,
-    submitLabel: "保存",
-    successText: "部门已保存",
-    failText: "保存部门失败，请检查输入内容",
+    submitLabel: localize("保存"),
+    successText: localize("部门已保存"),
+    failText: localize("保存部门失败，请检查输入内容"),
     submit: async (payload) => {
       // An emptied parent picker moves the department to the top level.
       if (!("parent_id" in payload) && row.parent_id) {
@@ -515,10 +516,10 @@ function showDepartmentEdit(row, context) {
       }
       const statusChange = payload.status === "disabled" && row.status !== "disabled";
       if (statusChange && !await confirmDialog({
-        title: "停用部门",
+        title: localize("停用部门"),
         message: DISABLE_IMPACT,
-        details: [["部门", row.name]],
-        confirmLabel: "停用并保存"
+        details: [[localize("部门"), row.name]],
+        confirmLabel: localize("停用并保存")
       })) {
         return false;
       }

@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 require __DIR__ . '/../bootstrap.php';
 
-$source = file_get_contents(__DIR__ . '/../../public/admin/assets/js/dashboard.js') ?: '';
+$source = frontend_copy_source(__DIR__ . '/../../public/admin/assets/js/dashboard.js') ?: '';
 
 assert_true(str_contains($source, 'select("department_id"'), 'Smart analysis should expose a department filter.');
 assert_true(str_contains($source, 'name: "employee_query"'), 'Smart analysis should expose an employee keyword input.');

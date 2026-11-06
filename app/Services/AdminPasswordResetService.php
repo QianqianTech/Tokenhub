@@ -6,11 +6,19 @@ namespace TokenHub\Services;
 
 use TokenHub\Support\App;
 use TokenHub\Support\Crypto;
+use TokenHub\Support\UiLocale;
 use Throwable;
 
 final class AdminPasswordResetService
 {
     public const REQUEST_MESSAGE = '如果该邮箱已绑定启用的管理员账号，您将收到密码重置邮件，请检查收件箱和垃圾邮件。';
+
+    public static function requestMessage(string $locale): string
+    {
+        return $locale === 'en-US'
+            ? 'If this email is linked to an active administrator account, we will send a password reset link. Check your inbox and spam folder.'
+            : self::REQUEST_MESSAGE;
+    }
 
     /** @param null|callable(array, string, string, string): void $mailSender */
     public function __construct(private readonly mixed $mailSender = null)
@@ -70,15 +78,22 @@ final class AdminPasswordResetService
             return;
         }
         // A fragment keeps the credential out of server access logs and referrers.
-        $link = $settings['public_url'] . '/admin/#reset-password=' . $issued['token'];
-        $body = "您正在申请重置 TokenHub 管理员密码。\n\n请打开以下链接并设置新密码：\n" . $link
-            . "\n\n链接在 " . $settings['reset_ttl_minutes'] . " 分钟内有效，仅可使用一次。再次申请后，之前的链接将失效。\n"
-            . "如果您没有申请重置，请忽略此邮件，您的密码不会改变。\n";
+        $english = UiLocale::normalize($job['locale'] ?? null) === 'en-US';
+        $link = $settings['public_url'] . '/admin/' . ($english ? '?lang=en-US' : '') . '#reset-password=' . $issued['token'];
+        $minutes = (int) $settings['reset_ttl_minutes'];
+        $subject = $english ? 'Reset your TokenHub administrator password' : 'TokenHub 管理员密码重置';
+        $body = $english
+            ? "Open the following link to set a new TokenHub administrator password:\n{$link}\n\n"
+                . "This link expires in {$minutes} minutes and works once. Requesting another link invalidates this one.\n"
+                . "If you did not request a reset, you can ignore this email. Your password will stay the same.\n"
+            : "您正在申请重置 TokenHub 管理员密码。\n\n请打开以下链接并设置新密码：\n{$link}"
+                . "\n\n链接在 {$minutes} 分钟内有效，仅可使用一次。再次申请后，之前的链接将失效。\n"
+                . "如果您没有申请重置，请忽略此邮件，您的密码不会改变。\n";
         try {
             if (is_callable($this->mailSender)) {
-                ($this->mailSender)($settings, $email, 'TokenHub 管理员密码重置', $body);
+                ($this->mailSender)($settings, $email, $subject, $body);
             } else {
-                (new SmtpMailer())->send($settings, $email, 'TokenHub 管理员密码重置', $body);
+                (new SmtpMailer())->send($settings, $email, $subject, $body);
             }
         } catch (Throwable $exception) {
             // Retrying an unsent job may issue a fresh link, but the failed

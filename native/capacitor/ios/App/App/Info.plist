@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
 	<key>NSCameraUsageDescription</key>
-	<string>扫描后台显示的 TokenHub 认证二维码以登录。</string>
+	<string>Scan a TokenHub sign-in QR code from the admin console.</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>

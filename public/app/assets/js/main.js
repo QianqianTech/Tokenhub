@@ -1,4 +1,5 @@
 import "./native-bridge.js";
+import { getLocale, initLocaleControls, localize, t } from "/admin/assets/js/i18n.js";
 // TokenHub APP shell: sign-in by link, bottom tab bar (side bar on wide
 // screens), and the console's own pages rendered inside the APP.
 import { adminErrorMessage, api, configureApi, setRouteSignal } from "/admin/assets/js/api.js";
@@ -16,6 +17,8 @@ import { renderMe } from "./me.js";
 import { renderOverview } from "./overview.js";
 import { onRealtime, startRealtime, stopRealtime } from "./realtime.js";
 import { toast } from "/admin/assets/js/components/feedback.js";
+import { confirmDialog } from "/admin/assets/js/components/modal.js";
+import { discardUnsavedChanges, hasUnsavedChanges } from "/admin/assets/js/lib/dirty-guard.js";
 import { valueLabel } from "/admin/assets/js/resources.js";
 import { stopAllPollers } from "./poller.js";
 import { passkeySupported } from "./passkey.js";
@@ -27,7 +30,7 @@ const shell = $("app");
 const content = $("content");
 const tabbar = $("tha-tabbar");
 const LOG_PAGES = ["logs", "usage-records", "audit-logs", "content-archive"];
-const EXTRA_LABELS = { "operations-status": "运行状态", "rag-settings": "RAG 设置" };
+const EXTRA_LABELS = { "operations-status": localize("运行状态"), "rag-settings": localize("RAG 设置") };
 let cleanup = () => {};
 let routeController = null;
 let installPromptEvent = null;
@@ -48,7 +51,7 @@ function setTitle(text) {
 let updatedNode = null;
 function setUpdated(text) {
   if (updatedNode) {
-    updatedNode.textContent = text ? `数据更新于 ${text}` : "";
+    updatedNode.textContent = text ? localize`数据更新于 ${text}` : "";
   }
 }
 
@@ -72,17 +75,17 @@ window.addEventListener("offline", refreshNetworkState);
 // ------------------------------------------------------------------ tab bar
 
 function tabs(user) {
-  const items = [{ key: "overview", label: "概览", href: "#/overview", icon: "M4 13h6V4H4zm0 7h6v-5H4zm10 0h6v-9h-6zm0-16v5h6V4z" }];
+  const items = [{ key: "overview", label: localize("概览"), href: "#/overview", icon: "M4 13h6V4H4zm0 7h6v-5H4zm10 0h6v-9h-6zm0-16v5h6V4z" }];
   const alertsHash = pageAllowed(user, "alert-events") ? adminHash(user, "alert-events") : null;
   if (alertsHash) {
-    items.push({ key: "alerts", label: "告警", href: alertsHash, icon: "M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.9 1.9 0 0 0 3.4 0", badge: true });
+    items.push({ key: "alerts", label: localize("告警"), href: alertsHash, icon: "M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.9 1.9 0 0 0 3.4 0", badge: true });
   }
-  items.push({ key: "manage", label: "管理", href: "#/manage", icon: "M4 6h16M4 12h16M4 18h16" });
+  items.push({ key: "manage", label: localize("管理"), href: "#/manage", icon: "M4 6h16M4 12h16M4 18h16" });
   const logPage = LOG_PAGES.find((page) => pageAllowed(user, page));
   if (logPage) {
-    items.push({ key: "logs", label: "日志", href: adminHash(user, logPage), icon: "M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01" });
+    items.push({ key: "logs", label: localize("日志"), href: adminHash(user, logPage), icon: "M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01" });
   }
-  items.push({ key: "me", label: "我的", href: "#/me", icon: "M20 21a8 8 0 1 0-16 0M12 13a4 4 0 1 0 0-8 4 4 0 0 0 0 8" });
+  items.push({ key: "me", label: localize("我的"), href: "#/me", icon: "M20 21a8 8 0 1 0-16 0M12 13a4 4 0 1 0 0-8 4 4 0 0 0 0 8" });
   return items;
 }
 
@@ -158,7 +161,7 @@ async function renderRoute() {
   const route = currentRoute();
 
   if (route.special === "ca") {
-    setTitle("证书安装指引");
+    setTitle(localize("证书安装指引"));
     if (signedIn()) {
       renderTabbar(currentUser(), route);
     }
@@ -178,7 +181,7 @@ async function renderRoute() {
   shell.dataset.state = "ready";
 
   if (route.special === "overview" || route.special === "welcome") {
-    setTitle("概览");
+    setTitle(localize("概览"));
     updatedNode = el("p", { className: "tha-updated", "aria-live": "off" });
     const host = el("div");
     content.replaceChildren(updatedNode, host);
@@ -186,12 +189,12 @@ async function renderRoute() {
     return;
   }
   if (route.special === "manage") {
-    setTitle("管理");
+    setTitle(localize("管理"));
     renderManage(user);
     return;
   }
   if (route.special === "me") {
-    setTitle("我的");
+    setTitle(localize("我的"));
     await renderMe(content, { installPrompt: () => installPromptEvent, onSignedOut: () => window.location.replace("/app/#/welcome") });
     return;
   }
@@ -199,8 +202,8 @@ async function renderRoute() {
   // A console page inside the APP.
   const domain = domainForPage(user, route.tabKey);
   if (!domain || !pageAllowed(user, route.tabKey)) {
-    setTitle("无法打开");
-    content.replaceChildren(el("div", { className: "tha-card" }, [el("p", { text: "当前账号没有这个页面的权限，或页面不存在。" }), el("a", { className: "tha-link", href: "#/manage", text: "返回管理" })]));
+    setTitle(localize("无法打开"));
+    content.replaceChildren(el("div", { className: "tha-card" }, [el("p", { text: localize("当前账号没有这个页面的权限，或页面不存在。") }), el("a", { className: "tha-link", href: "#/manage", text: localize("返回管理") })]));
     return;
   }
   setTitle(pageLabel(route.tabKey));
@@ -222,7 +225,7 @@ async function renderRoute() {
     });
   } catch (error) {
     if (error?.name !== "AbortError") {
-      panel.replaceChildren(el("div", { className: "tha-card", dataset: { pageError: "true" } }, [el("p", { text: `页面加载失败：${adminErrorMessage(error)}` })]));
+      panel.replaceChildren(el("div", { className: "tha-card", dataset: { pageError: "true" } }, [el("p", { text: localize`页面加载失败：${adminErrorMessage(error)}` })]));
     }
   }
 }
@@ -259,7 +262,7 @@ async function startScanner(target, onCode) {
   const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
   const video = el("video", { className: "tha-scanner-video", autoplay: true, muted: true, playsInline: true });
   video.srcObject = stream;
-  target.replaceChildren(video, el("p", { className: "tha-muted", text: "把认证链接的二维码放进取景框" }));
+  target.replaceChildren(video, el("p", { className: "tha-muted", text: localize("把认证链接的二维码放进取景框") }));
   let stopped = false;
   const tick = async () => {
     if (stopped) {
@@ -295,20 +298,20 @@ function renderWelcome(message = welcomeMessage) {
   setCurrentUser(null);
   tabbar.hidden = true;
   shell.dataset.state = "welcome";
-  setTitle("登录 TokenHub");
-  const input = el("textarea", { className: "tha-link-input", rows: 3, placeholder: "粘贴认证链接，例如 https://…/app/link#c=thl_…", "aria-label": "认证链接", autocomplete: "off", spellcheck: false });
+  setTitle(localize("登录 TokenHub"));
+  const input = el("textarea", { className: "tha-link-input", rows: 3, placeholder: localize("粘贴认证链接，例如 https://…/app/link#c=thl_…"), "aria-label": localize("认证链接"), autocomplete: "off", spellcheck: false });
   const error = el("p", { className: "tha-error", role: "alert", text: message });
   const scanHost = el("div", { className: "tha-scanner" });
-  const submit = el("button", { type: "submit", text: "登录" });
+  const submit = el("button", { type: "submit", text: localize("登录") });
   const go = async (raw) => {
     error.textContent = "";
     const parsed = parseLink(raw);
     if (!parsed) {
-      error.textContent = "这不是有效的认证链接。请在 TokenHub 后台左下角「APP 设备」中重新生成。";
+      error.textContent = localize("这不是有效的认证链接。请在 TokenHub 后台左下角「APP 设备」中重新生成。");
       return;
     }
     if (parsed.origin !== window.location.origin) {
-      error.textContent = `这个链接属于另一台服务器（${parsed.origin}）。请在该服务器上打开链接，或使用 TokenHub 安装包 APP。`;
+      error.textContent = localize`这个链接属于另一台服务器（${parsed.origin}）。请在该服务器上打开链接，或使用 TokenHub 安装包 APP。`;
       return;
     }
     submit.disabled = true;
@@ -331,22 +334,22 @@ function renderWelcome(message = welcomeMessage) {
   // No in-page scanner (WebKit / iOS has no BarcodeDetector; HTTP has no camera):
   // say why, and point to the system camera or pasting the link.
   const scanFallback = !window.isSecureContext
-    ? "当前为 HTTP 连接，网页无法使用相机扫码。请用手机系统相机扫描后台显示的二维码，或复制认证链接粘贴到上方。"
+    ? localize("当前为 HTTP 连接，网页无法使用相机扫码。请用手机系统相机扫描后台显示的二维码，或复制认证链接粘贴到上方。")
     : !("BarcodeDetector" in window)
-      ? "当前浏览器不支持网页内扫码（iPhone / iPad 的浏览器和 APP 均如此）。请用手机系统相机扫描后台显示的二维码打开链接，或复制认证链接粘贴到上方。"
-      : "当前环境无法使用相机。请用手机系统相机扫描后台显示的二维码，或复制认证链接粘贴到上方。";
-  const cameraFailed = "无法使用相机（可能未授予相机权限）。请用手机系统相机扫描后台显示的二维码，或复制认证链接粘贴到上方。";
+      ? localize("当前浏览器不支持网页内扫码（iPhone / iPad 的浏览器和 APP 均如此）。请用手机系统相机扫描后台显示的二维码打开链接，或复制认证链接粘贴到上方。")
+      : localize("当前环境无法使用相机。请用手机系统相机扫描后台显示的二维码，或复制认证链接粘贴到上方。");
+  const cameraFailed = localize("无法使用相机（可能未授予相机权限）。请用手机系统相机扫描后台显示的二维码，或复制认证链接粘贴到上方。");
   const host = /^\d+\.\d+\.\d+\.\d+$|^\[/.test(window.location.hostname);
   content.replaceChildren(el("div", { className: "tha-welcome" }, [
     el("img", { className: "tha-welcome-logo", src: "/admin/assets/brand/tokenhub-app-icon.svg", alt: "", width: 72, height: 72 }),
-    el("h2", { text: "用认证链接登录" }),
+    el("h2", { text: localize("用认证链接登录") }),
     el("ol", { className: "tha-steps" }, [
-      el("li", { text: "在电脑上打开 TokenHub 后台，点左下角的「APP 设备」。" }),
-      el("li", { text: "点「生成认证链接」，用手机扫码，或复制链接粘贴到下面。" }),
-      el("li", { text: "登录后，APP 闪退或被系统关闭再打开，不需要重新登录。" })
+      el("li", { text: localize("在电脑上打开 TokenHub 后台，点左下角的「APP 设备」。") }),
+      el("li", { text: localize("点「生成认证链接」，用手机扫码，或复制链接粘贴到下面。") }),
+      el("li", { text: localize("登录后，APP 闪退或被系统关闭再打开，不需要重新登录。") })
     ]),
     form,
-    canScan ? el("button", { type: "button", className: "secondary", text: "扫码登录", onClick: async () => {
+    canScan ? el("button", { type: "button", className: "secondary", text: localize("扫码登录"), onClick: async () => {
       try {
         if (!await startScanner(scanHost, (value) => void go(value))) {
           error.textContent = cameraFailed;
@@ -356,8 +359,8 @@ function renderWelcome(message = welcomeMessage) {
       }
     } }) : el("p", { className: "tha-muted tha-scan-fallback", role: "note", text: scanFallback }),
     scanHost,
-    !window.isSecureContext ? el("p", { className: "tha-warning", text: "当前为 HTTP 连接：可以登录和使用，但无法安装 APP 或接收推送，设备 7 天不用会自动退出。建议管理员改用 HTTPS。" }) : null,
-    host ? el("a", { className: "tha-link", href: "#/ca", text: "使用 https://IP 访问？先查看证书安装指引" }) : null
+    !window.isSecureContext ? el("p", { className: "tha-warning", text: localize("当前为 HTTP 连接：可以登录和使用，但无法安装 APP 或接收推送，设备 7 天不用会自动退出。建议管理员改用 HTTPS。") }) : null,
+    host ? el("a", { className: "tha-link", href: "#/ca", text: localize("使用 https://IP 访问？先查看证书安装指引") }) : null
   ]));
 }
 
@@ -372,20 +375,20 @@ function renderPending() {
   setCurrentUser(null);
   tabbar.hidden = true;
   shell.dataset.state = "pending";
-  setTitle("等待确认");
-  const status = el("p", { className: "tha-muted", role: "status", text: "正在等待确认…" });
-  const code = el("p", { className: "tha-match-code", "aria-label": `匹配码 ${pending.matchCode || ""}`, text: pending.matchCode || "----" });
+  setTitle(localize("等待确认"));
+  const status = el("p", { className: "tha-muted", role: "status", text: localize("正在等待确认…") });
+  const code = el("p", { className: "tha-match-code", "aria-label": localize`匹配码 ${pending.matchCode || ""}`, text: pending.matchCode || "----" });
   content.replaceChildren(el("div", { className: "tha-welcome tha-pending" }, [
     el("img", { className: "tha-welcome-logo", src: "/admin/assets/brand/tokenhub-app-icon.svg", alt: "", width: 72, height: 72 }),
-    el("h2", { text: "请在电脑上确认这台设备" }),
+    el("h2", { text: localize("请在电脑上确认这台设备") }),
     el("ol", { className: "tha-steps" }, [
-      el("li", { text: `在电脑上的 TokenHub 后台${pending.username ? `（账号 ${pending.username}）` : ""}打开左下角「APP 设备」。` }),
-      el("li", { text: "找到「等待确认」的设备，核对匹配码与下面一致后点「确认」。" }),
-      el("li", { text: "确认后这里会自动进入；10 分钟内未确认需要重新生成认证链接。" })
+      el("li", { text: localize`在电脑上的 TokenHub 后台${pending.username ? localize`（账号 ${pending.username}）` : ""}打开左下角「APP 设备」。` }),
+      el("li", { text: localize("找到「等待确认」的设备，核对匹配码与下面一致后点「确认」。") }),
+      el("li", { text: localize("确认后这里会自动进入；10 分钟内未确认需要重新生成认证链接。") })
     ]),
     code,
     status,
-    el("button", { type: "button", className: "secondary", text: "取消", onClick: () => void cancelPending() })
+    el("button", { type: "button", className: "secondary", text: localize("取消"), onClick: () => void cancelPending() })
   ]));
   let busy = false;
   const poll = async () => {
@@ -399,9 +402,9 @@ function renderPending() {
         await renderRoute();
         return;
       }
-      status.textContent = pendingApproval() ? "正在等待确认…" : "";
+      status.textContent = pendingApproval() ? localize("正在等待确认…") : "";
     } catch {
-      status.textContent = "网络连接失败，正在重试…";
+      status.textContent = localize("网络连接失败，正在重试…");
     } finally {
       busy = false;
     }
@@ -418,17 +421,17 @@ function renderPending() {
 function linkError(error) {
   switch (error?.code) {
     case "APP_LINK_INVALID":
-      return "认证链接无效或已过期（10 分钟内有效，且只能使用一次）。请在后台重新生成。";
+      return localize("认证链接无效或已过期（10 分钟内有效，且只能使用一次）。请在后台重新生成。");
     case "APP_DEVICE_LIMIT":
-      return "该账号绑定的设备已达上限，请先在后台「APP 设备」中吊销不用的设备。";
+      return localize("该账号绑定的设备已达上限，请先在后台「APP 设备」中吊销不用的设备。");
     case "APP_LINK_IP_FORBIDDEN":
-      return "这个认证链接不允许在当前网络使用。";
+      return localize("这个认证链接不允许在当前网络使用。");
     case "APP_AUTH_RATE_LIMITED":
-      return "尝试次数过多，请一分钟后再试。";
+      return localize("尝试次数过多，请一分钟后再试。");
     case "NETWORK_ERROR":
-      return "网络连接失败，请检查网络后重试。";
+      return localize("网络连接失败，请检查网络后重试。");
     default:
-      return error?.message || "登录失败，请重试。";
+      return error?.message || localize("登录失败，请重试。");
   }
 }
 
@@ -442,7 +445,7 @@ function registerServiceWorker() {
   // Only a replacement of an existing controller needs a page reload.
   let controlled = Boolean(navigator.serviceWorker.controller);
   navigator.serviceWorker.register("/app/sw.js", { scope: "/app/" }).then((registration) => {
-    const offerUpdate = (worker) => banner("update", "TokenHub APP 有新版本。", el("button", { type: "button", className: "secondary", text: "刷新", onClick: () => worker.postMessage("skip-waiting") }));
+    const offerUpdate = (worker) => banner("update", localize("TokenHub APP 有新版本。"), el("button", { type: "button", className: "secondary", text: localize("刷新"), onClick: () => worker.postMessage("skip-waiting") }));
     if (registration.waiting && navigator.serviceWorker.controller) {
       offerUpdate(registration.waiting);
     }
@@ -477,12 +480,29 @@ window.addEventListener("beforeinstallprompt", (event) => {
 });
 
 async function boot() {
+  if (getLocale() === "en-US") {
+    document.querySelector('link[rel="manifest"]').href = "/app/manifest.en-US.webmanifest";
+  }
+  initLocaleControls({ beforeChange: async () => {
+    if (shell.dataset.state === "booting" || shell.classList.contains("is-locked")) return false;
+    if (hasUnsavedChanges()) {
+      const leave = await confirmDialog({
+        title: t("guard.leaveTitle"),
+        message: t("guard.leaveMessage"),
+        confirmLabel: t("guard.leaveConfirm"),
+        cancelLabel: t("modal.keepEditing")
+      });
+      if (!leave) return false;
+      discardUnsavedChanges();
+    }
+    return true;
+  } });
   refreshNetworkState();
   registerServiceWorker();
   configureApi({
     onAuthRequired: () => {
       if (!signedIn()) {
-        renderWelcome("登录已失效，请重新打开认证链接。");
+        renderWelcome(localize("登录已失效，请重新打开认证链接。"));
       }
     },
     onError: (error) => {
@@ -519,33 +539,35 @@ async function boot() {
       const first = fresh[0];
       const user = currentUser();
       const hash = user && pageAllowed(user, "alert-events") ? adminHash(user, "alert-events") : null;
-      toast(`新告警（${valueLabel("severity", first.severity)}）：${first.message || first.event_type}${fresh.length > 1 ? ` 等 ${fresh.length} 条` : ""}`, { tone: first.severity === "critical" ? "error" : "info", timeout: 10_000 });
+      toast(localize`新告警（${valueLabel("severity", first.severity)}）：${first.message || first.event_type}${fresh.length > 1 ? localize` 等 ${fresh.length} 条` : ""}`, { tone: first.severity === "critical" ? "error" : "info", timeout: 10_000 });
       if (hash && window.location.hash !== hash) {
-        banner("new-alert", `有 ${fresh.length} 条新告警`, el("a", { className: "tha-link", href: hash, text: "查看", onClick: () => banner("new-alert", "") }), first.severity === "critical" ? "warning" : "info");
+        banner("new-alert", localize`有 ${fresh.length} 条新告警`, el("a", { className: "tha-link", href: hash, text: localize("查看"), onClick: () => banner("new-alert", "") }), first.severity === "critical" ? "warning" : "info");
       }
       navigator.vibrate?.(first.severity === "critical" ? [120, 60, 120] : 80);
       if (document.visibilityState === "hidden") {
-        void window.TokenHubNative?.notify?.("TokenHub 新告警", `${valueLabel("severity", first.severity)}：${first.message || first.event_type}`);
+        void window.TokenHubNative?.notify?.(localize("TokenHub 新告警"), `${valueLabel("severity", first.severity)}: ${first.message || first.event_type}`);
       }
     }
   });
   onAuthChange((event, detail) => {
     if (event === "recovered") {
-      toast("登录状态已自动恢复。如果不是你本人操作，请在“我的 → 设备”中吊销这台设备。", { tone: "info", timeout: 10_000 });
+      toast(localize("登录状态已自动恢复。如果不是你本人操作，请在“我的 → 设备”中吊销这台设备。"), { tone: "info", timeout: 10_000 });
     }
     if (event === "signed-in") {
       setCurrentUser(detail.user);
       startRealtime();
-      banner("insecure", insecureTransport() ? "当前为 HTTP 连接，建议管理员改用 HTTPS。" : "", null, "warning");
+      void api("/admin-api/app-auth/push/locale", { method: "PUT", body: JSON.stringify({ locale: getLocale() }), silent: true })
+        .catch(() => undefined);
+      banner("insecure", insecureTransport() ? localize("当前为 HTTP 连接，建议管理员改用 HTTPS。") : "", null, "warning");
     }
     if (event === "signed-out") {
       setCurrentUser(null);
       stopRealtime();
       welcomeMessage = detail?.code === "APP_DEVICE_REJECTED"
-        ? "这台设备的登录请求已在后台被拒绝。"
+        ? localize("这台设备的登录请求已在后台被拒绝。")
         : detail?.code === "APP_DEVICE_APPROVAL_EXPIRED"
-          ? "等待确认超时，请在后台重新生成认证链接。"
-          : detail?.wasSignedIn && detail?.code !== "LOGGED_OUT" ? "这台设备已退出登录，请重新打开认证链接。" : "";
+          ? localize("等待确认超时，请在后台重新生成认证链接。")
+          : detail?.wasSignedIn && detail?.code !== "LOGGED_OUT" ? localize("这台设备已退出登录，请重新打开认证链接。") : "";
       if (shell.dataset.state !== "booting") {
         void renderRoute();
       }
@@ -574,7 +596,7 @@ async function boot() {
       await refresh();
     } catch {
       // Offline at start: keep trying when the network returns.
-      renderWelcome("网络连接失败，联网后会自动重试。");
+      renderWelcome(localize("网络连接失败，联网后会自动重试。"));
       window.addEventListener("online", () => void refresh().then(() => renderRoute()).catch(() => undefined), { once: true });
     }
   }

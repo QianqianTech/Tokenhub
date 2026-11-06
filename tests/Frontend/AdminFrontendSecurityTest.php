@@ -11,13 +11,13 @@ foreach ($adminJsIterator as $sourceFile) {
         $adminSources[$sourceFile->getPathname()] = file_get_contents($sourceFile->getPathname());
     }
 }
-$adminHtml = file_get_contents(__DIR__ . '/../../public/admin/index.html');
+$adminHtml = frontend_copy_source(__DIR__ . '/../../public/admin/index.html');
 $adminCss = file_get_contents(__DIR__ . '/../../public/admin/assets/css/app.css');
-$apiJs = file_get_contents(__DIR__ . '/../../public/admin/assets/js/api.js');
-$appJs = file_get_contents(__DIR__ . '/../../public/admin/assets/js/app.js');
-$dashboardSource = file_get_contents(__DIR__ . '/../../public/admin/assets/js/dashboard.js');
+$apiJs = frontend_copy_source(__DIR__ . '/../../public/admin/assets/js/api.js');
+$appJs = frontend_copy_source(__DIR__ . '/../../public/admin/assets/js/app.js');
+$dashboardSource = frontend_copy_source(__DIR__ . '/../../public/admin/assets/js/dashboard.js');
 // Column/value labels moved to the i18n dictionary (UX-106).
-$resources = (string) file_get_contents(__DIR__ . '/../../public/admin/assets/js/resources.js') . "\n" . (string) file_get_contents(__DIR__ . '/../../public/admin/assets/js/i18n/zh-CN.js');
+$resources = (string) frontend_copy_source(__DIR__ . '/../../public/admin/assets/js/resources.js') . "\n" . (string) frontend_copy_source(__DIR__ . '/../../public/admin/assets/js/i18n/zh-CN.js');
 $tableSource = admin_js_bundle();
 $caddyfile = file_get_contents(__DIR__ . '/../../docker/caddy/Caddyfile');
 
@@ -120,7 +120,7 @@ assert_true(!preg_match('/https?:\/\//i', $adminAssetSources), 'Admin frontend m
 assert_true(!preg_match('/@import/i', $adminCss), 'Admin CSS must not import external styles.');
 assert_true(str_contains($resources, 'export function pageCapability'), 'Admin resources should expose one capability lookup for every page.');
 assert_true(!str_contains($resources, 'roleAccess'), 'Menus must come from effective capabilities only, not a hard-coded role list.');
-assert_true(str_contains((string) file_get_contents(__DIR__ . '/../../public/admin/assets/js/domains.js'), 'export function domainsForUser'), 'Sidebar navigation sections should be filtered by the current user.');
+assert_true(str_contains((string) frontend_copy_source(__DIR__ . '/../../public/admin/assets/js/domains.js'), 'export function domainsForUser'), 'Sidebar navigation sections should be filtered by the current user.');
 assert_true(!str_contains($resources, 'key: "quick"'), 'Admin navigation should not expose a common entries section.');
 assert_true(!str_contains($resources, '常用入口'), 'Admin navigation should not expose a common entries label.');
 assert_true(str_contains($resources, '智慧分析'), 'Admin navigation labels should use the Smart Analysis label.');
@@ -165,7 +165,7 @@ assert_true(str_contains($apiJs, 'ADMIN_UNAUTHENTICATED'), 'API wrapper should n
 assert_true(str_contains($apiJs, 'ADMIN_CSRF_INVALID'), 'API wrapper should normalize CSRF handling.');
 assert_true(str_contains($apiJs, 'adminErrorMessage'), 'API wrapper should expose localized admin error messages.');
 // Error messages live in the i18n dictionary (UX-106).
-assert_true(str_contains((string) file_get_contents(__DIR__ . '/../../public/admin/assets/js/i18n/zh-CN.js'), '登录状态已失效') && str_contains($apiJs, 'translate(`error.${code}`'), 'Admin auth errors should be localized Chinese.');
+assert_true(str_contains((string) frontend_copy_source(__DIR__ . '/../../public/admin/assets/js/i18n/zh-CN.js'), '登录状态已失效') && str_contains($apiJs, 'translate(`error.${code}`'), 'Admin auth errors should be localized Chinese.');
 assert_true(str_contains($appJs, 'adminErrorMessage(error'), 'Admin shell should render localized error messages.');
 assert_true(str_contains($tableSource, 'adminErrorMessage(error'), 'Admin resource pages should render localized error messages.');
 assert_true(str_contains($dashboardSource, 'adminErrorMessage(error'), 'Dashboard should render localized error messages.');
@@ -198,7 +198,7 @@ assert_true(str_contains($resources, '"settings-rag-upload-review"'), 'Admin res
 assert_true(str_contains($resources, '"settings-rag-package-upload"'), 'Admin resources should expose RAG image package upload settings.');
 assert_true(str_contains($resources, '"settings-rag-ai-image-processing"'), 'Admin resources should expose RAG AI image processing settings.');
 assert_true(str_contains($resources, '"settings-rag-vectorization-monitoring"'), 'Admin resources should expose RAG vectorization monitoring settings.');
-assert_true(str_contains((string) file_get_contents(__DIR__ . '/../../public/admin/assets/js/domains.js'), '{ key: "system", label: "系统设置"'), 'System settings should be a left sidebar section.');
+assert_true(str_contains((string) frontend_copy_source(__DIR__ . '/../../public/admin/assets/js/domains.js'), '{ key: "system", label: "系统设置"'), 'System settings should be a left sidebar section.');
 assert_true(str_contains($resources, '"system-settings": { label: "高级设置"'), 'Advanced settings should remain a dedicated form page.');
 assert_true(!str_contains($resources, 'label: "设置值JSON"'), 'Advanced settings should not expose a raw JSON input.');
 assert_true(str_contains($resources, 'readOnly: true'), 'Read-only resources should be marked in resource metadata.');

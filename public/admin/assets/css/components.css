@@ -1019,6 +1019,7 @@ button.conversation-item.is-active {
 }
 .conversation-status {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 10px;
   margin-top: 12px;
 }
@@ -1028,15 +1029,24 @@ button.conversation-item.is-active {
 }
 .conversation-stats {
   display: grid;
-  grid-template-columns: max-content 1fr;
+  grid-template-columns: fit-content(45%) minmax(0, 1fr);
   gap: 6px 16px;
   margin: 0;
+  overflow-wrap: anywhere;
 }
 .conversation-stats dt {
   color: var(--muted);
 }
 .conversation-stats dd {
   margin: 0;
+}
+.conversation-stats .cell-mono,
+.app-shell .conversation-stats .status-pill {
+  white-space: normal;
+}
+.app-shell .conversation-stats .status-pill {
+  height: auto;
+  min-height: 22px;
 }
 @media (max-width: 1280px) {
   .conversation-log-layout {
@@ -1278,8 +1288,12 @@ button.conversation-view-tab.is-active {
 .conversation-manual,
 .conversation-history {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 10px;
   margin-top: 12px;
+}
+.conversation-history .table-wrap {
+  overflow-x: auto;
 }
 .conversation-manual h3,
 .conversation-history h3 {

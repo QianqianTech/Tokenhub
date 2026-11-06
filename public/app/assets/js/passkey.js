@@ -1,3 +1,4 @@
+import { localize } from "/admin/assets/js/i18n.js";
 // Passkeys (WebAuthn) as a step-up method next to the PIN. They need HTTPS and
 // a domain name (WebAuthn does not work on IP addresses).
 import { api } from "/admin/assets/js/api.js";
@@ -20,7 +21,7 @@ export async function registerPasskey(name = "") {
     }
   });
   if (!credential) {
-    throw new Error("没有创建 Passkey。");
+    throw new Error(localize("没有创建 Passkey。"));
   }
   const payload = {
     id: credential.id,
@@ -44,7 +45,7 @@ export async function verifyWithPasskey() {
     }
   });
   if (!assertion) {
-    throw new Error("没有完成 Passkey 验证。");
+    throw new Error(localize("没有完成 Passkey 验证。"));
   }
   await api("/admin-api/app-auth/step-up/passkey", {
     method: "POST",

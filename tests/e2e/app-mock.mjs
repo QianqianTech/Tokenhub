@@ -208,6 +208,12 @@ export async function handleAppAuth({ req, res, path, method, readBody, ok, fail
     ok(res, { min_severity: body.min_severity || "warning", quiet_start: body.quiet_start || null, quiet_end: body.quiet_end || null, time_zone: body.time_zone || null });
     return true;
   }
+  if (path === "/admin-api/app-auth/push/locale" && method === "PUT") {
+    const { locale } = await readBody(req);
+    device.locale = locale === "en-US" ? "en-US" : "zh-CN";
+    ok(res, { locale: device.locale });
+    return true;
+  }
   if (path === "/admin-api/app-auth/push/native" && method === "POST") {
     const body = await readBody(req);
     ok(res, { subscribed: ["ios", "android"].includes(body.platform) && Boolean(body.token), platform: body.platform });

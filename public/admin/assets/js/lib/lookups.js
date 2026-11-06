@@ -1,3 +1,4 @@
+import { localize } from "../i18n.js";
 // Client for GET /admin-api/lookups/{type}: searchable reference data for
 // pickers and id -> label resolution for tables. Results are cached briefly so a
 // page refresh does not re-download the same references.
@@ -42,21 +43,21 @@ export function lookupLabel(type, row) {
   }
   switch (type) {
     case "users":
-      return [row.username || `用户 #${row.id}`, row.role ? valueLabel("role", row.role) : "", row.status && row.status !== "active" ? valueLabel("status", row.status) : ""].filter(Boolean).join(" / ");
+      return [row.username || localize`用户 #${row.id}`, row.role ? valueLabel("role", row.role) : "", row.status && row.status !== "active" ? valueLabel("status", row.status) : ""].filter(Boolean).join(" / ");
     case "departments":
-      return row.name || `部门 #${row.id}`;
+      return row.name || localize`部门 #${row.id}`;
     case "api-keys":
-      return [row.name || `API 密钥 #${row.id}`, row.key_suffix ? `${row.key_prefix || "sk"}...${row.key_suffix}` : ""].filter(Boolean).join(" / ");
+      return [row.name || localize`API 密钥 #${row.id}`, row.key_suffix ? `${row.key_prefix || "sk"}...${row.key_suffix}` : ""].filter(Boolean).join(" / ");
     case "models":
-      return `${row.name || `模型 #${row.id}`}${row.external_name && row.external_name !== row.name ? ` / ${row.external_name}` : ""}`;
+      return `${row.name || localize`模型 #${row.id}`}${row.external_name && row.external_name !== row.name ? ` / ${row.external_name}` : ""}`;
     case "quota-policies":
-      return [row.name || `策略 #${row.id}`, row.period ? valueLabel("period", row.period) : ""].filter(Boolean).join(" / ");
+      return [row.name || localize`策略 #${row.id}`, row.period ? valueLabel("period", row.period) : ""].filter(Boolean).join(" / ");
     case "rag-knowledge-bases":
-      return `${row.name || `知识库 #${row.id}`}${row.kb_id ? ` (${row.kb_id})` : ""}`;
+      return `${row.name || localize`知识库 #${row.id}`}${row.kb_id ? ` (${row.kb_id})` : ""}`;
     case "rag-vector-datasets":
-      return row.name || row.dataset_id || `数据集 #${row.id}`;
+      return row.name || row.dataset_id || localize`数据集 #${row.id}`;
     case "rag-vector-configs":
-      return [row.name || `向量配置 #${row.id}`, row.modality, row.model_name].filter(Boolean).join(" / ");
+      return [row.name || localize`向量配置 #${row.id}`, row.modality, row.model_name].filter(Boolean).join(" / ");
     default:
       return row.name || row.username || `#${row.id}`;
   }

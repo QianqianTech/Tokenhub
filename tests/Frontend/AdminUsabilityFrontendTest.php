@@ -6,7 +6,7 @@ require __DIR__ . '/../bootstrap.php';
 
 // 2026-10-31 console usability (UX-101 … UX-113): static guarantees.
 $root = __DIR__ . '/../../public/admin';
-$html = (string) file_get_contents($root . '/index.html');
+$html = (string) frontend_copy_source($root . '/index.html');
 $bundle = admin_js_bundle();
 
 // UX-107: one cache-busting version for every admin asset; base.css removed;
@@ -30,17 +30,17 @@ foreach (['ops-common', 'provider-catalog', 'api-key-tools', 'diagnostics', 'cap
 assert_true(!str_contains($bundle, 'ops-tools.js'), 'Nothing should import the removed ops-tools.js.');
 
 // UX-106: labels, page descriptions and error messages come from the dictionary.
-$dictionary = (string) file_get_contents($root . '/assets/js/i18n/zh-CN.js');
+$dictionary = (string) frontend_copy_source($root . '/assets/js/i18n/zh-CN.js');
 foreach (['export const columns', 'export const values', 'export const pageDescriptions', 'export const errors', 'export const ui'] as $export) {
     assert_true(str_contains($dictionary, $export), "zh-CN dictionary should have {$export}.");
 }
-$resources = (string) file_get_contents($root . '/assets/js/resources.js');
+$resources = (string) frontend_copy_source($root . '/assets/js/resources.js');
 assert_true(str_contains($resources, 'translate(`column.${column}`, column)') && str_contains($resources, 'translate(`value.${column}.${value}`'), 'columnLabel/valueLabel should read the dictionary.');
 
 // UX-101: server timestamps are UTC; filters convert local pickers to UTC.
-$format = (string) file_get_contents($root . '/assets/js/lib/format.js');
+$format = (string) frontend_copy_source($root . '/assets/js/lib/format.js');
 assert_true(str_contains($format, 'Date.UTC(') && str_contains($format, 'export function utcStamp'), 'Server timestamps without a zone should be parsed as UTC.');
-$filters = (string) file_get_contents($root . '/assets/js/lib/list-filters.js');
+$filters = (string) frontend_copy_source($root . '/assets/js/lib/list-filters.js');
 assert_true(str_contains($filters, 'return utcStamp(date);'), 'serverStamp should send UTC.');
 
 // UX-102: catalog references are pickers, not numeric ids.
@@ -48,7 +48,7 @@ assert_true(str_contains($resources, '{ name: "provider_id", label: "厂商", ty
 assert_true(str_contains($resources, '{ name: "model_id", label: "模型", type: "select", coerce: "number", reference: "models" }'), 'Price form should pick the model.');
 
 // UX-105: replies are rendered without innerHTML; no browser storage.
-$markdown = (string) file_get_contents($root . '/assets/js/lib/markdown.js');
+$markdown = (string) frontend_copy_source($root . '/assets/js/lib/markdown.js');
 assert_true(!str_contains($markdown, 'innerHTML') && str_contains($markdown, 'createElement'), 'Markdown must build DOM nodes.');
 assert_true(str_contains($markdown, '/^(https?:\/\/|mailto:)/i'), 'Markdown links must be limited to safe protocols.');
 

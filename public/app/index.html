@@ -9,7 +9,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="TokenHub">
     <meta name="referrer" content="no-referrer">
-    <title>TokenHub 管理端</title>
+    <title data-localize="text">TokenHub 管理端</title>
     <link rel="manifest" href="/app/manifest.webmanifest">
     <link rel="icon" href="/admin/assets/brand/favicon.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="/app/assets/icons/apple-touch-icon.png">
@@ -22,17 +22,18 @@
   <body>
     <main id="app" class="app-shell tha-app theme-light" data-state="booting">
       <header class="tha-topbar">
-        <a class="tha-brand" href="#/overview" aria-label="TokenHub 首页"><img src="/admin/assets/brand/tokenhub-app-icon.svg" alt="" width="28" height="28"></a>
+        <a data-localize class="tha-brand" href="#/overview" aria-label="TokenHub 首页"><img src="/admin/assets/brand/tokenhub-app-icon.svg" alt="" width="28" height="28"></a>
         <h1 id="page-title" class="tha-title">TokenHub</h1>
-        <span id="tha-live" class="tha-live" hidden title="实时更新已连接"><span aria-hidden="true"></span>实时</span>
-        <span id="tha-net" class="tha-net" hidden>离线</span>
+        <span data-localize id="tha-live" class="tha-live" hidden title="实时更新已连接"><span aria-hidden="true"></span><span data-localize="text">实时</span></span>
+        <span data-localize="text" id="tha-net" class="tha-net" hidden>离线</span>
+        <div data-locale-picker></div>
       </header>
       <div id="tha-banners" class="tha-banners"></div>
       <section id="global-error" class="global-error" aria-live="polite"></section>
       <section id="content" class="content tha-content" tabindex="-1">
-        <div class="tha-splash" role="status"><img src="/admin/assets/brand/tokenhub-app-icon.svg" alt="" width="72" height="72"><span>正在打开 TokenHub…</span></div>
+        <div class="tha-splash" role="status"><img src="/admin/assets/brand/tokenhub-app-icon.svg" alt="" width="72" height="72"><span data-localize="text">正在打开 TokenHub…</span></div>
       </section>
-      <nav id="tha-tabbar" class="tha-tabbar" aria-label="主导航" hidden></nav>
+      <nav data-localize id="tha-tabbar" class="tha-tabbar" aria-label="主导航" hidden></nav>
       <span id="request-id" hidden></span>
       <div id="modal-root"></div>
     </main>

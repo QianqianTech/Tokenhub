@@ -1,3 +1,4 @@
+import { localize } from "./i18n.js";
 import { adminErrorMessage, api } from "./api.js";
 import { $ } from "./dom.js";
 
@@ -69,7 +70,7 @@ export function initPasswordRecovery(returnToLogin) {
     $("recovery-error").textContent = "";
     $("recovery-status").hidden = true;
     if (!email.value || !email.checkValidity()) {
-      $("recovery-error").textContent = "请输入有效的邮箱地址";
+      $("recovery-error").textContent = localize("请输入有效的邮箱地址");
       email.focus();
       return;
     }
@@ -79,7 +80,7 @@ export function initPasswordRecovery(returnToLogin) {
       $("recovery-status").textContent = result.data.message;
       $("recovery-status").hidden = false;
     } catch (error) {
-      $("recovery-error").textContent = adminErrorMessage(error, "发送重置邮件失败，请稍后重试");
+      $("recovery-error").textContent = adminErrorMessage(error, localize("发送重置邮件失败，请稍后重试"));
     } finally {
       setBusy(submit, false);
     }
@@ -92,11 +93,11 @@ export function initPasswordRecovery(returnToLogin) {
     const confirmation = $("reset-confirm-password").value;
     const output = $("reset-error");
     if (Array.from(password).length < 12 || new TextEncoder().encode(password).length > 72) {
-      output.textContent = "新密码至少 12 个字符，最多 72 字节";
+      output.textContent = localize("新密码至少 12 个字符，最多 72 字节");
       return;
     }
     if (password !== confirmation) {
-      output.textContent = "两次输入的新密码不一致";
+      output.textContent = localize("两次输入的新密码不一致");
       return;
     }
     output.textContent = "";
@@ -104,10 +105,10 @@ export function initPasswordRecovery(returnToLogin) {
     try {
       await api("/admin-api/reset-password", { method: "POST", body: JSON.stringify({ token: resetToken, password, password_confirmation: confirmation }), silent: true });
       returnToLogin();
-      $("login-status").textContent = "密码已重置，请使用新密码登录。";
+      $("login-status").textContent = localize("密码已重置，请使用新密码登录。");
       $("login-status").hidden = false;
     } catch (error) {
-      output.textContent = adminErrorMessage(error, "密码重置失败，请稍后重试");
+      output.textContent = adminErrorMessage(error, localize("密码重置失败，请稍后重试"));
       if (error.code === "ADMIN_RESET_LINK_INVALID") resetToken = "";
     } finally {
       setBusy(submit, false);
@@ -122,7 +123,7 @@ export function initPasswordRecovery(returnToLogin) {
   showRecovery("reset");
   if (!/^apr_[a-f0-9]{64}$/.test(resetToken)) {
     resetToken = "";
-    $("reset-error").textContent = "重置链接无效或已过期，请重新申请";
+    $("reset-error").textContent = localize("重置链接无效或已过期，请重新申请");
     $("recovery-reset").disabled = true;
   }
   return true;

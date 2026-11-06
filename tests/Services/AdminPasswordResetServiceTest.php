@@ -45,7 +45,10 @@ $expect = static function (callable $call, string $code): void {
     throw new RuntimeException('Expected ' . $code);
 };
 $ipPrefix = '198.' . random_int(18, 19) . '.' . random_int(1, 250) . '.';
-$request = static fn (array $body, string $ip = '198.51.100.31'): Request => new Request('POST', '/admin-api/forgot-password', ['REMOTE_ADDR' => str_replace('198.51.100.', $ipPrefix, $ip)], [], $body, '', new RequestContext('req_recovery_test', 'trace_recovery_test'));
+$request = static fn (array $body, string $ip = '198.51.100.31', string $locale = 'zh-CN'): Request => new Request('POST', '/admin-api/forgot-password', [
+    'REMOTE_ADDR' => str_replace('198.51.100.', $ipPrefix, $ip),
+    'HTTP_X_TOKENHUB_LOCALE' => $locale,
+], [], $body, '', new RequestContext('req_recovery_test', 'trace_recovery_test'));
 $job = static function (string $email): array {
     $id = bin2hex(random_bytes(16));
     App::redis()->set(AdminPasswordResetService::latestRequestKey($email), $id, 3600);
@@ -114,15 +117,19 @@ try {
     // Public requests have indistinguishable replies and contain no credentials.
     App::context()->setAdminUser(null);
     $controller = new AdminRecoveryController();
-    $known = $controller->forgotPassword($request(['email' => $email]));
-    $unknown = $controller->forgotPassword($request(['email' => 'unknown-' . $suffix . '@example.test']));
+    $known = $controller->forgotPassword($request(['email' => $email], locale: 'en-US'));
+    $unknown = $controller->forgotPassword($request(['email' => 'unknown-' . $suffix . '@example.test'], locale: 'en-US'));
     assert_same(200, $known->status, 'An unauthenticated administrator can request recovery.');
     assert_same(json_decode($known->body, true)['data'], json_decode($unknown->body, true)['data'], 'Known and unknown addresses get the same response.');
     assert_true(!str_contains($known->body, 'apr_'), 'No link is returned by the public API.');
     $queued = json_decode(App::redis()->connection()->rPop($queue), true);
     assert_same($email, $queued['email'], 'Recovery is queued for background delivery.');
+    assert_same('en-US', $queued['locale'], 'The request language is captured by the job.');
     assert_true(!isset($queued['token']), 'Redis stores no reset credential.');
     $service->deliver($queued);
+    $mail = $messages[array_key_last($messages)];
+    assert_same('Reset your TokenHub administrator password', $mail['subject'], 'The worker sends the message in the requested language.');
+    assert_true(str_contains($mail['body'], '/admin/?lang=en-US#reset-password='), 'The English link carries the locale and keeps the credential in its fragment.');
     $token = $tokenFromLastMail();
     $stored = $db->first('SELECT * FROM admin_password_resets WHERE token_hash = ?', [Crypto::hashKey($token)]);
     assert_true($stored !== null && !str_contains(json_encode($stored), $token), 'Only a hash of the reset credential is stored.');
@@ -135,6 +142,7 @@ try {
     $delayedJob = $job($email);
     $newerJob = $job($email);
     $service->deliver($newerJob);
+    assert_same('TokenHub 管理员密码重置', $messages[array_key_last($messages)]['subject'], 'Jobs from before the locale change use the Chinese default.');
     $mailCount = count($messages);
     $service->deliver($delayedJob);
     assert_same($mailCount, count($messages), 'Out-of-order workers must not send an older request or invalidate the newest link.');

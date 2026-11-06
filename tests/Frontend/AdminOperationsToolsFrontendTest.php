@@ -8,16 +8,16 @@ require __DIR__ . '/../bootstrap.php';
 $tableJs = admin_js_bundle();
 // lib/ops-tools.js was split by domain (UX-108); the checks cover all of its parts.
 $opsJs = implode("\n", array_map(
-    static fn (string $name): string => (string) file_get_contents(__DIR__ . '/../../public/admin/assets/js/lib/' . $name . '.js'),
+    static fn (string $name): string => (string) frontend_copy_source(__DIR__ . '/../../public/admin/assets/js/lib/' . $name . '.js'),
     ['ops-common', 'provider-catalog', 'api-key-tools', 'diagnostics', 'capability-editor']
 ));
 assert_true(!is_file(__DIR__ . '/../../public/admin/assets/js/lib/ops-tools.js'), 'The 1100-line ops-tools.js should stay split into domain modules.');
-$sessionJs = file_get_contents(__DIR__ . '/../../public/admin/assets/js/core/session.js') ?: '';
+$sessionJs = frontend_copy_source(__DIR__ . '/../../public/admin/assets/js/core/session.js') ?: '';
 $lookupService = file_get_contents(__DIR__ . '/../../app/Services/LookupService.php') ?: '';
-$appJs = file_get_contents(__DIR__ . '/../../public/admin/assets/js/app.js') ?: '';
-$apiJs = file_get_contents(__DIR__ . '/../../public/admin/assets/js/api.js') ?: '';
+$appJs = frontend_copy_source(__DIR__ . '/../../public/admin/assets/js/app.js') ?: '';
+$apiJs = frontend_copy_source(__DIR__ . '/../../public/admin/assets/js/api.js') ?: '';
 $adminCss = file_get_contents(__DIR__ . '/../../public/admin/assets/css/app.css') ?: '';
-$adminHtml = file_get_contents(__DIR__ . '/../../public/admin/index.html') ?: '';
+$adminHtml = frontend_copy_source(__DIR__ . '/../../public/admin/index.html') ?: '';
 $contractSource = file_get_contents(__DIR__ . '/../../app/Services/Gateway/ModelCapabilityContract.php') ?: '';
 
 assert_true($tableJs !== '' && $appJs !== '' && $apiJs !== '' && $adminCss !== '', 'Admin frontend sources should be readable.');
@@ -131,7 +131,7 @@ assert_true((bool) preg_match('/app\.js\?v=\d{8}-[A-Za-z0-9._-]+/', $adminHtml),
 assert_true(!str_contains($tableJs, 'table.js?v='), 'The removed single-file table.js must not be imported any more.');
 
 // API key list shows who disabled a key (api_keys.disabled_by).
-$resourcesJs = (string) file_get_contents(__DIR__ . '/../../public/admin/assets/js/resources.js') . "\n" . (string) file_get_contents(__DIR__ . '/../../public/admin/assets/js/i18n/zh-CN.js');
+$resourcesJs = (string) frontend_copy_source(__DIR__ . '/../../public/admin/assets/js/resources.js') . "\n" . (string) frontend_copy_source(__DIR__ . '/../../public/admin/assets/js/i18n/zh-CN.js');
 assert_true(str_contains($tableJs, 'apiKeyStatusText(row.status, row.disabled_by)'), 'API key status cells should include the disable source.');
 assert_true(str_contains($tableJs, 'const API_KEY_DISABLED_BY_LABELS = { admin: "管理员", management: "智能体" };'), 'Disable sources should have Chinese labels.');
 assert_true(str_contains($resourcesJs, '"disabled_by": "停用来源"') && str_contains($resourcesJs, '"key_suffix", "status", "disabled_by"'), 'API key details should show the disable source.');

@@ -2202,6 +2202,12 @@ pre {
   font-weight: 800;
 }
 
+.nav-section-label:lang(en) {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.25;
+}
+
 .nav-count {
   min-width: 22px;
   min-height: 20px;

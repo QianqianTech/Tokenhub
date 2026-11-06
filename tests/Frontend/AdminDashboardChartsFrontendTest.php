@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 require __DIR__ . '/../bootstrap.php';
 
-$dashboardSource = file_get_contents(__DIR__ . '/../../public/admin/assets/js/dashboard.js') ?: '';
+$dashboardSource = frontend_copy_source(__DIR__ . '/../../public/admin/assets/js/dashboard.js') ?: '';
 $adminCss = file_get_contents(__DIR__ . '/../../public/admin/assets/css/app.css') ?: '';
-$resources = file_get_contents(__DIR__ . '/../../public/admin/assets/js/resources.js') ?: '';
+$resources = frontend_copy_source(__DIR__ . '/../../public/admin/assets/js/resources.js') ?: '';
 
 assert_true(str_contains($dashboardSource, 'trendChart('), 'Admin dashboard should render trend data as a chart.');
 assert_true(str_contains($dashboardSource, 'departmentRanking(') && str_contains($dashboardSource, 'userRanking('), 'Admin dashboard should render department bars and an employee ranking table.');
@@ -30,7 +30,7 @@ assert_true(str_contains($dashboardSource, 'datetime-local'), 'Dashboard should 
 assert_true(str_contains($dashboardSource, 'periodRange('), 'Dashboard should derive shared from/to parameters from the selected period.');
 assert_true(str_contains($dashboardSource, 'dash-status'), 'Dashboard should render a status-first operations strip.');
 assert_true(str_contains($dashboardSource, 'formatIntegerCost(today.total_cost)'), 'Dashboard cost metric should render through the integer cost formatter.');
-assert_true(str_contains($dashboardSource, 'return Math.round(number).toLocaleString("zh-CN");'), 'Dashboard integer cost formatter should round to the nearest whole number.');
+assert_true(str_contains($dashboardSource, 'return Math.round(number).toLocaleString(getLocale());'), 'Dashboard integer cost formatter should round to the nearest whole number.');
 assert_true(str_contains($dashboardSource, 'formatResourceValue(column, row[column])'), 'Dashboard should keep localized value formatting for table fallback and drilldown surfaces.');
 assert_true(str_contains($dashboardSource, '"部门用量排行"'), 'Dashboard should render a department usage ranking panel.');
 assert_true(str_contains($dashboardSource, '"员工用量排行"'), 'Dashboard should render an employee usage ranking panel.');

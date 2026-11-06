@@ -1,3 +1,4 @@
+import { localize } from "/admin/assets/js/i18n.js";
 // Native shells (native/capacitor, native/tauri) expose secure storage to the
 // /app/ page. This shim turns them into window.TokenHubNative, the interface
 // auth.js uses (see native/README.md). In a normal browser it does nothing.
@@ -84,15 +85,15 @@
           const push = window.Capacitor.Plugins.PushNotifications;
           const permission = await push.requestPermissions();
           if (permission.receive !== "granted") {
-            throw new Error("没有获得通知权限。");
+            throw new Error(localize("没有获得通知权限。"));
           }
           if (window.Capacitor.getPlatform() === "android") {
-            await push.createChannel?.({ id: "tokenhub_alerts", name: "TokenHub 告警", importance: 5, visibility: 0 }).catch(() => undefined);
+            await push.createChannel?.({ id: "tokenhub_alerts", name: localize("TokenHub 告警"), importance: 5, visibility: 0 }).catch(() => undefined);
           }
           const token = await new Promise((resolve, reject) => {
-            const timer = window.setTimeout(() => reject(new Error("系统没有返回推送令牌。")), 20000);
+            const timer = window.setTimeout(() => reject(new Error(localize("系统没有返回推送令牌。"))), 20000);
             push.addListener("registration", (result) => { window.clearTimeout(timer); resolve(result.value); });
-            push.addListener("registrationError", (error) => { window.clearTimeout(timer); reject(new Error(error?.error || "推送注册失败。")); });
+            push.addListener("registrationError", (error) => { window.clearTimeout(timer); reject(new Error(error?.error || localize("推送注册失败。"))); });
             push.register();
           });
           return { platform: window.Capacitor.getPlatform(), token: String(token) };

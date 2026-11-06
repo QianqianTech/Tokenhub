@@ -1,3 +1,4 @@
+import { localize } from "../i18n.js";
 import { pageHead } from "../lib/resource-table.js";
 import { adminErrorMessage, api, isAbortError } from "../api.js";
 import { button, clear, el, field, readFields, setText, showModal, statusMessage } from "../dom.js";
@@ -7,20 +8,20 @@ import { guardForm, markClean } from "../lib/dirty-guard.js";
 
 const SYSTEM_SETTING_PRESENTATIONS = {
   rag_ai_image_processing: {
-    title: "RAG 图片 AI 处理",
-    description: "控制知识库图片的 AI 标注、视觉模型、提示词策略和失败重试。"
+    title: localize("RAG 图片 AI 处理"),
+    description: localize("控制知识库图片的 AI 标注、视觉模型、提示词策略和失败重试。")
   },
   tls_certificates: {
-    title: "证书与入口",
-    description: "管理域名或内网 IP 证书、自动续期和到期告警。"
+    title: localize("证书与入口"),
+    description: localize("管理域名或内网 IP 证书、自动续期和到期告警。")
   },
   brand_identity: {
-    title: "标题与标识",
-    description: "设置管理后台和运营大屏的名称、Logo 与浏览器图标。"
+    title: localize("标题与标识"),
+    description: localize("设置管理后台和运营大屏的名称、Logo 与浏览器图标。")
   },
   "content_retention.policy": {
-    title: "内容留存策略",
-    description: "设置会话内容的保存方式、保存期限和查看权限。"
+    title: localize("内容留存策略"),
+    description: localize("设置会话内容的保存方式、保存期限和查看权限。")
   }
 };
 
@@ -30,15 +31,15 @@ const SYSTEM_SETTING_FIELD_LABELS = {
     Object.fromEntries(page.fields.map((config) => [config.name, config.label]))
   ])),
   "content_retention.policy": {
-    mode: "保存模式",
-    days: "保存天数",
-    demo_marker: "演示标记",
-    default_days: "默认保存天数",
-    max_days: "最大保存天数",
-    raw_allowed_roles: "可查看原文的角色",
-    departments: "部门策略",
-    users: "用户策略",
-    api_keys: "API 密钥策略"
+    mode: localize("保存模式"),
+    days: localize("保存天数"),
+    demo_marker: localize("演示标记"),
+    default_days: localize("默认保存天数"),
+    max_days: localize("最大保存天数"),
+    raw_allowed_roles: localize("可查看原文的角色"),
+    departments: localize("部门策略"),
+    users: localize("用户策略"),
+    api_keys: localize("API 密钥策略")
   }
 };
 
@@ -52,7 +53,7 @@ function systemSettingPresentation(row) {
   const presentation = SYSTEM_SETTING_PRESENTATIONS[key];
   return {
     key,
-    title: presentation?.title || key || "未命名设置",
+    title: presentation?.title || key || localize("未命名设置"),
     description: presentation?.description || row?.description || ""
   };
 }
@@ -66,7 +67,7 @@ function systemSettingFieldLabel(row, descriptor) {
   const path = descriptor.path || [];
   const labels = SYSTEM_SETTING_FIELD_LABELS[key] || {};
   const readablePath = path.filter((segment) => !/^\d+$/.test(String(segment)));
-  return readablePath.map((segment) => labels[segment] || segment).join(" / ") || "配置值";
+  return readablePath.map((segment) => labels[segment] || segment).join(" / ") || localize("配置值");
 }
 
 export async function renderSystemSettingsPage(content) {
@@ -80,7 +81,7 @@ export async function renderSystemSettingsPage(content) {
       const visibleRows = rows.filter((row) => !isDemoSystemSetting(row));
       clear(list);
       if (visibleRows.length === 0) {
-        list.append(statusMessage("暂无高级设置，可新增一项自定义配置。"));
+        list.append(statusMessage(localize("暂无高级设置，可新增一项自定义配置。")));
         return;
       }
       for (const row of visibleRows) {
@@ -90,12 +91,12 @@ export async function renderSystemSettingsPage(content) {
       if (isAbortError(error)) {
         return;
       }
-      list.replaceChildren(errorState(error, { fallback: "高级设置加载失败", onRetry: () => refresh(expandedSettingId) }));
+      list.replaceChildren(errorState(error, { fallback: localize("高级设置加载失败"), onRetry: () => refresh(expandedSettingId) }));
     }
   };
   page.append(
-    pageHead("高级设置", "集中查看和编辑系统功能配置。每项配置均可按字段直接修改；开关、数字和列表无需填写 JSON。", el("div", {}, [
-      button("新增自定义配置", () => showCreateSystemSettingModal(refresh), "secondary")
+    pageHead(localize("高级设置"), localize("集中查看和编辑系统功能配置。每项配置均可按字段直接修改；开关、数字和列表无需填写 JSON。"), el("div", {}, [
+      button(localize("新增自定义配置"), () => showCreateSystemSettingModal(refresh), "secondary")
     ])),
     el("section", { className: "panel system-settings-panel" }, [list])
   );
@@ -113,7 +114,7 @@ function systemSettingCard(row, onRefresh, isExpanded = false) {
   const accordion = el("div", { className: "system-setting-accordion", hidden: !isExpanded }, [
     summary.length > 0
       ? el("div", { className: "system-setting-summary" }, summary.map((item) => el("span", { text: item })))
-      : el("p", { className: "notice", text: "此设置没有可编辑字段。" }),
+      : el("p", { className: "notice", text: localize("此设置没有可编辑字段。") }),
     createSystemSettingEditor(row, () => onRefresh(row.id))
   ]);
   return el("article", { className: `system-setting-card${isExpanded ? " expanded" : ""}` }, [
@@ -122,7 +123,7 @@ function systemSettingCard(row, onRefresh, isExpanded = false) {
         el("strong", { text: presentation.title }),
         el("p", { className: "notice", text: presentation.description })
       ]),
-      button(isExpanded ? "收起" : "展开", () => onRefresh(isExpanded ? null : row.id), "secondary")
+      button(isExpanded ? localize("收起") : localize("展开"), () => onRefresh(isExpanded ? null : row.id), "secondary")
     ]),
     accordion
   ]);
@@ -165,13 +166,13 @@ function systemSettingFieldName(path) {
 function systemSettingFieldConfig(row, descriptor) {
   const label = systemSettingFieldLabel(row, descriptor);
   if (descriptor.kind === "boolean") {
-    return { name: descriptor.name, label, type: "select", options: [["true", "启用"], ["false", "停用"]] };
+    return { name: descriptor.name, label, type: "select", options: [["true", localize("启用")], ["false", localize("停用")]] };
   }
   if (descriptor.kind === "number") {
     return { name: descriptor.name, label, type: "number" };
   }
   if (descriptor.kind === "list") {
-    return { name: descriptor.name, label: `${label}（每行一项）`, type: "textarea", rows: 4 };
+    return { name: descriptor.name, label: localize`${label}（每行一项）`, type: "textarea", rows: 4 };
   }
   return { name: descriptor.name, label };
 }
@@ -191,9 +192,9 @@ function systemSettingDisplayValue(value) {
     return value.join("、");
   }
   if (typeof value === "boolean") {
-    return value ? "已启用" : "已停用";
+    return value ? localize("已启用") : localize("已停用");
   }
-  return value == null ? "未设置" : String(value);
+  return value == null ? localize("未设置") : String(value);
 }
 
 function createSystemSettingEditor(row, onSaved) {
@@ -201,8 +202,8 @@ function createSystemSettingEditor(row, onSaved) {
   const descriptors = systemSettingEditableFields(storedValue);
   const form = guardForm(el("form", { className: "edit-form system-setting-editor", onSubmit: (event) => event.preventDefault() }));
   const baseFields = [
-    { name: "setting_key", label: "配置标识" },
-    { name: "description", label: "说明", optional: true }
+    { name: "setting_key", label: localize("配置标识") },
+    { name: "description", label: localize("说明"), optional: true }
   ];
   for (const config of baseFields) {
     form.append(field(config, row[config.name] || ""));
@@ -211,10 +212,10 @@ function createSystemSettingEditor(row, onSaved) {
     form.append(field(systemSettingFieldConfig(row, descriptor), systemSettingFormValue(descriptor)));
   }
   if (descriptors.length === 0) {
-    form.append(statusMessage("此配置包含的复杂数据保持不变；请通过对应的系统设置分区进行管理。"));
+    form.append(statusMessage(localize("此配置包含的复杂数据保持不变；请通过对应的系统设置分区进行管理。")));
   }
   const output = el("p", { className: "notice", hidden: true });
-  form.append(button("保存", async () => {
+  form.append(button(localize("保存"), async () => {
     try {
       const values = readFields(form, baseFields);
       let settingValue = cloneSystemSettingValue(storedValue);
@@ -231,11 +232,11 @@ function createSystemSettingEditor(row, onSaved) {
         })
       });
       markClean(form);
-      setText(output, "保存成功");
+      setText(output, localize("保存成功"));
       output.hidden = false;
       await onSaved();
     } catch (error) {
-      setText(output, adminErrorMessage(error, "保存失败，请检查输入内容"));
+      setText(output, adminErrorMessage(error, localize("保存失败，请检查输入内容")));
       output.hidden = false;
     }
   }));
@@ -288,18 +289,18 @@ function setSystemSettingFieldValue(value, path, nextValue) {
 
 function showCreateSystemSettingModal(onSaved) {
   const fields = [
-    { name: "setting_key", label: "配置标识" },
-    { name: "description", label: "说明", optional: true },
-    { name: "field_name", label: "首个配置项名称" },
-    { name: "field_type", label: "配置项类型", type: "select", options: [["text", "文本"], ["number", "数字"], ["boolean", "开关"], ["list", "列表（每行一项）"]] },
-    { name: "field_value", label: "初始值（列表每行一项）", type: "textarea", rows: 4, optional: true }
+    { name: "setting_key", label: localize("配置标识") },
+    { name: "description", label: localize("说明"), optional: true },
+    { name: "field_name", label: localize("首个配置项名称") },
+    { name: "field_type", label: localize("配置项类型"), type: "select", options: [["text", localize("文本")], ["number", localize("数字")], ["boolean", localize("开关")], ["list", localize("列表（每行一项）")]] },
+    { name: "field_value", label: localize("初始值（列表每行一项）"), type: "textarea", rows: 4, optional: true }
   ];
   const form = el("form", { className: "edit-form system-setting-editor", onSubmit: (event) => event.preventDefault() });
   for (const config of fields) {
     form.append(field(config));
   }
   const output = el("p", { className: "notice", hidden: true });
-  form.append(button("新增", async () => {
+  form.append(button(localize("新增"), async () => {
     try {
       const values = readFields(form, fields);
       const value = systemSettingNewValue(values.field_type, values.field_value || "");
@@ -311,16 +312,16 @@ function showCreateSystemSettingModal(onSaved) {
           setting_value: JSON.stringify({ [values.field_name]: value })
         })
       });
-      setText(output, "新增成功");
+      setText(output, localize("新增成功"));
       output.hidden = false;
       await onSaved();
     } catch (error) {
-      setText(output, adminErrorMessage(error, "新增失败，请检查输入内容"));
+      setText(output, adminErrorMessage(error, localize("新增失败，请检查输入内容")));
       output.hidden = false;
     }
   }));
   form.append(output);
-  showModal("新增自定义配置", form);
+  showModal(localize("新增自定义配置"), form);
 }
 
 function systemSettingNewValue(type, raw) {

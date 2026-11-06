@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 require __DIR__ . '/../bootstrap.php';
 
-$resources = file_get_contents(__DIR__ . '/../../public/admin/assets/js/resources.js') ?: '';
+$resources = frontend_copy_source(__DIR__ . '/../../public/admin/assets/js/resources.js') ?: '';
 $tableSource = admin_js_bundle() ?: '';
 
 assert_true(

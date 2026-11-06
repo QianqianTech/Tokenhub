@@ -8,6 +8,31 @@
   var KEY = "tokenhub.servers";
   var $ = function (id) { return document.getElementById(id); };
 
+  var languageKey = "tokenhub.locale";
+  var language = "zh-CN";
+  try { if (localStorage.getItem(languageKey) === "en-US") language = "en-US"; } catch (e) { /* optional preference */ }
+  var labels = Array.from(document.querySelectorAll("[data-en]"), function (node) {
+    return { node: node, original: node.textContent };
+  });
+  function copy(chinese, english) {
+    return language === "en-US" ? english : chinese;
+  }
+  function renderLanguage() {
+    document.documentElement.lang = language;
+    $("locale").value = language;
+    $("locale").setAttribute("aria-label", copy("界面语言", "Interface language"));
+    labels.forEach(function (item) {
+      item.node.textContent = copy(item.original, item.node.dataset.en);
+    });
+  }
+  renderLanguage();
+  $("locale").addEventListener("change", function () {
+    language = $("locale").value === "en-US" ? "en-US" : "zh-CN";
+    try { localStorage.setItem(languageKey, language); } catch (e) { /* optional preference */ }
+    $("error").textContent = "";
+    renderLanguage();
+  });
+
   function servers() {
     try { return JSON.parse(localStorage.getItem(KEY) || "[]").filter(function (s) { return /^https:\/\//.test(s); }); } catch (e) { return []; }
   }
@@ -23,19 +48,20 @@
     try {
       var url = new URL(text);
       var code = new URLSearchParams(url.hash.replace(/^#/, "")).get("c") || "";
-      if (url.protocol !== "https:") { return { error: "安装包只连接 HTTPS 服务器。纯 HTTP 部署请在浏览器中使用。" }; }
+      if (url.protocol !== "https:") { return { error: copy("安装包只连接 HTTPS 服务器。纯 HTTP 部署请在浏览器中使用。", "The installed app connects to HTTPS servers only. Use a browser for an HTTP deployment.") }; }
       if (!/^thl_[0-9a-f]{64}$/.test(code)) { return null; }
       return { origin: url.origin, code: code };
     } catch (e) { return null; }
   }
   function open(origin, code) {
     remember(origin);
-    window.location.href = code ? origin + "/app/link#c=" + code : origin + "/app/";
+    var localeQuery = language === "en-US" ? "?lang=en-US" : "";
+    window.location.href = origin + "/app/" + (code ? "link" : "") + localeQuery + (code ? "#c=" + code : "");
   }
   function go(text) {
     var parsed = parse(text);
     $("error").textContent = "";
-    if (!parsed) { $("error").textContent = "这不是有效的认证链接，请在后台重新生成。"; return; }
+    if (!parsed) { $("error").textContent = copy("这不是有效的认证链接，请在后台重新生成。", "Invalid sign-in link. Generate a new one in the admin console."); return; }
     if (parsed.error) { $("error").textContent = parsed.error; return; }
     open(parsed.origin, parsed.code);
   }

@@ -1,3 +1,4 @@
+import { getLocale, localize } from "../i18n.js";
 // 用量明细 (design): totals for the current filters above the list, compact
 // cells (time, tokens, cost, latency) and expandable details for requests
 // that did not succeed (error, route attempts, key).
@@ -14,15 +15,15 @@ function number(value) {
 
 export function compact(value) {
   const amount = number(value);
-  if (Math.abs(amount) >= 1e8) return `${(amount / 1e8).toFixed(2)} 亿`;
+  if (Math.abs(amount) >= 1e8) return localize`${(amount / 1e8).toFixed(2)} 亿`;
   if (Math.abs(amount) >= 1e6) return `${(amount / 1e6).toFixed(1)}M`;
   if (Math.abs(amount) >= 1e4) return `${(amount / 1e3).toFixed(1)}K`;
-  return amount.toLocaleString("zh-CN");
+  return amount.toLocaleString(getLocale());
 }
 
 /** Summary strip: requests, tokens, token mix and cost for the current filters. */
 export function usageSummary() {
-  const host = el("section", { className: "usage-summary", "aria-label": "筛选结果汇总", hidden: true });
+  const host = el("section", { className: "usage-summary", "aria-label": localize("筛选结果汇总"), hidden: true });
   let seq = 0;
   host.refresh = async (filters) => {
     const current = ++seq;
@@ -58,26 +59,26 @@ export function usageSummary() {
     const plainInput = Math.max(0, input - cache);
     const share = (value) => Math.round(value / mixTotal * 100);
     const cost = number(today.total_cost);
-    const statusNote = filters.status ? "汇总按天统计，不区分请求结果" : "汇总按天统计";
+    const statusNote = filters.status ? localize("汇总按天统计，不区分请求结果") : localize("汇总按天统计");
     host.replaceChildren(
-      el("div", { className: "usage-summary-item" }, [el("span", { text: "请求" }), el("strong", { text: number(today.request_count).toLocaleString("zh-CN") })]),
-      el("div", { className: "usage-summary-item" }, [el("span", { text: "总 Token" }), el("strong", { text: compact(totalTokens), title: totalTokens.toLocaleString("zh-CN") })]),
+      el("div", { className: "usage-summary-item" }, [el("span", { text: localize("请求") }), el("strong", { text: number(today.request_count).toLocaleString(getLocale()) })]),
+      el("div", { className: "usage-summary-item" }, [el("span", { text: localize("总 Token") }), el("strong", { text: compact(totalTokens), title: totalTokens.toLocaleString(getLocale()) })]),
       el("div", { className: "usage-summary-item usage-summary-mix" }, [
-        el("span", { text: "Token 构成" }),
-        el("span", { className: "usage-mix-bar", role: "img", "aria-label": `输入 ${share(plainInput)}%，输出 ${share(output)}%，缓存读 ${share(cache)}%` }, [
+        el("span", { text: localize("Token 构成") }),
+        el("span", { className: "usage-mix-bar", role: "img", "aria-label": localize`输入 ${share(plainInput)}%，输出 ${share(output)}%，缓存读 ${share(cache)}%` }, [
           el("span", { className: "is-input", style: `width: ${share(plainInput)}%` }),
           el("span", { className: "is-output", style: `width: ${share(output)}%` }),
           el("span", { className: "is-cache", style: `width: ${share(cache)}%` })
         ]),
         el("span", { className: "usage-mix-legend" }, [
-          el("span", { text: `输入 ${share(plainInput)}%` }),
-          el("span", { text: `输出 ${share(output)}%` }),
-          el("span", { text: `缓存读 ${share(cache)}%` })
+          el("span", { text: localize`输入 ${share(plainInput)}%` }),
+          el("span", { text: localize`输出 ${share(output)}%` }),
+          el("span", { text: localize`缓存读 ${share(cache)}%` })
         ])
       ]),
       el("div", { className: "usage-summary-item" }, [
-        el("span", { text: "成本" }),
-        el("strong", { text: cost > 0 ? `¥${cost.toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "未配置价格" })
+        el("span", { text: localize("成本") }),
+        el("strong", { text: cost > 0 ? `¥${cost.toLocaleString(getLocale(), { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : localize("未配置价格") })
       ]),
       el("p", { className: "usage-summary-note", text: statusNote })
     );
@@ -123,15 +124,15 @@ export function usageFailureDetails(row, { apiKeyLabel = "", onContent = null, o
   const error = [row.error_code || formatResourceValue("status", row.status), row.http_status ? `HTTP ${row.http_status}` : ""].filter(Boolean).join(" · ");
   const links = [];
   if (onContent) {
-    links.push(el("button", { type: "button", className: "link-button is-accent", text: "留存内容", onClick: onContent }));
+    links.push(el("button", { type: "button", className: "link-button is-accent", text: localize("留存内容"), onClick: onContent }));
   }
   if (onLogs) {
-    links.push(el("button", { type: "button", className: "link-button is-accent", text: "相关日志", onClick: onLogs }));
+    links.push(el("button", { type: "button", className: "link-button is-accent", text: localize("相关日志"), onClick: onLogs }));
   }
   return el("div", { className: "usage-failure" }, [
-    el("div", {}, [el("span", { text: "错误" }), el("strong", { className: "is-danger", text: error })]),
-    el("div", {}, [el("span", { text: "路由" }), el("strong", { text: route })]),
-    el("div", {}, [el("span", { text: "密钥" }), el("strong", { className: "is-mono", text: apiKeyLabel || (row.api_key_id ? `#${row.api_key_id}` : "—") })]),
+    el("div", {}, [el("span", { text: localize("错误") }), el("strong", { className: "is-danger", text: error })]),
+    el("div", {}, [el("span", { text: localize("路由") }), el("strong", { text: route })]),
+    el("div", {}, [el("span", { text: localize("密钥") }), el("strong", { className: "is-mono", text: apiKeyLabel || (row.api_key_id ? `#${row.api_key_id}` : "—") })]),
     el("div", { className: "usage-failure-links" }, links)
   ]);
 }

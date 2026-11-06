@@ -19,6 +19,21 @@ if (is_file($autoload)) {
     });
 }
 
+/** Preserve the source-level Chinese copy assertions through translation markers. */
+function frontend_copy_source(string $path): string
+{
+    $source = (string) file_get_contents($path);
+    if (str_ends_with($path, '.js')) {
+        return preg_replace('/\blocalize\(("(?:[^"\\\\]|\\\\.)*")\)|\blocalize(?=`)/', '$1', $source) ?? $source;
+    }
+    if (str_ends_with($path, '.html')) {
+        $source = preg_replace('/<span data-localize="text">([^<]*)<\/span>/', '$1', $source) ?? $source;
+        return str_replace([' data-localize="text"', ' data-localize'], '', $source);
+    }
+
+    return $source;
+}
+
 if (!function_exists('admin_js_bundle')) {
     /**
      * Concatenated source of every admin SPA module. Static frontend tests use it
@@ -35,7 +50,7 @@ if (!function_exists('admin_js_bundle')) {
             }
         }
         sort($files);
-        return implode("\n", array_map(static fn (string $path): string => (string) file_get_contents($path), $files));
+        return implode("\n", array_map('frontend_copy_source', $files));
     }
 }
 

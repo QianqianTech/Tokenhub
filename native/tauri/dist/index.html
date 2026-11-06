@@ -25,14 +25,18 @@
     <main>
       <svg class="logo" viewBox="0 0 250 250" aria-hidden="true"><rect width="250" height="250" rx="56" fill="#151A21"/><path fill="#34D399" fill-rule="evenodd" d="M90.5 78L117.5 78L147.5 172L129 172L121.4 147.5L87 147.5L80 172L61.5 172ZM103.5 90L116.4 131.5L91.6 131.5Z"/><path fill="#236D57" d="M163 78H181A7 7 0 0 1 188 85V134A7 7 0 0 1 181 141H163A7 7 0 0 1 156 134V85A7 7 0 0 1 163 78Z"/><path fill="#34D399" d="M163 149H181A7 7 0 0 1 188 156V165A7 7 0 0 1 181 172H163A7 7 0 0 1 156 165V156A7 7 0 0 1 163 149Z"/></svg>
       <h1>TokenHub</h1>
+      <select id="locale" aria-label="界面语言">
+        <option value="zh-CN" lang="zh-CN">简体中文</option>
+        <option value="en-US" lang="en-US">English</option>
+      </select>
       <section id="servers" hidden>
-        <p class="muted">已添加的服务器</p>
+        <p class="muted" data-en="Saved servers">已添加的服务器</p>
         <ul id="server-list"></ul>
       </section>
-      <p class="muted">在电脑上打开 TokenHub 后台，点左下角「APP 设备」生成认证链接，粘贴到下面。</p>
+      <p class="muted" data-en="Open App devices in the TokenHub admin console, generate a sign-in link, and paste it below.">在电脑上打开 TokenHub 后台，点左下角「APP 设备」生成认证链接，粘贴到下面。</p>
       <textarea id="link" placeholder="https://…/app/link#c=thl_…" autocomplete="off" spellcheck="false"></textarea>
       <p id="error" class="error" role="alert"></p>
-      <button id="go" type="button">登录</button>
+      <button id="go" type="button" data-en="Sign in">登录</button>
     </main>
     <script src="shell.js"></script>
   </body>

@@ -6,7 +6,7 @@ import { confirmDialog } from "../components/modal.js";
 import { copyButton, emptyState, errorState, loadingState, toast } from "../components/feedback.js";
 import { pager, PAGE_SIZES } from "../components/pager.js";
 import { button, clear, el, field, showModal } from "../dom.js";
-import { t } from "../i18n.js";
+import { getLocale, localize, t } from "../i18n.js";
 import { showCreateModal, showEditModal, showProviderSecretModal } from "./forms.js";
 import { formatDateTime, fromLocalInputValue, isDateColumn, parseServerTime, statusTone, toLocalInputValue } from "./format.js";
 import { clearLookupCache, COLUMN_LOOKUPS } from "./lookups.js";
@@ -33,15 +33,15 @@ const COLUMN_OVERRIDES = {
   "usage-records": ["created_at", "request_id", "user_id", "department_id", "api_key_id", "model_name", "capability", "input_tokens", "output_tokens", "cache_read_tokens", "total_tokens", "cost_amount", "latency_ms", "status", "id"]
 };
 const LOCAL_LABELS = {
-  price: "价格（每千 Token 输入 / 输出）",
-  name: "名称"
+  price: localize("价格（每千 Token 输入 / 输出）"),
+  name: localize("名称")
 };
 
 // Shorter headers where the page context already says what is measured.
 const HEADER_LABELS = {
-  "usage-records": { created_at: "时间", request_id: "请求 ID", model_name: "模型", input_tokens: "输入", output_tokens: "输出", cache_read_tokens: "缓存读", total_tokens: "总 Token", cost_amount: "成本", latency_ms: "耗时", status: "结果" },
-  models: { provider_name: "厂商", context_length: "上下文", route_priority: "优先级", gateway_support: "网关", status: "启用" },
-  users: { username: "用户", last_login_at: "最近登录" }
+  "usage-records": { created_at: localize("时间"), request_id: localize("请求 ID"), model_name: localize("模型"), input_tokens: localize("输入"), output_tokens: localize("输出"), cache_read_tokens: localize("缓存读"), total_tokens: localize("总 Token"), cost_amount: localize("成本"), latency_ms: localize("耗时"), status: localize("结果") },
+  models: { provider_name: localize("厂商"), context_length: localize("上下文"), route_priority: localize("优先级"), gateway_support: localize("网关"), status: localize("启用") },
+  users: { username: localize("用户"), last_login_at: localize("最近登录") }
 };
 
 function headerLabel(resourceKey, column) {
@@ -68,21 +68,21 @@ const PAGING_KEYS = ["limit", "offset", "sort"];
 
 const BULK_ACTIONS = {
   users: {
-    noun: "用户",
+    noun: localize("用户"),
     actions: [
-      ["move", "调整部门", "secondary"],
-      ["enable", "启用", "secondary"],
-      ["disable", "停用", "danger"]
+      ["move", localize("调整部门"), "secondary"],
+      ["enable", localize("启用"), "secondary"],
+      ["disable", localize("停用"), "danger"]
     ],
     run: runUserBulkAction
   },
   models: {
     endpoint: "/admin-api/models/batch",
-    noun: "模型",
+    noun: localize("模型"),
     actions: [
-      ["enable", "批量启用", "secondary"],
-      ["disable", "批量暂停", "secondary"],
-      ["delete", "批量删除", "danger", "相关价格、API 密钥授权和模型限额也会被删除。"]
+      ["enable", localize("批量启用"), "secondary"],
+      ["disable", localize("批量暂停"), "secondary"],
+      ["delete", localize("批量删除"), "danger", localize("相关价格、API 密钥授权和模型限额也会被删除。")]
     ]
   }
 };
@@ -101,7 +101,7 @@ export async function renderGenericResourcePage(content, resourceKey, initialFil
   const config = resources[resourceKey];
   clear(content);
   if (!config) {
-    content.append(errorState({ code: "NOT_FOUND" }, { fallback: "资源不存在" }));
+    content.append(errorState({ code: "NOT_FOUND" }, { fallback: localize("资源不存在") }));
     return;
   }
   if (config.tree) {
@@ -126,15 +126,15 @@ export async function renderGenericResourcePage(content, resourceKey, initialFil
   const toolbar = await renderFilters(resourceKey, state, refreshRows, { specs });
   const actions = el("div", { className: "toolbar-actions" });
   if (resourceKey === "models") {
-    actions.append(button("拉取模型", () => showModelProviderImport(refreshRows), "secondary"));
+    actions.append(button(localize("拉取模型"), () => showModelProviderImport(refreshRows), "secondary"));
   }
   if (config.exportType) {
-    actions.append(button("导出", async () => {
+    actions.append(button(localize("导出"), async () => {
       const result = await api(`/admin-api/exports/${config.exportType}`, {
         method: "POST",
         body: JSON.stringify(withoutPaging(state.filters))
       });
-      showOperationResult("导出任务", result.data, "导出任务已创建，可在导出任务列表查看");
+      showOperationResult(localize("导出任务"), result.data, localize("导出任务已创建，可在导出任务列表查看"));
     }, "secondary"));
   }
   for (const action of config.actions || []) {
@@ -196,7 +196,7 @@ const DEPARTMENT_TREE_PAGES = new Set(["users"]);
 
 // Department list on the left of a page: picking one filters by department_id.
 async function departmentNav(state, onChange) {
-  const nav = el("nav", { className: "list-tree", "aria-label": "按部门筛选" });
+  const nav = el("nav", { className: "list-tree", "aria-label": localize("按部门筛选") });
   const result = await api("/admin-api/departments/tree", { silent: true }).catch(() => ({ data: [] }));
   const roots = Array.isArray(result.data) ? result.data : [];
   const items = [];
@@ -225,7 +225,7 @@ async function departmentNav(state, onChange) {
       node.setAttribute("aria-current", active ? "true" : "false");
     });
   };
-  const allButton = el("button", { type: "button", className: "list-tree-item is-root", dataset: { departmentId: "" }, text: "全部部门", onClick: () => select(0) });
+  const allButton = el("button", { type: "button", className: "list-tree-item is-root", dataset: { departmentId: "" }, text: localize("全部部门"), onClick: () => select(0) });
   buttons.push(allButton);
   const list = el("ul", { className: "list-tree-items" }, [
     el("li", {}, [allButton]),
@@ -235,16 +235,16 @@ async function departmentNav(state, onChange) {
         className: `list-tree-item ${item.disabled ? "is-disabled" : ""}`.trim(),
         style: `--tree-depth: ${item.depth}`,
         dataset: { departmentId: String(item.id) },
-        title: item.disabled ? `${item.name}（已停用）` : item.name,
+        title: item.disabled ? localize`${item.name}（已停用）` : item.name,
         onClick: () => select(item.id)
       }, [el("span", { className: "list-tree-name", text: item.name })]);
       buttons.push(node);
       return el("li", {}, [node]);
     })
   ]);
-  nav.append(el("span", { className: "list-tree-title", text: "部门" }), list);
+  nav.append(el("span", { className: "list-tree-title", text: localize("部门") }), list);
   if (!items.length) {
-    nav.append(el("p", { className: "list-tree-empty", text: "没有可查看的部门" }));
+    nav.append(el("p", { className: "list-tree-empty", text: localize("没有可查看的部门") }));
   }
   mark();
   return nav;
@@ -259,29 +259,29 @@ const PLUS_ICON = "M12 5v14M5 12h14";
 
 export function createButton(config, onClick) {
   const node = button("", onClick, "primary-action");
-  node.append(svgIcon(PLUS_ICON), el("span", { text: `新建${recordNoun(config.label || "")}` }));
+  node.append(svgIcon(PLUS_ICON), el("span", { text: localize`新建${recordNoun(config.label || "")}` }));
   return node;
 }
 
 // Old-style filter definitions (resources.js filterFields) for pages without
 // an entry in LIST_FILTERS: ids become pickers, from/to become a time range.
 function legacyFilterSpecs(resourceKey) {
-  const remote = { user_id: ["users", "用户"], provider_id: ["providers", "厂商"], model_id: ["models", "模型"], api_key_id: ["api-keys", "API 密钥"] };
+  const remote = { user_id: ["users", localize("用户")], provider_id: ["providers", localize("厂商")], model_id: ["models", localize("模型")], api_key_id: ["api-keys", localize("API 密钥")] };
   const specs = [];
   for (const config of filterFields(resourceKey)) {
     if (config.name === "from") {
-      specs.push({ name: "range", label: "时间", kind: "range" });
+      specs.push({ name: "range", label: localize("时间"), kind: "range" });
     } else if (config.name === "to") {
       continue;
     } else if (config.name === "department_id") {
-      specs.push({ name: "department_id", label: "部门", kind: "department" });
+      specs.push({ name: "department_id", label: localize("部门"), kind: "department" });
     } else if (remote[config.name]) {
       specs.push({ name: config.name, label: remote[config.name][1], kind: "remote", lookup: remote[config.name][0] });
     } else if (config.type === "select") {
       const options = (config.options || []).filter(([value]) => value !== "");
       specs.push({ name: config.name, label: config.label, kind: config.name === "status" && options.length <= 5 ? "segmented" : "select", options });
     } else {
-      specs.push({ name: config.name, label: config.label, kind: "search", placeholder: `搜索${config.label}` });
+      specs.push({ name: config.name, label: config.label, kind: "search", placeholder: localize`搜索${config.label}` });
     }
   }
   return specs;
@@ -329,7 +329,7 @@ export { svgIcon };
 export async function renderFilters(resourceKey, state, onApply, { specs = filterSpecs(resourceKey), counts = true, extra = [] } = {}) {
   const needsDepartments = specs.some((spec) => spec.kind === "department");
   const departmentOptions = needsDepartments ? await departmentSelectOptions() : [];
-  const form = el("form", { className: "filters list-toolbar", role: "search", "aria-label": "筛选条件", noValidate: true });
+  const form = el("form", { className: "filters list-toolbar", role: "search", "aria-label": localize("筛选条件"), noValidate: true });
   const main = el("div", { className: "list-toolbar-main" });
   const more = el("div", { className: "list-toolbar-more", hidden: true });
   const readers = [];
@@ -365,7 +365,7 @@ export async function renderFilters(resourceKey, state, onApply, { specs = filte
         type: "search",
         name: spec.name,
         value: String(raw),
-        placeholder: spec.placeholder || `搜索${spec.label}`,
+        placeholder: spec.placeholder || localize`搜索${spec.label}`,
         "aria-label": spec.label,
         autocomplete: "off",
         spellcheck: false
@@ -375,7 +375,7 @@ export async function renderFilters(resourceKey, state, onApply, { specs = filte
       controls.push(el("label", { className: "list-search", dataset: { field: spec.name } }, [svgIcon(SEARCH_ICON), input]));
     } else if (spec.kind === "segmented") {
       const hidden = el("input", { type: "hidden", name: spec.name, value: String(raw) });
-      const options = [["", "全部"], ...spec.options];
+      const options = [["", localize("全部")], ...spec.options];
       const buttons = options.map(([value, label]) => el("button", {
         type: "button",
         className: "segmented-option",
@@ -395,7 +395,7 @@ export async function renderFilters(resourceKey, state, onApply, { specs = filte
     } else if (spec.kind === "select" || spec.kind === "department") {
       const options = spec.kind === "department" ? departmentOptions : spec.options || [];
       const select = el("select", { name: spec.name }, [
-        el("option", { value: "", text: spec.emptyLabel || (spec.kind === "department" ? "全部部门" : "全部") }),
+        el("option", { value: "", text: spec.emptyLabel || (spec.kind === "department" ? localize("全部部门") : localize("全部")) }),
         ...options.map(([value, label]) => el("option", { value, text: label }))
       ]);
       select.value = String(raw);
@@ -403,11 +403,11 @@ export async function renderFilters(resourceKey, state, onApply, { specs = filte
       readers.push(() => ({ [spec.name]: select.value === "" ? "" : (spec.kind === "department" ? Number(select.value) : select.value) }));
       controls.push(el("label", { className: "inline-select", dataset: { field: spec.name } }, [el("span", { text: spec.label }), select]));
     } else if (spec.kind === "remote") {
-      const wrapper = field({ name: spec.name, label: spec.label, type: "remote-select", lookup: spec.lookup, optional: true, emptyOption: `全部${spec.label}`, validate: false }, raw);
+      const wrapper = field({ name: spec.name, label: spec.label, type: "remote-select", lookup: spec.lookup, optional: true, emptyOption: localize`全部${spec.label}`, validate: false }, raw);
       wrapper.classList.add("list-remote");
       const pickerInput = wrapper.querySelector(".remote-select-input");
       if (pickerInput) {
-        pickerInput.placeholder = `全部${spec.label}`;
+        pickerInput.placeholder = localize`全部${spec.label}`;
       }
       wrapper.addEventListener("change", () => void apply());
       readers.push(() => {
@@ -432,7 +432,7 @@ export async function renderFilters(resourceKey, state, onApply, { specs = filte
       type: "button",
       className: "ghost list-more-toggle",
       "aria-expanded": more.hidden ? "false" : "true",
-      text: `更多筛选（${hiddenControls.length}）`,
+      text: localize`更多筛选（${hiddenControls.length}）`,
       onClick: () => {
         more.hidden = !more.hidden;
         moreToggle.setAttribute("aria-expanded", more.hidden ? "false" : "true");
@@ -443,7 +443,7 @@ export async function renderFilters(resourceKey, state, onApply, { specs = filte
   const clearButton = el("button", {
     type: "button",
     className: "ghost list-clear",
-    text: "清除筛选",
+    text: localize("清除筛选"),
     onClick: async () => {
       const names = filterNames();
       state.filters = { ...Object.fromEntries(Object.entries(state.filters).filter(([key]) => !names.includes(key))), offset: 0 };
@@ -470,7 +470,7 @@ export async function renderFilters(resourceKey, state, onApply, { specs = filte
   main.append(clearButton, ...extra);
   form.refreshCounts = refreshCounts;
   // Enter in a text box applies at once.
-  form.append(main, more, el("button", { type: "submit", hidden: true, tabIndex: -1, text: "筛选" }));
+  form.append(main, more, el("button", { type: "submit", hidden: true, tabIndex: -1, text: localize("筛选") }));
   updateClear();
   // Counts load after the list itself (the caller triggers them), so the
   // rows are never queued behind them.
@@ -509,14 +509,14 @@ async function loadSegmentCounts(resourceKey, spec, buttons, state) {
 }
 
 function formatCount(value) {
-  return Number(value).toLocaleString("zh-CN");
+  return Number(value).toLocaleString(getLocale());
 }
 
 function rangeControl(state, readers, apply) {
-  const preset = el("select", { name: "range_preset", "aria-label": "时间范围" }, RANGE_PRESETS.map(([value, label]) => el("option", { value, text: label })));
-  const from = el("input", { type: "datetime-local", "aria-label": "开始时间", value: toDateTimeLocal(state.filters.from) });
-  const to = el("input", { type: "datetime-local", "aria-label": "结束时间", value: toDateTimeLocal(state.filters.to) });
-  const custom = el("span", { className: "list-range-custom" }, [from, el("span", { className: "list-range-sep", text: "至", "aria-hidden": "true" }), to]);
+  const preset = el("select", { name: "range_preset", "aria-label": localize("时间范围") }, RANGE_PRESETS.map(([value, label]) => el("option", { value, text: label })));
+  const from = el("input", { type: "datetime-local", "aria-label": localize("开始时间"), value: toDateTimeLocal(state.filters.from) });
+  const to = el("input", { type: "datetime-local", "aria-label": localize("结束时间"), value: toDateTimeLocal(state.filters.to) });
+  const custom = el("span", { className: "list-range-custom" }, [from, el("span", { className: "list-range-sep", text: localize("至"), "aria-hidden": "true" }), to]);
   preset.value = presetFor(state.filters.from || "", state.filters.to || "");
   custom.hidden = preset.value !== "custom";
   preset.addEventListener("change", () => {
@@ -536,8 +536,8 @@ function rangeControl(state, readers, apply) {
     const range = presetRange(preset.value);
     return { from: range?.from || "", to: "" };
   });
-  const group = el("div", { className: "list-range", role: "group", "aria-label": "时间" }, [
-    el("label", { className: "inline-select" }, [el("span", { text: "时间" }), preset]),
+  const group = el("div", { className: "list-range", role: "group", "aria-label": localize("时间") }, [
+    el("label", { className: "inline-select" }, [el("span", { text: localize("时间") }), preset]),
     custom
   ]);
   group.reset = () => {
@@ -566,7 +566,7 @@ export async function renderRows(parent, resourceKey, config, state) {
       return;
     }
     parent.removeAttribute("aria-busy");
-    parent.replaceChildren(errorState(error, { fallback: "列表加载失败", onRetry: () => renderRows(parent, resourceKey, config, state) }));
+    parent.replaceChildren(errorState(error, { fallback: localize("列表加载失败"), onRetry: () => renderRows(parent, resourceKey, config, state) }));
     return;
   }
   const rows = Array.isArray(result.data) ? result.data : (Array.isArray(result.data?.items) ? result.data.items : []);
@@ -595,8 +595,8 @@ export async function renderRows(parent, resourceKey, config, state) {
   if (rows.length === 0) {
     const hasFilters = Object.keys(withoutPaging(state.filters)).some((key) => state.filters[key] !== "" && state.filters[key] !== undefined);
     parent.replaceChildren(emptyState({
-      title: hasFilters ? "没有符合条件的记录" : "暂无数据",
-      description: hasFilters ? "可以调整或清除筛选条件后再试。" : config.form ? `点击右上角“新建${recordNoun(config.label || "")}”创建第一条。` : ""
+      title: hasFilters ? localize("没有符合条件的记录") : localize("暂无数据"),
+      description: hasFilters ? localize("可以调整或清除筛选条件后再试。") : config.form ? localize`点击右上角“新建${recordNoun(config.label || "")}”创建第一条。` : ""
     }));
     return;
   }
@@ -732,7 +732,7 @@ function selectionController(rows, label) {
 // Users have no batch endpoint: the selected users are updated one by one
 // through the same endpoints as the row actions, and failures are reported.
 async function runUserBulkAction(action, ids, onRefresh) {
-  const label = { move: "调整部门", enable: "启用", disable: "停用" }[action];
+  const label = { move: localize("调整部门"), enable: localize("启用"), disable: localize("停用") }[action];
   let body = null;
   let path = (id) => `/admin-api/users/${id}/status`;
   let method = "PATCH";
@@ -740,10 +740,10 @@ async function runUserBulkAction(action, ids, onRefresh) {
     const options = await departmentSelectOptions();
     const select = el("select", { name: "department_id" }, options.map(([value, text]) => el("option", { value, text })));
     const ok = await confirmDialog({
-      title: `调整部门 · ${ids.length} 个用户`,
-      message: "选中的用户将移动到下面的部门，之后的用量计入新部门。",
-      body: el("label", { className: "field" }, [el("span", { className: "field-label", text: "目标部门" }), select]),
-      confirmLabel: "调整部门",
+      title: localize`调整部门 · ${ids.length} 个用户`,
+      message: localize("选中的用户将移动到下面的部门，之后的用量计入新部门。"),
+      body: el("label", { className: "field" }, [el("span", { className: "field-label", text: localize("目标部门") }), select]),
+      confirmLabel: localize("调整部门"),
       tone: "primary"
     });
     if (!ok) {
@@ -754,8 +754,8 @@ async function runUserBulkAction(action, ids, onRefresh) {
     method = "POST";
   } else {
     const ok = await confirmDialog({
-      title: `${label} · ${ids.length} 个用户`,
-      message: action === "disable" ? "停用后这些用户的 API 密钥将无法调用，可以随时重新启用。" : "启用后这些用户可以继续使用其 API 密钥。",
+      title: localize`${label} · ${ids.length} 个用户`,
+      message: action === "disable" ? localize("停用后这些用户的 API 密钥将无法调用，可以随时重新启用。") : localize("启用后这些用户可以继续使用其 API 密钥。"),
       confirmLabel: label,
       tone: action === "disable" ? "danger" : "primary"
     });
@@ -767,9 +767,9 @@ async function runUserBulkAction(action, ids, onRefresh) {
   const outcomes = await Promise.allSettled(ids.map((id) => api(path(id), { method, body: JSON.stringify(body), silent: true })));
   const failed = outcomes.filter((outcome) => outcome.status === "rejected");
   if (failed.length) {
-    toast(`${label}：${ids.length - failed.length} 个成功，${failed.length} 个失败（${adminErrorMessage(failed[0].reason, "请确认权限")}）`, { tone: "error" });
+    toast(localize`${label}：${ids.length - failed.length} 个成功，${failed.length} 个失败（${adminErrorMessage(failed[0].reason, localize("请确认权限"))}）`, { tone: "error" });
   } else {
-    toast(`已${label} ${ids.length} 个用户`, { tone: "success" });
+    toast(localize`已${label} ${ids.length} 个用户`, { tone: "success" });
   }
   await onRefresh();
 }
@@ -786,12 +786,12 @@ async function runBulkAction(resourceKey, action, selection, onRefresh) {
   const [code, label, , warning] = bulk.actions.find(([key]) => key === action) || [];
   const ids = [...selection.selected];
   if (ids.length === 0) {
-    toast(`请先选择${bulk.noun}`, { tone: "error" });
+    toast(localize`请先选择${bulk.noun}`, { tone: "error" });
     return;
   }
   const ok = await confirmDialog({
     title: `${label}${bulk.noun}`,
-    message: `确认对选中的 ${ids.length} 个${bulk.noun}执行“${label}”？${warning ? ` ${warning}` : ""}`,
+    message: localize`确认对选中的 ${ids.length} 个${bulk.noun}执行“${label}”？${warning ? ` ${warning}` : ""}`,
     confirmLabel: label,
     tone: code === "delete" ? "danger" : "primary"
   });
@@ -803,7 +803,7 @@ async function runBulkAction(resourceKey, action, selection, onRefresh) {
     showOperationResult(label, result.data);
     await onRefresh();
   } catch (error) {
-    toast(adminErrorMessage(error, `${label}失败，请确认权限或关联配置`), { tone: "error" });
+    toast(adminErrorMessage(error, localize`${label}失败，请确认权限或关联配置`), { tone: "error" });
   }
 }
 
@@ -822,7 +822,7 @@ export function pageHead(title, description = "", actions = null) {
 }
 
 // Actions that stay visible in a row; everything else moves into “更多”.
-const INLINE_ACTION_PRIORITY = ["展开失败原因", "编辑", "修改 Key", "配置 Key", "详情", "大屏1", "大屏2", "内容", "诊断", "下载", "价格明细", "拉取模型", "放行 IP"];
+const INLINE_ACTION_PRIORITY = [localize("展开失败原因"), localize("编辑"), localize("修改 Key"), localize("配置 Key"), localize("详情"), localize("大屏1"), localize("大屏2"), localize("内容"), localize("诊断"), localize("下载"), localize("价格明细"), localize("拉取模型"), localize("放行 IP")];
 
 export function arrangeRowActions(ops, { maxInline = 3, keep = 2 } = {}) {
   if (ops.length <= maxInline) {
@@ -847,7 +847,7 @@ const MORE_ICON = "M5 12h.01M12 12h.01M19 12h.01";
 
 // Row edit is an icon button; its accessible name stays “编辑”.
 export function editButton(name, onClick) {
-  const node = button("", onClick, "icon-action row-edit", { "aria-label": "编辑", title: `编辑 ${name}` });
+  const node = button("", onClick, "icon-action row-edit", { "aria-label": localize("编辑"), title: localize`编辑 ${name}` });
   node.append(svgIcon(PENCIL_ICON));
   return node;
 }
@@ -890,8 +890,8 @@ function rowMoreMenu(items) {
   const toggle = el("button", {
     type: "button",
     className: "row-more-toggle icon-action",
-    "aria-label": "更多",
-    title: "更多操作",
+    "aria-label": localize("更多"),
+    title: localize("更多操作"),
     "aria-haspopup": "menu",
     "aria-expanded": "false",
     "aria-controls": id
@@ -944,7 +944,7 @@ export function renderTable(rows, config, resourceKey, onRefresh, context = {}, 
   const draw = () => {
     const columns = visibleColumnsFor(resourceKey, allColumns);
     const table = el("table", { className: `resource-table resource-table--${resourceKey}` });
-    table.append(el("caption", { className: "visually-hidden", text: `${config.label || resourceKey}列表` }));
+    table.append(el("caption", { className: "visually-hidden", text: localize`${config.label || resourceKey}列表` }));
     const headRow = el("tr");
     let selectAll = null;
     if (selection) {
@@ -975,7 +975,7 @@ export function renderTable(rows, config, resourceKey, onRefresh, context = {}, 
       headRow.append(th);
     }
     headRow.append(el("th", { className: "table-cell table-cell--actions", scope: "col" }, [
-      el("span", { className: "visually-hidden", text: "操作" }),
+      el("span", { className: "visually-hidden", text: localize("操作") }),
       columnMenu(resourceKey, allColumns, draw)
     ]));
     const body = el("tbody");
@@ -1013,8 +1013,8 @@ export function renderTable(rows, config, resourceKey, onRefresh, context = {}, 
           type: "button",
           className: "icon-action row-expand",
           "aria-expanded": "false",
-          "aria-label": "展开失败原因",
-          title: "展开失败原因",
+          "aria-label": localize("展开失败原因"),
+          title: localize("展开失败原因"),
           onClick: () => {
             const open = detailRow.hidden;
             detailRow.hidden = !open;
@@ -1040,11 +1040,11 @@ export function renderTable(rows, config, resourceKey, onRefresh, context = {}, 
       // Design: an inverse bar that appears once rows are selected.
       const status = el("span", { className: "selection-status", text: selection.summary() });
       const buttons = bulk.actions.map(([code, label, variant]) => button(label, () => runBulkAction(resourceKey, code, selection, onRefresh), variant === "danger" ? "danger" : "on-inverse", { disabled: selection.selected.size === 0 }));
-      const bar = el("div", { className: `selection-bar ${resourceKey === "models" ? "model-bulk-actions" : ""}`.trim(), role: "region", "aria-label": "批量操作", hidden: selection.selected.size === 0 }, [
+      const bar = el("div", { className: `selection-bar ${resourceKey === "models" ? "model-bulk-actions" : ""}`.trim(), role: "region", "aria-label": localize("批量操作"), hidden: selection.selected.size === 0 }, [
         status,
         el("div", { className: "selection-actions" }, [
           ...buttons,
-          el("button", { type: "button", className: "on-inverse selection-clear", text: "取消选择", onClick: () => {
+          el("button", { type: "button", className: "on-inverse selection-clear", text: localize("取消选择"), onClick: () => {
             selection.setAll(false);
             body.querySelectorAll(".row-select").forEach((box) => { box.checked = false; });
           } })
@@ -1095,7 +1095,7 @@ function renderCell(resourceKey, column, row, context) {
     cell.title = `${row[column]} (UTC)`;
   }
   if (COPYABLE_COLUMNS.has(column) && text) {
-    const copy = copyButton(String(row[column]), "复制");
+    const copy = copyButton(String(row[column]), localize("复制"));
     copy.className = "cell-copy";
     copy.textContent = "⧉";
     cell.append(copy);
@@ -1114,75 +1114,75 @@ function rowActions(resourceKey, config, row, onRefresh, context) {
   const ops = [];
   const name = row.name || row.username || row.rule_code || `#${row.id}`;
   if (resourceKey === "api-keys") {
-    ops.push(button("详情", () => showApiKeyDetails(row, config, context), "secondary"));
+    ops.push(button(localize("详情"), () => showApiKeyDetails(row, config, context), "secondary"));
   }
   if (resourceKey === "model-prices") {
-    ops.push(button("价格明细", () => showModelPriceDetails(row, context), "secondary"));
+    ops.push(button(localize("价格明细"), () => showModelPriceDetails(row, context), "secondary"));
   }
   if (resourceKey === "usage-records") {
-    ops.push(button("内容", () => showUsageContent(row), "secondary"));
+    ops.push(button(localize("内容"), () => showUsageContent(row), "secondary"));
   }
   if ((resourceKey === "usage-records" || resourceKey === "logs") && row.request_id) {
-    ops.push(button("诊断", () => showRequestDiagnostics(row.request_id), "secondary request-diagnostics-button"));
+    ops.push(button(localize("诊断"), () => showRequestDiagnostics(row.request_id), "secondary request-diagnostics-button"));
   }
   if (resourceKey === "export-tasks" && row.status === "succeeded" && row.export_id) {
-    ops.push(button("下载", () => openAdminDownload(`/admin-api/exports/${encodeURIComponent(row.export_id)}/download-url`), "secondary"));
+    ops.push(button(localize("下载"), () => openAdminDownload(`/admin-api/exports/${encodeURIComponent(row.export_id)}/download-url`), "secondary"));
   }
   if (resourceKey === "media-assets" && row.asset_id) {
-    ops.push(button("下载", () => openAdminDownload(`/admin-api/media-assets/${encodeURIComponent(row.asset_id)}/download-url`, "POST"), "secondary"));
+    ops.push(button(localize("下载"), () => openAdminDownload(`/admin-api/media-assets/${encodeURIComponent(row.asset_id)}/download-url`, "POST"), "secondary"));
   }
   if (resourceKey === "log-archive-files" && !row.deleted_at) {
-    ops.push(button("下载", () => openAdminDownload(`/admin-api/log-archive-files/${encodeURIComponent(row.id)}/download-url`, "POST"), "secondary"));
+    ops.push(button(localize("下载"), () => openAdminDownload(`/admin-api/log-archive-files/${encodeURIComponent(row.id)}/download-url`, "POST"), "secondary"));
   }
   if (resourceKey === "dashboard-share-links") {
-    for (const [label, screen] of [["大屏1", "overview"], ["大屏2", "operations"]]) {
+    for (const [label, screen] of [[localize("大屏1"), "overview"], [localize("大屏2"), "operations"]]) {
       ops.push(el("a", { className: "button-link secondary", href: `/screen/${encodeURIComponent(row.share_code)}/${screen}`, target: "_blank", rel: "noopener", text: label }));
     }
-    ops.push(button("重置密码", () => confirmAndRun({
-      title: "重置大屏访问密码",
-      message: "重置后旧密码立即失效，已登录的大屏需要使用新密码重新登录。",
-      details: [["分享链接", name]],
-      confirmLabel: "重置密码"
+    ops.push(button(localize("重置密码"), () => confirmAndRun({
+      title: localize("重置大屏访问密码"),
+      message: localize("重置后旧密码立即失效，已登录的大屏需要使用新密码重新登录。"),
+      details: [[localize("分享链接"), name]],
+      confirmLabel: localize("重置密码")
     }, async () => {
       const result = await api(`/admin-api/dashboard-share-links/${row.id}/reset-password`, { method: "POST" });
       showShareLinkPasswordResetResult(result.data || {});
       await onRefresh();
     }), "secondary"));
-    ops.push(button("撤销会话", () => confirmAndRun({
-      title: "撤销大屏会话",
-      message: "所有正在查看该大屏的会话将被强制退出。",
-      details: [["分享链接", name]],
-      confirmLabel: "撤销会话"
+    ops.push(button(localize("撤销会话"), () => confirmAndRun({
+      title: localize("撤销大屏会话"),
+      message: localize("所有正在查看该大屏的会话将被强制退出。"),
+      details: [[localize("分享链接"), name]],
+      confirmLabel: localize("撤销会话")
     }, async () => {
       const result = await api(`/admin-api/dashboard-share-links/${row.id}/revoke-sessions`, { method: "POST" });
-      showOperationResult("撤销会话", result.data, "已撤销相关会话");
+      showOperationResult(localize("撤销会话"), result.data, localize("已撤销相关会话"));
       await onRefresh();
     }), "secondary"));
-    ops.push(button("放行 IP", () => showAllowClientIp(row, onRefresh), "secondary"));
+    ops.push(button(localize("放行 IP"), () => showAllowClientIp(row, onRefresh), "secondary"));
   }
   if (resourceKey === "dashboard-share-access-logs" && row.share_link_id && row.client_ip && row.event_type === "ip_denied") {
-    ops.push(button("放行 IP", () => showAllowClientIp({ id: row.share_link_id, client_ip: row.client_ip }, onRefresh), "secondary"));
+    ops.push(button(localize("放行 IP"), () => showAllowClientIp({ id: row.share_link_id, client_ip: row.client_ip }, onRefresh), "secondary"));
   }
   if (resourceKey === "users") {
-    ops.push(button("重置密码", () => showUserPasswordReset(row, onRefresh), "secondary"));
-    ops.push(button("调整部门", () => showUserDepartmentMove(row, onRefresh), "secondary"));
-    ops.push(button("更新状态", () => showUserStatusUpdate(row, onRefresh), "secondary"));
+    ops.push(button(localize("重置密码"), () => showUserPasswordReset(row, onRefresh), "secondary"));
+    ops.push(button(localize("调整部门"), () => showUserDepartmentMove(row, onRefresh), "secondary"));
+    ops.push(button(localize("更新状态"), () => showUserStatusUpdate(row, onRefresh), "secondary"));
   }
   if (resourceKey === "admin-users") {
-    ops.push(button("重置密码", () => showUserPasswordReset(row, onRefresh, "admin-users"), "secondary"));
-    ops.push(button("授权部门", () => showAdminUserDepartmentGrant(row, onRefresh), "secondary"));
-    ops.push(button("更新状态", () => showUserStatusUpdate(row, onRefresh, "admin-users"), "secondary"));
-    ops.push(button("撤销会话", () => showAdminUserSessionRevoke(row, onRefresh), "danger"));
+    ops.push(button(localize("重置密码"), () => showUserPasswordReset(row, onRefresh, "admin-users"), "secondary"));
+    ops.push(button(localize("授权部门"), () => showAdminUserDepartmentGrant(row, onRefresh), "secondary"));
+    ops.push(button(localize("更新状态"), () => showUserStatusUpdate(row, onRefresh, "admin-users"), "secondary"));
+    ops.push(button(localize("撤销会话"), () => showAdminUserSessionRevoke(row, onRefresh), "danger"));
     if (getCurrentUser()?.role === "super_admin") {
-      ops.push(button("APP 设备", () => import("../pages/app-devices.js").then((module) => module.openAppDevicesDialog({ adminUser: row })), "secondary"));
+      ops.push(button(localize("APP 设备"), () => import("../pages/app-devices.js").then((module) => module.openAppDevicesDialog({ adminUser: row })), "secondary"));
     }
   }
   if (resourceKey === "providers" && row.id) {
-    ops.push(button(row.secret_status === "empty" ? "配置 Key" : "修改 Key", () => showProviderSecretModal(row, onRefresh), "secondary provider-key-edit"));
-    ops.push(button("拉取模型", () => showProviderModelImport(row, onRefresh), "secondary"));
+    ops.push(button(row.secret_status === "empty" ? localize("配置 Key") : localize("修改 Key"), () => showProviderSecretModal(row, onRefresh), "secondary provider-key-edit"));
+    ops.push(button(localize("拉取模型"), () => showProviderModelImport(row, onRefresh), "secondary"));
   }
   if (resourceKey === "providers" && row.id && adminViewerCanSyncCatalog()) {
-    ops.push(button("目录同步", () => showProviderCatalogSync(row, onRefresh), "secondary catalog-sync-button"));
+    ops.push(button(localize("目录同步"), () => showProviderCatalogSync(row, onRefresh), "secondary catalog-sync-button"));
   }
   if (config.form && row.id) {
     ops.push(editButton(name, () => showEditModal(resourceKey, config, row, onRefresh)));
@@ -1209,38 +1209,38 @@ function rowActions(resourceKey, config, row, onRefresh, context) {
     }
   }
   if ((resourceKey === "providers" || resourceKey === "models") && row.id) {
-    const noun = resourceKey === "providers" ? "厂商" : "模型";
-    ops.push(button("删除", () => confirmAndRun({
-      title: `删除${noun}`,
+    const noun = resourceKey === "providers" ? localize("厂商") : localize("模型");
+    ops.push(button(localize("删除"), () => confirmAndRun({
+      title: localize`删除${noun}`,
       message: resourceKey === "providers"
-        ? "删除后该厂商下的模型配置也会被删除，且无法恢复。"
-        : "删除后相关价格、API 密钥授权和模型限额也会被删除，且无法恢复。",
+        ? localize("删除后该厂商下的模型配置也会被删除，且无法恢复。")
+        : localize("删除后相关价格、API 密钥授权和模型限额也会被删除，且无法恢复。"),
       details: [[noun, `${name}（#${row.id}）`]],
-      confirmLabel: "删除",
+      confirmLabel: localize("删除"),
       requireText: String(row.name || row.id)
     }, async () => {
       try {
         const result = await api(`/admin-api/${resourceKey}/${row.id}`, { method: "DELETE" });
-        showOperationResult(`删除${noun}`, result.data);
+        showOperationResult(localize`删除${noun}`, result.data);
         await onRefresh();
       } catch (error) {
-        toast(adminErrorMessage(error, `删除${noun}失败，请确认权限或关联配置`), { tone: "error" });
+        toast(adminErrorMessage(error, localize`删除${noun}失败，请确认权限或关联配置`), { tone: "error" });
       }
     }), "danger"));
   }
   if (!["providers", "models"].includes(resourceKey) && config.readOnly !== true && row.id && row.status !== "disabled" && row.status !== "deleted") {
-    ops.push(button("停用", () => confirmAndRun({
-      title: `停用${config.label || ""}`,
-      message: "停用后该记录将不再生效，可在编辑中重新启用。",
-      details: [[config.label || "记录", `${name}（#${row.id}）`]],
-      confirmLabel: "停用"
+    ops.push(button(localize("停用"), () => confirmAndRun({
+      title: localize`停用${config.label || ""}`,
+      message: localize("停用后该记录将不再生效，可在编辑中重新启用。"),
+      details: [[config.label || localize("记录"), `${name}（#${row.id}）`]],
+      confirmLabel: localize("停用")
     }, async () => {
       try {
         await api(`/admin-api/${resourceKey}/${row.id}`, { method: "DELETE" });
-        toast(`${config.label || "记录"}已停用`, { tone: "success" });
+        toast(localize`${config.label || localize("记录")}已停用`, { tone: "success" });
         await onRefresh();
       } catch (error) {
-        toast(adminErrorMessage(error, "停用失败，请确认权限或关联配置"), { tone: "error" });
+        toast(adminErrorMessage(error, localize("停用失败，请确认权限或关联配置")), { tone: "error" });
       }
     }), "danger"));
   }
@@ -1263,8 +1263,8 @@ export function friendlyTime(value) {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const days = Math.round((today - day) / 86_400_000);
-  if (days === 0) return `今天 ${hour}:${minute}`;
-  if (days === 1) return `昨天 ${hour}:${minute}`;
+  if (days === 0) return localize`今天 ${hour}:${minute}`;
+  if (days === 1) return localize`昨天 ${hour}:${minute}`;
   if (date.getFullYear() === today.getFullYear()) return `${pad2(date.getMonth() + 1)}-${pad2(date.getDate())} ${hour}:${minute}`;
   return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
 }
@@ -1293,8 +1293,8 @@ export function renderTableCell(resourceKey, column, row, context) {
         return el("button", {
           type: "button",
           className: "cell-link price-missing-button",
-          text: "未配置 · 添加",
-          title: `为 ${row.name || `#${row.id}`} 添加价格`,
+          text: localize("未配置 · 添加"),
+          title: localize`为 ${row.name || `#${row.id}`} 添加价格`,
           dataset: { modelId: String(row.id) },
           onClick: () => showCreateModal("model-prices", resources["model-prices"], context.refresh, { model_id: row.id })
         });
@@ -1306,8 +1306,8 @@ export function renderTableCell(resourceKey, column, row, context) {
     if (column === "status" && context.refresh) return modelSwitch(row, context.refresh);
     if (column === "gateway_support") {
       return row.gateway_supported === false
-        ? el("span", { className: "cell-tag is-warn", text: "不支持", title: row.unsupported_message || row.unsupported_reason || "" })
-        : el("span", { className: "cell-muted", text: "支持" });
+        ? el("span", { className: "cell-tag is-warn", text: localize("不支持"), title: row.unsupported_message || row.unsupported_reason || "" })
+        : el("span", { className: "cell-muted", text: localize("支持") });
     }
   }
   if ((resourceKey === "users" || resourceKey === "admin-users") && column === "username" && row.username) {
@@ -1322,11 +1322,11 @@ export function renderTableCell(resourceKey, column, row, context) {
     if (column === "cost_amount") return el("span", { text: costText(row.cost_amount), title: row.cost_amount ?? null });
     if (["input_tokens", "output_tokens", "cache_read_tokens", "total_tokens"].includes(column)) {
       const value = Number(row[column] || 0);
-      return el("span", { className: column === "total_tokens" ? "cell-strong" : "", text: value >= 100000 ? compact(value) : value.toLocaleString("zh-CN"), title: value.toLocaleString("zh-CN") });
+      return el("span", { className: column === "total_tokens" ? "cell-strong" : "", text: value >= 100000 ? compact(value) : value.toLocaleString(getLocale()), title: value.toLocaleString(getLocale()) });
     }
   }
   if (RELATIVE_TIME_COLUMNS.has(column)) {
-    return row[column] ? el("span", { text: friendlyTime(row[column]), title: formatDateTime(row[column]) }) : el("span", { className: "cell-muted", text: "从未" });
+    return row[column] ? el("span", { text: friendlyTime(row[column]), title: formatDateTime(row[column]) }) : el("span", { className: "cell-muted", text: localize("从未") });
   }
   if (resourceKey === "admin-users" && column === "department_id") {
     return apiKeyDepartmentLabel(row[column], context);
@@ -1359,7 +1359,7 @@ export function renderTableCell(resourceKey, column, row, context) {
     return target?.name ? el("span", { className: "ref-name", text: target.name, title: full }) : full;
   }
   if (resourceKey === "models" && column === "gateway_support") {
-    return row.gateway_supported === false ? `不支持：${row.unsupported_message || row.unsupported_reason || ""}` : "支持";
+    return row.gateway_supported === false ? localize`不支持：${row.unsupported_message || row.unsupported_reason || ""}` : localize("支持");
   }
   if (resourceKey === "models" && column === "provider_name") {
     return row.provider_name || formatResourceValue("provider_id", row.provider_id);

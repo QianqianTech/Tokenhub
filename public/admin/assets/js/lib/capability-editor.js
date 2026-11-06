@@ -1,3 +1,4 @@
+import { localize } from "../i18n.js";
 // Model capability contract editor (admin layer of ModelCapabilityContract).
 import { el, setText } from "../dom.js";
 import { valueLabel } from "../resources.js";
@@ -6,22 +7,22 @@ import { parseJsonValue } from "./ops-common.js";
 // --- 5. Model capability contract editor -----------------------------------
 
 const MODEL_CAPABILITY_FEATURES = [
-  ["tools", "工具调用"],
-  ["parallel_tool_calls", "并行工具调用"],
-  ["json_object", "JSON 对象输出"],
-  ["json_schema", "JSON Schema 结构化输出"],
-  ["reasoning", "推理"],
-  ["streaming", "流式输出"]
+  ["tools", localize("工具调用")],
+  ["parallel_tool_calls", localize("并行工具调用")],
+  ["json_object", localize("JSON 对象输出")],
+  ["json_schema", localize("JSON Schema 结构化输出")],
+  ["reasoning", localize("推理")],
+  ["streaming", localize("流式输出")]
 ];
 
 const MODEL_CAPABILITY_MODALITIES = {
-  input_modalities: { label: "输入模态", options: [["text", "文本"], ["image", "图片"], ["audio", "音频"], ["file", "文件"]] },
-  output_modalities: { label: "输出模态", options: [["text", "文本"], ["image", "图片"], ["audio", "音频"], ["embedding", "向量"]] }
+  input_modalities: { label: localize("输入模态"), options: [["text", localize("文本")], ["image", localize("图片")], ["audio", localize("音频")], ["file", localize("文件")]] },
+  output_modalities: { label: localize("输出模态"), options: [["text", localize("文本")], ["image", localize("图片")], ["audio", localize("音频")], ["embedding", localize("向量")]] }
 };
 
 const MODEL_CAPABILITY_LIMITS = [
-  ["context_length", "上下文长度"],
-  ["max_output_tokens", "最大输出 Token"]
+  ["context_length", localize("上下文长度")],
+  ["max_output_tokens", localize("最大输出 Token")]
 ];
 
 const MODEL_CAPABILITY_TAGS = ["text_generation", "vision_understanding", "embedding", "asr", "tts", "image_generation", "video_generation", "rerank", "moderation"];
@@ -31,17 +32,17 @@ function plainObject(value) {
 }
 
 function capabilityFeatureText(value) {
-  if (value === true) return "支持";
-  if (value === false) return "不支持";
-  return "未声明";
+  if (value === true) return localize("支持");
+  if (value === false) return localize("不支持");
+  return localize("未声明");
 }
 
 function capabilityListText(value, options) {
   if (!Array.isArray(value)) {
-    return "未声明";
+    return localize("未声明");
   }
   const labels = new Map(options);
-  return value.length === 0 ? "无" : value.map((item) => labels.get(item) || item).join("、");
+  return value.length === 0 ? localize("无") : value.map((item) => labels.get(item) || item).join("、");
 }
 
 function stableJson(value) {
@@ -61,7 +62,7 @@ export function createModelCapabilityEditor(row) {
     return null;
   }
   const baseline = { layers: plainObject(parseJsonValue(row.capabilities)), tags: parseJsonValue(row.capability_tags), updatedAt: row.updated_at || "" };
-  const node = el("fieldset", { className: "model-capability-editor" }, [el("legend", { text: "能力契约" })]);
+  const node = el("fieldset", { className: "model-capability-editor" }, [el("legend", { text: localize("能力契约") })]);
   const controls = { features: {}, modalities: {}, limits: {} };
   let tagInputs = [];
   let legacyWarning = null;
@@ -88,18 +89,18 @@ export function createModelCapabilityEditor(row) {
     const upstreamFeatures = plainObject(upstream.features);
     const verifiedFeatures = plainObject(verified.features);
     const adminFeatures = plainObject(admin.features);
-    node.append(el("p", { className: "muted", text: "生效值 = 管理员覆盖 > 已验证 > 上游目录。上游与已验证层由目录同步和验收测试维护，此处只读；这里只修改管理员覆盖层。" }));
-    legacyWarning = el("p", { className: "notice error", hidden: true, text: "该模型目前没有能力契约（旧版模型，仅按“能力”字段路由）。保存管理员覆盖后将启用能力契约：未声明为“支持”的功能（包括流式输出）将被视为不支持。" });
+    node.append(el("p", { className: "muted", text: localize("生效值 = 管理员覆盖 > 已验证 > 上游目录。上游与已验证层由目录同步和验收测试维护，此处只读；这里只修改管理员覆盖层。") }));
+    legacyWarning = el("p", { className: "notice error", hidden: true, text: localize("该模型目前没有能力契约（旧版模型，仅按“能力”字段路由）。保存管理员覆盖后将启用能力契约：未声明为“支持”的功能（包括流式输出）将被视为不支持。") });
     node.append(legacyWarning);
 
     const featureTable = el("table", { className: "resource-table model-capability-table" });
-    featureTable.append(el("thead", {}, [el("tr", {}, ["功能", "上游", "已验证", "管理员覆盖", "生效"].map((label) => el("th", { text: label })))]));
+    featureTable.append(el("thead", {}, [el("tr", {}, [localize("功能"), localize("上游"), localize("已验证"), localize("管理员覆盖"), localize("生效")].map((label) => el("th", { text: label })))]));
     const featureBody = el("tbody");
     for (const [feature, label] of MODEL_CAPABILITY_FEATURES) {
       const select = el("select", { name: `capability_feature_${feature}`, className: "model-capability-override", dataset: { feature } }, [
-        el("option", { value: "", text: "继承" }),
-        el("option", { value: "true", text: "支持" }),
-        el("option", { value: "false", text: "不支持" })
+        el("option", { value: "", text: localize("继承") }),
+        el("option", { value: "true", text: localize("支持") }),
+        el("option", { value: "false", text: localize("不支持") })
       ]);
       select.value = feature in adminFeatures ? String(Boolean(adminFeatures[feature])) : "";
       const effective = el("td", { className: "model-capability-effective" });
@@ -127,9 +128,9 @@ export function createModelCapabilityEditor(row) {
       node.append(el("div", { className: "model-capability-modality" }, [
         el("div", { className: "model-capability-modality-head" }, [
           el("strong", { text: config.label }),
-          el("span", { className: "muted", text: `上游：${capabilityListText(upstream[key], config.options)}；已验证：${capabilityListText(verified[key], config.options)}` })
+          el("span", { className: "muted", text: localize`上游：${capabilityListText(upstream[key], config.options)}；已验证：${capabilityListText(verified[key], config.options)}` })
         ]),
-        el("label", { className: "model-capability-override-toggle" }, [override, el("span", { text: "管理员覆盖（整组替换）" })]),
+        el("label", { className: "model-capability-override-toggle" }, [override, el("span", { text: localize("管理员覆盖（整组替换）") })]),
         el("div", { className: "model-capability-choices" }, checkboxes.map((item) => item.wrapper)),
         effective
       ]));
@@ -143,11 +144,11 @@ export function createModelCapabilityEditor(row) {
         name: `capability_${key}`,
         min: "1",
         step: "1",
-        placeholder: lower ? `继承：${lower}` : "继承（未声明）",
+        placeholder: lower ? localize`继承：${lower}` : localize("继承（未声明）"),
         value: admin[key] !== undefined && admin[key] !== null ? String(admin[key]) : ""
       });
       controls.limits[key] = input;
-      limitRow.append(el("label", { className: "field" }, [el("span", { text: `${label}覆盖（留空继承）` }), input]));
+      limitRow.append(el("label", { className: "field" }, [el("span", { text: localize`${label}覆盖（留空继承）` }), input]));
     }
     node.append(limitRow);
   }
@@ -156,8 +157,8 @@ export function createModelCapabilityEditor(row) {
     const currentTags = new Set(Array.isArray(baseline.tags) ? baseline.tags.map(String) : []);
     tagInputs = MODEL_CAPABILITY_TAGS.map((tag) => el("input", { type: "checkbox", name: "capability_tags", value: tag, checked: currentTags.has(tag) }));
     node.append(el("div", { className: "model-capability-tags" }, [
-      el("strong", { text: "附加能力标签（路由匹配）" }),
-      el("span", { className: "muted", text: "模型也会响应这些能力的请求。注意：应用厂商目录同步时会按上游重置该标签。" }),
+      el("strong", { text: localize("附加能力标签（路由匹配）") }),
+      el("span", { className: "muted", text: localize("模型也会响应这些能力的请求。注意：应用厂商目录同步时会按上游重置该标签。") }),
       el("div", { className: "model-capability-choices" }, tagInputs.map((input) => el("label", { className: "multiselect-item" }, [input, el("span", { text: valueLabel("capability", input.value) })])))
     ]));
   }
@@ -193,7 +194,7 @@ export function createModelCapabilityEditor(row) {
       const number = Number(raw);
       if (!Number.isInteger(number) || number <= 0) {
         const error = new Error("invalid capability limit");
-        error.userMessage = `${MODEL_CAPABILITY_LIMITS.find(([name]) => name === key)?.[1] || key}覆盖需为正整数`;
+        error.userMessage = localize`${MODEL_CAPABILITY_LIMITS.find(([name]) => name === key)?.[1] || key}覆盖需为正整数`;
         throw error;
       }
       admin[key] = number;
@@ -222,7 +223,7 @@ export function createModelCapabilityEditor(row) {
         item.checkbox.disabled = !control.override.checked;
       }
       const value = Array.isArray(admin[key]) ? admin[key] : lowerValue(key);
-      setText(control.effective, `生效：${capabilityListText(value, MODEL_CAPABILITY_MODALITIES[key].options)}`);
+      setText(control.effective, localize`生效：${capabilityListText(value, MODEL_CAPABILITY_MODALITIES[key].options)}`);
     }
     const isLegacy = Object.keys(currentLayers()).filter((layer) => Object.keys(plainObject(currentLayers()[layer])).length > 0).length === 0;
     if (legacyWarning) {

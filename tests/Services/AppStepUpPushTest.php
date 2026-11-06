@@ -110,6 +110,9 @@ try {
     $deviceForPush = (int) $new['device']['id'];
     $push->subscribe($userId, $deviceForPush, ['endpoint' => $endpoint, 'keys' => ['p256dh' => $p256dh, 'auth' => AppPushService::b64(random_bytes(16))]]);
     assert_true($push->subscribed($deviceForPush), 'The device is subscribed.');
+    assert_same('zh-CN', $db->first('SELECT locale FROM admin_app_push_subscriptions WHERE device_id = ?', [$deviceForPush])['locale'], 'Legacy subscriptions default to Chinese.');
+    $push->saveLocale($deviceForPush, 'en-US');
+    assert_same('en-US', $db->first('SELECT locale FROM admin_app_push_subscriptions WHERE device_id = ?', [$deviceForPush])['locale'], 'Changing the device language updates its push subscription.');
 
     $db->execute('INSERT INTO alert_events (event_type, severity, message, status) VALUES (?, "critical", ?, "open")', ['app.test.' . $suffix, 'secret upstream detail ' . $suffix]);
     $alertId = (int) $db->pdo()->lastInsertId();

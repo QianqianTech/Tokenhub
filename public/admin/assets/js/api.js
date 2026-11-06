@@ -1,4 +1,4 @@
-import { translate } from "./i18n.js";
+import { getLocale, localize, translate } from "./i18n.js";
 let csrfToken = "";
 let authRequiredHandler = () => {};
 let errorHandler = () => {};
@@ -10,11 +10,11 @@ function errorText(code, fallback = undefined) {
   return code ? translate(`error.${code}`, fallback) : fallback;
 }
 
-export function adminErrorMessage(error, fallback = "请求失败，请稍后重试") {
+export function adminErrorMessage(error, fallback = localize("请求失败，请稍后重试")) {
   const code = error?.code || "";
   const message = errorText(code) || fallback;
   const requestId = error?.requestId;
-  return requestId ? `${message}（请求编号：${requestId}）` : message;
+  return requestId ? localize`${message}（请求编号：${requestId}）` : message;
 }
 
 export function isAbortError(error) {
@@ -74,6 +74,7 @@ export function queryString(params = {}) {
 function requestHeaders(fetchOptions, accept) {
   return {
     "Accept": accept,
+    "X-TokenHub-Locale": getLocale(),
     ...(fetchOptions.body && !(fetchOptions.body instanceof FormData) ? { "Content-Type": "application/json" } : {}),
     ...(csrfToken ? { "X-CSRF-Token": csrfToken } : {}),
     ...(authProvider?.headers?.() || {}),
@@ -163,7 +164,7 @@ export async function api(path, options = {}) {
     if (isAbortError(cause) && routeBound) {
       return never();
     }
-    payload = { ok: false, error: { code: "BAD_RESPONSE", message: "服务返回格式异常" }, request_id: requestId };
+    payload = { ok: false, error: { code: "BAD_RESPONSE", message: localize("服务返回格式异常") }, request_id: requestId };
   }
   rememberRequestId(payload?.request_id || requestId);
   if (!response.ok || payload.ok === false) {
@@ -192,7 +193,7 @@ export async function streamApi(path, options = {}, onEvent = () => {}) {
   rememberRequestId(requestId);
   if (!response.ok || !response.body) {
     const payload = await response.json().catch(() => ({
-      error: { code: "BAD_RESPONSE", message: "服务返回格式异常" },
+      error: { code: "BAD_RESPONSE", message: localize("服务返回格式异常") },
       request_id: requestId
     }));
     const error = buildError(payload, response, requestId);

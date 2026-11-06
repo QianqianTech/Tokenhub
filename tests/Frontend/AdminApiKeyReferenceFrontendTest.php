@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 require __DIR__ . '/../bootstrap.php';
 
-$resources = file_get_contents(__DIR__ . '/../../public/admin/assets/js/resources.js') ?: '';
+$resources = frontend_copy_source(__DIR__ . '/../../public/admin/assets/js/resources.js') ?: '';
 $tableSource = admin_js_bundle() ?: '';
-$domSource = file_get_contents(__DIR__ . '/../../public/admin/assets/js/dom.js') ?: '';
+$domSource = frontend_copy_source(__DIR__ . '/../../public/admin/assets/js/dom.js') ?: '';
 
 $apiKeyResourceStart = strpos($resources, '"api-keys": {');
 $apiKeyResourceEnd = strpos($resources, '"api-key-model-quotas": {', $apiKeyResourceStart);

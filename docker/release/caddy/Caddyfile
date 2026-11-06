@@ -89,7 +89,8 @@ import /etc/caddy/tokenhub-http-redirect.caddy
 		# Scanning sign-in QR codes needs the camera on /app/ only (APP-101).
 		header Permissions-Policy "geolocation=(), microphone=(), camera=(self)"
 		header /app/sw.js Service-Worker-Allowed "/app/"
-		header /app/manifest.webmanifest {
+		@appManifest path /app/manifest.webmanifest /app/manifest.en-US.webmanifest
+		header @appManifest {
 			Content-Type "application/manifest+json"
 			defer
 		}

@@ -1,6 +1,11 @@
+import { getLocale } from "../i18n.js";
+
 // Display formatting shared by tables and detail views.
 
 const DATE_COLUMN = /(_at|_time|^timestamp|^date)$/;
+const englishTimestamp = new Intl.DateTimeFormat("en-US", {
+  dateStyle: "medium", timeStyle: "medium", hourCycle: "h23"
+});
 
 export function isDateColumn(column) {
   return DATE_COLUMN.test(String(column));
@@ -56,7 +61,8 @@ export function formatDateTime(value) {
     return "";
   }
   const parsed = parseServerTime(value);
-  return parsed ? localStamp(parsed) : String(value);
+  if (!parsed) return String(value);
+  return getLocale() === "en-US" ? englishTimestamp.format(parsed) : localStamp(parsed);
 }
 
 export function formatNumber(value, { digits = 0 } = {}) {
@@ -64,7 +70,7 @@ export function formatNumber(value, { digits = 0 } = {}) {
   if (!Number.isFinite(number)) {
     return "0";
   }
-  return number.toLocaleString("zh-CN", { maximumFractionDigits: digits, minimumFractionDigits: 0 });
+  return number.toLocaleString(getLocale(), { maximumFractionDigits: digits, minimumFractionDigits: 0 });
 }
 
 const POSITIVE = new Set(["active", "enabled", "succeeded", "success", "published", "approved", "valid", "resolved", "healthy", "verified"]);

@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="referrer" content="no-referrer">
-    <title>TokenHub 管理后台</title>
+    <title data-localize="text">TokenHub 管理后台</title>
     <link rel="icon" href="/admin/assets/brand/favicon.ico" sizes="any">
     <link rel="apple-touch-icon" href="/admin/assets/brand/apple-touch-icon.png">
     <link rel="stylesheet" href="/admin/assets/css/tokens.css?v=20261105-conversation-logs-media">
@@ -13,48 +13,49 @@
     <link rel="stylesheet" href="/admin/assets/css/redesign.css?v=20261105-conversation-logs-media">
   </head>
   <body>
-    <a class="skip-link" href="#content">跳到主要内容</a>
+    <a data-localize="text" class="skip-link" href="#content">跳到主要内容</a>
     <main id="app" class="app-shell theme-light is-login">
-      <aside id="sidebar" class="sidebar" aria-label="管理菜单">
+      <aside data-localize id="sidebar" class="sidebar" aria-label="管理菜单">
         <div class="sidebar-header">
           <div class="brand"><img class="brand-logo" src="/admin/assets/brand/tokenhub-app-icon.svg" alt=""><span>TokenHub</span></div>
-          <button id="sidebar-mode-toggle" type="button" class="sidebar-mode-toggle" aria-label="收起菜单" aria-pressed="false">‹</button>
+          <button data-localize id="sidebar-mode-toggle" type="button" class="sidebar-mode-toggle" aria-label="收起菜单" aria-pressed="false">‹</button>
         </div>
-        <nav id="nav" aria-label="主导航"></nav>
+        <nav data-localize id="nav" aria-label="主导航"></nav>
         <div class="sidebar-user" id="sidebar-user">
           <span id="current-user-avatar" class="sidebar-user-avatar" aria-hidden="true"></span>
           <span class="sidebar-user-text">
             <span id="current-user" class="sidebar-user-name"></span>
             <span id="current-role" class="sidebar-user-role"></span>
           </span>
-          <button id="app-devices" type="button" class="sidebar-logout" aria-label="APP 设备" title="APP 设备：在手机或电脑上登录">
+          <button data-localize id="app-devices" type="button" class="sidebar-logout" aria-label="APP 设备" title="APP 设备：在手机或电脑上登录">
             <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="7" y="2.5" width="10" height="19" rx="2"/><path d="M11 18h2"/></svg>
           </button>
-          <button id="logout" type="button" class="sidebar-logout" aria-label="退出登录" title="退出登录">
+          <button data-localize id="logout" type="button" class="sidebar-logout" aria-label="退出登录" title="退出登录">
             <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3M10 16l4-4-4-4M14 12H4"/></svg>
           </button>
         </div>
       </aside>
-      <button id="sidebar-backdrop" class="sidebar-backdrop" type="button" aria-label="关闭菜单" hidden></button>
+      <button data-localize id="sidebar-backdrop" class="sidebar-backdrop" type="button" aria-label="关闭菜单" hidden></button>
       <section class="workspace">
         <header class="topbar">
           <div class="topbar-title">
-            <button id="sidebar-toggle" class="sidebar-toggle" type="button" aria-label="打开菜单" aria-controls="sidebar" aria-expanded="false">☰</button>
+            <button data-localize id="sidebar-toggle" class="sidebar-toggle" type="button" aria-label="打开菜单" aria-controls="sidebar" aria-expanded="false">☰</button>
             <span id="page-crumb" class="page-crumb" hidden></span>
-            <h1 id="page-title">智慧分析</h1>
+            <h1 data-localize="text" id="page-title">智慧分析</h1>
             <span id="request-id" hidden></span>
           </div>
           <div class="topbar-actions">
-            <button id="palette-trigger" type="button" class="palette-trigger" aria-keyshortcuts="Control+K Meta+K" title="快速跳转（Ctrl+K）">
+            <div data-locale-picker></div>
+            <button data-localize id="palette-trigger" type="button" class="palette-trigger" aria-keyshortcuts="Control+K Meta+K" title="快速跳转（Ctrl+K）">
               <svg viewBox="0 0 24 24" aria-hidden="true" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-              <span class="palette-trigger-text">搜索页面、密钥、模型</span><kbd>Ctrl K</kbd>
+              <span data-localize="text" class="palette-trigger-text">搜索页面、密钥、模型</span><kbd>Ctrl K</kbd>
             </button>
-            <div id="theme-switcher" class="theme-switcher" role="group" aria-label="界面主题">
-              <button type="button" class="theme-choice" data-theme-choice="light" aria-pressed="false" aria-label="浅色主题" title="切换为浅色主题"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg></button>
-              <button type="button" class="theme-choice" data-theme-choice="dark" aria-pressed="false" aria-label="深色主题" title="切换为深色主题"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.5 14.2A8.5 8.5 0 0 1 9.8 3.5 8.5 8.5 0 1 0 20.5 14.2Z"/></svg></button>
-              <button type="button" class="theme-choice active" data-theme-choice="auto" aria-pressed="true" aria-label="跟随系统主题" title="跟随系统主题"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></svg></button>
+            <div data-localize id="theme-switcher" class="theme-switcher" role="group" aria-label="界面主题">
+              <button data-localize type="button" class="theme-choice" data-theme-choice="light" aria-pressed="false" aria-label="浅色主题" title="切换为浅色主题"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg></button>
+              <button data-localize type="button" class="theme-choice" data-theme-choice="dark" aria-pressed="false" aria-label="深色主题" title="切换为深色主题"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.5 14.2A8.5 8.5 0 0 1 9.8 3.5 8.5 8.5 0 1 0 20.5 14.2Z"/></svg></button>
+              <button data-localize type="button" class="theme-choice active" data-theme-choice="auto" aria-pressed="true" aria-label="跟随系统主题" title="跟随系统主题"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></svg></button>
             </div>
-            <a id="alert-bell" class="alert-bell" href="#/security/alert-events" aria-label="告警事件" title="告警事件" hidden>
+            <a data-localize id="alert-bell" class="alert-bell" href="#/security/alert-events" aria-label="告警事件" title="告警事件" hidden>
               <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.9 1.9 0 0 0 3.4 0"/></svg>
               <span class="alert-bell-dot" hidden></span>
             </a>
@@ -65,70 +66,73 @@
           <div class="login-hero-brand"><img src="/admin/assets/brand/tokenhub-app-icon.svg" alt=""><span>TokenHub</span></div>
           <div class="login-hero-body">
             <img class="login-hero-mark" src="/admin/assets/brand/tokenhub-app-icon.svg" alt="">
-            <h2>一个入口，管住所有模型调用</h2>
+            <h2 data-localize="text">一个入口，管住所有模型调用</h2>
             <ul>
-              <li>兼容 OpenAI 与 Anthropic 接口协议</li>
-              <li>按部门、员工、密钥计量 Token 与成本</li>
-              <li>调用全程留痕，敏感内容自动脱敏</li>
+              <li data-localize="text">兼容 OpenAI 与 Anthropic 接口协议</li>
+              <li data-localize="text">按部门、员工、密钥计量 Token 与成本</li>
+              <li data-localize="text">调用全程留痕，敏感内容自动脱敏</li>
             </ul>
           </div>
-          <p class="login-hero-foot">黔前智算 TokenHub 版权所有</p>
+          <p data-localize="text" class="login-hero-foot">黔前智算 TokenHub 版权所有</p>
         </section>
         <form id="login" class="login-panel" novalidate aria-labelledby="login-title" aria-describedby="login-subtitle">
           <div id="login-brand" class="login-brand"><img class="brand-logo" src="/admin/assets/brand/tokenhub-app-icon.svg" alt=""><span>TokenHub</span></div>
           <div class="login-heading">
-            <h2 id="login-title">登录管理后台</h2>
-            <p id="login-subtitle" class="login-subtitle">TokenHub 管理后台 · 使用管理员账号登录</p>
+            <h2 data-localize="text" id="login-title">登录管理后台</h2>
+            <p data-localize="text" id="login-subtitle" class="login-subtitle">TokenHub 管理后台 · 使用管理员账号登录</p>
           </div>
-          <label class="login-field">用户名<input id="username" name="username" autocomplete="username" spellcheck="false" autocapitalize="off" required></label>
-          <label class="login-field">密码
+          <label class="login-field"><span data-localize="text">用户名</span><input id="username" name="username" autocomplete="username" spellcheck="false" autocapitalize="off" required></label>
+          <label class="login-field"><span data-localize="text">密码</span>
             <span class="login-password">
               <input id="password" name="password" type="password" autocomplete="current-password" required>
-              <button id="password-toggle" class="login-password-toggle" type="button" aria-label="显示密码" aria-pressed="false" title="显示密码">
+              <button data-localize id="password-toggle" class="login-password-toggle" type="button" aria-label="显示密码" aria-pressed="false" title="显示密码">
                 <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg>
               </button>
             </span>
           </label>
           <div class="login-options">
-            <label class="login-remember"><input id="remember-username" type="checkbox">记住用户名</label>
-            <button id="forgot-password-link" class="login-help login-text-button" type="button" hidden>忘记密码？</button>
-            <span id="forgot-password-contact" class="login-help" hidden>忘记密码请联系超级管理员重置</span>
+            <label class="login-remember"><input id="remember-username" type="checkbox"><span data-localize="text">记住用户名</span></label>
+            <button data-localize="text" id="forgot-password-link" class="login-help login-text-button" type="button" hidden>忘记密码？</button>
+            <span data-localize="text" id="forgot-password-contact" class="login-help" hidden>忘记密码请联系超级管理员重置</span>
           </div>
-          <button id="login-button" type="submit">登录</button>
+          <button data-localize="text" id="login-button" type="submit">登录</button>
+          <div data-locale-picker></div>
           <p id="login-error" class="error login-error" role="alert" aria-live="assertive"></p>
           <p id="login-status" class="login-success" role="status" aria-live="polite" hidden></p>
           <p class="login-note">
             <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M12 3l8 3v6c0 4.5-3.4 8.3-8 9-4.6-.7-8-4.5-8-9V6l8-3Z"/></svg>
-            同一 IP 或账号短时间内多次登录失败，会被暂时限制登录
+            <span data-localize="text">同一 IP 或账号短时间内多次登录失败，会被暂时限制登录</span>
           </p>
         </form>
         <form id="forgot-password" class="login-panel" aria-labelledby="forgot-password-title" hidden>
           <div class="login-heading">
-            <h2 id="forgot-password-title">找回管理员密码</h2>
-            <p class="login-subtitle">输入管理员账号已绑定的邮箱，我们将发送密码重置链接。</p>
+            <h2 data-localize="text" id="forgot-password-title">找回管理员密码</h2>
+            <p data-localize="text" class="login-subtitle">输入管理员账号已绑定的邮箱，我们将发送密码重置链接。</p>
           </div>
-          <label class="login-field">邮箱地址<input id="recovery-email" name="email" type="email" autocomplete="email" maxlength="254" required></label>
-          <button id="recovery-send" type="submit">发送重置邮件</button>
+          <label class="login-field"><span data-localize="text">邮箱地址</span><input id="recovery-email" name="email" type="email" autocomplete="email" maxlength="254" required></label>
+          <button data-localize="text" id="recovery-send" type="submit">发送重置邮件</button>
           <p id="recovery-error" class="login-error" role="alert" aria-live="assertive"></p>
           <p id="recovery-status" class="login-success" role="status" aria-live="polite" hidden></p>
-          <p class="login-note">邮箱需预先在“管理员管理”中绑定。未绑定邮箱时，可由超级管理员或服务器管理员协助重置。</p>
-          <button class="login-text-button" type="button" data-return-login>返回登录</button>
+          <p data-localize="text" class="login-note">邮箱需预先在“管理员管理”中绑定。未绑定邮箱时，可由超级管理员或服务器管理员协助重置。</p>
+          <button data-localize="text" class="login-text-button" type="button" data-return-login>返回登录</button>
+          <div data-locale-picker></div>
         </form>
         <form id="reset-password" class="login-panel" aria-labelledby="reset-password-title" hidden>
           <div class="login-heading">
-            <h2 id="reset-password-title">设置新密码</h2>
-            <p class="login-subtitle">新密码至少 12 个字符，最多 72 字节。重置后需在所有设备上重新登录。</p>
+            <h2 data-localize="text" id="reset-password-title">设置新密码</h2>
+            <p data-localize="text" class="login-subtitle">新密码至少 12 个字符，最多 72 字节。重置后需在所有设备上重新登录。</p>
           </div>
-          <label class="login-field">新密码<input id="reset-new-password" name="password" type="password" autocomplete="new-password" minlength="12" maxlength="72" required></label>
-          <label class="login-field">确认新密码<input id="reset-confirm-password" name="password_confirmation" type="password" autocomplete="new-password" minlength="12" maxlength="72" required></label>
-          <button id="recovery-reset" type="submit">重置密码</button>
+          <label class="login-field"><span data-localize="text">新密码</span><input id="reset-new-password" name="password" type="password" autocomplete="new-password" minlength="12" maxlength="72" required></label>
+          <label class="login-field"><span data-localize="text">确认新密码</span><input id="reset-confirm-password" name="password_confirmation" type="password" autocomplete="new-password" minlength="12" maxlength="72" required></label>
+          <button data-localize="text" id="recovery-reset" type="submit">重置密码</button>
           <p id="reset-error" class="login-error" role="alert" aria-live="assertive"></p>
-          <button id="recovery-request-again" class="login-text-button" type="button">重新申请重置邮件</button>
-          <button class="login-text-button" type="button" data-return-login>返回登录</button>
+          <button data-localize="text" id="recovery-request-again" class="login-text-button" type="button">重新申请重置邮件</button>
+          <button data-localize="text" class="login-text-button" type="button" data-return-login>返回登录</button>
+          <div data-locale-picker></div>
         </form>
         <section id="content" class="content" tabindex="-1" hidden></section>
         <div id="modal-root"></div>
-        <div class="app-copyright" aria-label="版权信息">黔前智算 TokenHub 版权所有</div>
+        <div data-localize="text" class="app-copyright" aria-label="版权信息">黔前智算 TokenHub 版权所有</div>
       </section>
     </main>
     <script type="module" src="/admin/assets/js/app.js?v=20261105-conversation-logs-media"></script>

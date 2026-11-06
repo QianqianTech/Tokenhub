@@ -86,6 +86,7 @@ final class Kernel
         $router->post('/admin-api/app-auth/push/subscription', [$appAuth, 'pushSubscribe'], [new AdminAuthMiddleware(), new CsrfMiddleware()]);
         $router->delete('/admin-api/app-auth/push/subscription', [$appAuth, 'pushUnsubscribe'], [new AdminAuthMiddleware(), new CsrfMiddleware()]);
         $router->put('/admin-api/app-auth/push/preferences', [$appAuth, 'pushPreferences'], [new AdminAuthMiddleware(), new CsrfMiddleware()]);
+        $router->put('/admin-api/app-auth/push/locale', [$appAuth, 'pushLocale'], [new AdminAuthMiddleware(), new CsrfMiddleware()]);
         $router->post('/admin-api/app-auth/push/native', [$appAuth, 'pushNative'], [new AdminAuthMiddleware(), new CsrfMiddleware()]);
         // Public root certificate of the internal CA (https://IP), for phones to trust it.
         $router->get('/admin-api/app-auth/ca.crt', [$appAuth, 'caCertificate']);

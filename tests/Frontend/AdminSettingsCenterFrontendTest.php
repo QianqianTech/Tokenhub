@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 require __DIR__ . '/../bootstrap.php';
 
-$resources = file_get_contents(__DIR__ . '/../../public/admin/assets/js/resources.js') ?: '';
+$resources = frontend_copy_source(__DIR__ . '/../../public/admin/assets/js/resources.js') ?: '';
 $tableSource = admin_js_bundle() ?: '';
 $settingsServiceSource = file_get_contents(__DIR__ . '/../../app/Services/SystemSettingsService.php') ?: '';
 $adminCss = file_get_contents(__DIR__ . '/../../public/admin/assets/css/app.css') ?: '';
@@ -52,8 +52,8 @@ assert_true(str_contains($resources, '"settings-rag-upload-review"'), 'Admin res
 assert_true(str_contains($resources, '"settings-rag-package-upload"'), 'Admin resources should expose RAG image package upload settings as a subpage.');
 assert_true(str_contains($resources, '"settings-rag-ai-image-processing"'), 'Admin resources should expose RAG AI image processing settings as a subpage.');
 assert_true(str_contains($resources, '"settings-rag-vectorization-monitoring"'), 'Admin resources should expose RAG vectorization monitoring settings as a subpage.');
-assert_true(str_contains((string) file_get_contents(__DIR__ . '/../../public/admin/assets/js/domains.js'), '{ key: "system", label: "系统设置"'), 'System settings should be a left sidebar section.');
-$domainsSource = (string) file_get_contents(__DIR__ . '/../../public/admin/assets/js/domains.js');
+assert_true(str_contains((string) frontend_copy_source(__DIR__ . '/../../public/admin/assets/js/domains.js'), '{ key: "system", label: "系统设置"'), 'System settings should be a left sidebar section.');
+$domainsSource = (string) frontend_copy_source(__DIR__ . '/../../public/admin/assets/js/domains.js');
 $systemSectionStart = strpos($domainsSource, '{ key: "system"');
 $systemSectionEnd = $systemSectionStart === false ? false : strpos($domainsSource, "\n", $systemSectionStart);
 assert_true($systemSectionStart !== false && $systemSectionEnd !== false, 'System settings sidebar section should be inspectable.');

@@ -1,3 +1,4 @@
+import { getLocale, initLocaleControls, localize } from "/admin/assets/js/i18n.js";
 import { createPoller } from "./poller.js";
 
 const SCREEN_REQUEST_TIMEOUT_MS = 8000;
@@ -28,14 +29,14 @@ async function api(path, options = {}) {
         }
       });
     } catch {
-      const error = new Error(timedOut ? "大屏服务响应超时，请稍后重试" : "无法连接大屏服务，请检查网络后重试");
+      const error = new Error(timedOut ? localize("大屏服务响应超时，请稍后重试") : localize("无法连接大屏服务，请检查网络后重试"));
       error.code = timedOut ? "SCREEN_TIMEOUT" : (controller.signal.aborted ? "SCREEN_ABORTED" : "SCREEN_NETWORK_ERROR");
       error.status = 0;
       throw error;
     }
-    const payload = await response.json().catch(() => ({ ok: false, error: { code: timedOut ? "SCREEN_TIMEOUT" : "BAD_RESPONSE", message: "服务返回格式异常" } }));
+    const payload = await response.json().catch(() => ({ ok: false, error: { code: timedOut ? "SCREEN_TIMEOUT" : "BAD_RESPONSE", message: localize("服务返回格式异常") } }));
     if (!response.ok || payload.ok === false) {
-      const error = new Error(payload.error?.message || "大屏请求失败");
+      const error = new Error(payload.error?.message || localize("大屏请求失败"));
       error.code = payload.error?.code || payload.code || (response.ok ? "BAD_RESPONSE" : "SCREEN_REQUEST_FAILED");
       error.status = response.status;
       error.retryAfter = Number(response.headers.get("Retry-After") || 0);
@@ -55,20 +56,20 @@ function abortInflightRequests() {
   inflightControllers.clear();
 }
 
-function screenErrorMessage(error, fallback = "大屏请求失败，请稍后重试") {
+function screenErrorMessage(error, fallback = localize("大屏请求失败，请稍后重试")) {
   const messages = {
-    BAD_RESPONSE: "服务返回格式异常",
-    SCREEN_NETWORK_ERROR: "无法连接大屏服务，请检查网络后重试",
-    SCREEN_TIMEOUT: "大屏服务响应超时，请稍后重试",
-    RATE_LIMITED: "尝试过于频繁，请稍后再试",
-    SCREEN_REQUEST_FAILED: "大屏服务暂时不可用，请稍后重试",
-    SCREEN_LINK_DISABLED: "大屏链接已停用",
-    SCREEN_LINK_EXPIRED: "大屏链接已过期",
-    SCREEN_IP_FORBIDDEN: "当前 IP 不在允许范围内",
-    SCREEN_UNAUTHENTICATED: "大屏链接无效或会话已失效",
-    CONTENT_FORBIDDEN: "无权访问该大屏内容",
-    NOT_FOUND: "大屏接口不存在，请检查部署配置",
-    INTERNAL_ERROR: "大屏服务暂时不可用，请稍后重试"
+    BAD_RESPONSE: localize("服务返回格式异常"),
+    SCREEN_NETWORK_ERROR: localize("无法连接大屏服务，请检查网络后重试"),
+    SCREEN_TIMEOUT: localize("大屏服务响应超时，请稍后重试"),
+    RATE_LIMITED: localize("尝试过于频繁，请稍后再试"),
+    SCREEN_REQUEST_FAILED: localize("大屏服务暂时不可用，请稍后重试"),
+    SCREEN_LINK_DISABLED: localize("大屏链接已停用"),
+    SCREEN_LINK_EXPIRED: localize("大屏链接已过期"),
+    SCREEN_IP_FORBIDDEN: localize("当前 IP 不在允许范围内"),
+    SCREEN_UNAUTHENTICATED: localize("大屏链接无效或会话已失效"),
+    CONTENT_FORBIDDEN: localize("无权访问该大屏内容"),
+    NOT_FOUND: localize("大屏接口不存在，请检查部署配置"),
+    INTERNAL_ERROR: localize("大屏服务暂时不可用，请稍后重试")
   };
   return messages[error?.code] || fallback;
 }
@@ -78,7 +79,7 @@ const setText = (node, value) => { if (node) node.textContent = value == null ? 
 const SVG_NS = "http://www.w3.org/2000/svg";
 const SCREEN_BRAND_DEFAULTS = {
   product_name: "TokenHub",
-  screen_title: "TokenHub 运营大屏",
+  screen_title: localize("TokenHub 运营大屏"),
   logo_url: "",
   favicon_url: "/screen/assets/brand/favicon.ico"
 };
@@ -124,7 +125,9 @@ function screenSafeLocalAssetUrl(value) {
 
 function screenApplyBrandIdentity(settings = {}) {
   const productName = String(settings.product_name || SCREEN_BRAND_DEFAULTS.product_name).trim() || SCREEN_BRAND_DEFAULTS.product_name;
-  const screenTitle = String(settings.screen_title || SCREEN_BRAND_DEFAULTS.screen_title).trim() || SCREEN_BRAND_DEFAULTS.screen_title;
+  const configuredTitle = String(settings.screen_title ?? "").trim();
+  const screenTitle = !configuredTitle || configuredTitle === "TokenHub 运营大屏"
+    ? SCREEN_BRAND_DEFAULTS.screen_title : configuredTitle;
   const faviconUrl = screenSafeLocalAssetUrl(settings.favicon_url || SCREEN_BRAND_DEFAULTS.favicon_url);
   const logoUrl = screenSafeLocalAssetUrl(settings.logo_url || "");
   if (logoUrl !== "") {
@@ -161,7 +164,7 @@ async function screenRefreshBrandIdentity() {
   }
 }
 
-const SCOPE_LABELS = { global: "全局", department: "部门范围", user: "用户范围", api_key: "密钥范围" };
+const SCOPE_LABELS = { global: localize("全局"), department: localize("部门范围"), user: localize("用户范围"), api_key: localize("密钥范围") };
 
 // Scoped links see part of the traffic; say so next to the title.
 function renderScope(session) {
@@ -245,7 +248,7 @@ function numericValue(value) {
 
 function formatNumber(value) {
   const number = Number(value || 0);
-  return Number.isFinite(number) ? number.toLocaleString("zh-CN") : "0";
+  return Number.isFinite(number) ? number.toLocaleString(getLocale()) : "0";
 }
 
 function formatTokenMillions(value) {
@@ -289,11 +292,11 @@ function hasMetricData(totals) {
 function overviewTotalsForDisplay(source) {
   const periods = source?.period_totals || {};
   const options = [
-    ["today", "今日", source?.totals || periods.today || {}],
-    ["week", "本周累计", periods.week || {}],
-    ["month", "本月累计", periods.month || {}],
-    ["quarter", "本季度累计", periods.quarter || {}],
-    ["year", "本年度累计", periods.year || {}]
+    ["today", localize("今日"), source?.totals || periods.today || {}],
+    ["week", localize("本周累计"), periods.week || {}],
+    ["month", localize("本月累计"), periods.month || {}],
+    ["quarter", localize("本季度累计"), periods.quarter || {}],
+    ["year", localize("本年度累计"), periods.year || {}]
   ];
   return options.find(([, , totals]) => hasMetricData(totals)) || options[0];
 }
@@ -351,7 +354,7 @@ function zonedFormatter(kind = "parts") {
   if (!zonedFormatters.has(key)) {
     const zone = businessTimeZone ? { timeZone: businessTimeZone } : {};
     zonedFormatters.set(key, kind === "weekday"
-      ? new Intl.DateTimeFormat("zh-CN", { ...zone, weekday: "long" })
+      ? new Intl.DateTimeFormat(getLocale(), { ...zone, weekday: "long" })
       : new Intl.DateTimeFormat("en-CA", { ...zone, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23" }));
   }
   return zonedFormatters.get(key);
@@ -394,8 +397,8 @@ function formatRelative(value) {
   const date = bucketDate(value);
   if (!date) return "--";
   const seconds = Math.max(0, Math.round((Date.now() - date.getTime()) / 1000));
-  if (seconds < 60) return `${seconds} 秒前`;
-  if (seconds < 3600) return `${Math.floor(seconds / 60)} 分钟前`;
+  if (seconds < 60) return localize`${seconds} 秒前`;
+  if (seconds < 3600) return localize`${Math.floor(seconds / 60)} 分钟前`;
   return formatBucketTime(value);
 }
 
@@ -455,7 +458,7 @@ function updateClock() {
   const now = new Date();
   const parts = zonedParts(now);
   setText($("screen-clock"), parts.time);
-  setText($("screen-date"), `${parts.year}年${parts.month}月${parts.date}日 ${zonedFormatter("weekday").format(now)}`);
+  setText($("screen-date"), localize`${parts.year}年${parts.month}月${parts.date}日 ${zonedFormatter("weekday").format(now)}`);
   renderStale();
 }
 
@@ -467,7 +470,7 @@ function renderStale() {
   node.hidden = !stale;
   if (stale) {
     const minutes = Math.floor(age / 60000);
-    setText(node, `数据已 ${minutes >= 1 ? `${minutes} 分钟` : `${Math.floor(age / 1000)} 秒`}未更新，画面为最后一次成功获取的数据，正在自动重试`);
+    setText(node, localize`数据已 ${minutes >= 1 ? localize`${minutes} 分钟` : localize`${Math.floor(age / 1000)} 秒`}未更新，画面为最后一次成功获取的数据，正在自动重试`);
   }
 }
 
@@ -475,14 +478,14 @@ function renderUpdatedAt(value) {
   const node = $("screen-updated");
   if (!node) return;
   const date = value ? new Date(value) : null;
-  setText(node, date && Number.isFinite(date.getTime()) ? `数据更新于 ${zonedParts(date).time}` : "");
+  setText(node, date && Number.isFinite(date.getTime()) ? localize`数据更新于 ${zonedParts(date).time}` : "");
 }
 
 const HEALTH_REASON_LABELS = {
-  worker_heartbeat_missing: "队列 worker 无心跳",
-  queue_backlog: "队列积压",
-  circuit_open: "有渠道熔断",
-  error_rate_high: "错误率偏高"
+  worker_heartbeat_missing: localize("队列 worker 无心跳"),
+  queue_backlog: localize("队列积压"),
+  circuit_open: localize("有渠道熔断"),
+  error_rate_high: localize("错误率偏高")
 };
 
 function renderHealth(live) {
@@ -491,10 +494,10 @@ function renderHealth(live) {
   const level = live?.health?.level || "unknown";
   const reasons = Array.isArray(live?.health?.reasons) ? live.health.reasons : [];
   node.className = `screen-health is-${level}`;
-  const labels = { ok: "运行正常", warn: "需要关注", critical: "服务异常", unknown: "状态未知" };
+  const labels = { ok: localize("运行正常"), warn: localize("需要关注"), critical: localize("服务异常"), unknown: localize("状态未知") };
   const detail = reasons.map((reason) => HEALTH_REASON_LABELS[reason] || reason).join("、");
   const pending = live?.queue?.pending;
-  node.title = [labels[level] || labels.unknown, detail, pending != null ? `队列待处理 ${formatNumber(pending)}` : ""].filter(Boolean).join(" · ");
+  node.title = [labels[level] || labels.unknown, detail, pending != null ? localize`队列待处理 ${formatNumber(pending)}` : ""].filter(Boolean).join(" · ");
   // The reason is visible on the wall, not only in a tooltip nobody can hover.
   setText(node, detail && level !== "ok" ? `${labels[level] || labels.unknown} · ${detail}` : (labels[level] || labels.unknown));
 }
@@ -649,9 +652,9 @@ const SHARE_COLORS = ["#34d399", "#6aa8ff", "#fbbf24", "#a78bfa", "#fb923c"];
 const SHARE_OTHER_COLOR = "#4b5551";
 
 // Today's tokens as one large number, the breakdown and comparisons beneath.
-function renderMetricCards(today, periodLabel = "今日", compare = null) {
+function renderMetricCards(today, periodLabel = localize("今日"), compare = null) {
   const totalTokens = tokenTotal(today);
-  setText($("token-title"), periodLabel === "今日" ? "今日实时 Token 消耗" : `${periodLabel} Token 消耗`);
+  setText($("token-title"), periodLabel === localize("今日") ? localize("今日实时 Token 消耗") : localize`${periodLabel} Token 消耗`);
   const big = createText("strong", "metric-value token-hero", "");
   const digits = formatNumber(totalTokens).length;
   if (digits >= 14) big.classList.add("is-xlong");
@@ -661,7 +664,7 @@ function renderMetricCards(today, periodLabel = "今日", compare = null) {
   mark.setAttribute("aria-hidden", "true");
   mark.append(document.createElement("span"), document.createElement("span"));
   const side = el("div", "token-hero-side", [
-    periodLabel === "今日" && compare ? deltaNode(compare.tokenChange, "较昨日同时段") : null,
+    periodLabel === localize("今日") && compare ? deltaNode(compare.tokenChange, localize("较昨日同时段")) : null,
     createText("small", "metric-period", periodLabel)
   ]);
   const hero = el("div", "token-hero-row", [big, mark, side]);
@@ -673,10 +676,10 @@ function renderMetricCards(today, periodLabel = "今日", compare = null) {
   const requests = numericValue(today.request_count);
   const success = today.success_count != null ? numericValue(today.success_count) : (today.failed_count != null ? requests - numericValue(today.failed_count) : null);
   const metrics = [
-    { key: "input_tokens", tone: "is-input", label: "输入", rawValue: today.input_tokens, formatter: formatTokenMillions, hint: io > 0 ? `占 ${(input / io * 100).toFixed(1)}%` : "" },
-    { key: "output_tokens", tone: "is-output", label: "输出", rawValue: today.output_tokens, formatter: formatTokenMillions, hint: io > 0 ? `占 ${(output / io * 100).toFixed(1)}%` : "" },
-    { key: "cache_tokens", tone: "is-cache", label: "缓存", rawValue: today.cache_tokens, formatter: formatTokenMillions, hint: input > 0 ? `相当于输入的 ${(numericValue(today.cache_tokens) / input * 100).toFixed(1)}%` : "" },
-    { key: "request_count", tone: "is-requests", label: "调用次数", rawValue: today.request_count, formatter: formatNumber, hint: success !== null && requests > 0 ? `成功率 ${(success / requests * 100).toFixed(2)}%` : "" }
+    { key: "input_tokens", tone: "is-input", label: localize("输入"), rawValue: today.input_tokens, formatter: formatTokenMillions, hint: io > 0 ? localize`占 ${(input / io * 100).toFixed(1)}%` : "" },
+    { key: "output_tokens", tone: "is-output", label: localize("输出"), rawValue: today.output_tokens, formatter: formatTokenMillions, hint: io > 0 ? localize`占 ${(output / io * 100).toFixed(1)}%` : "" },
+    { key: "cache_tokens", tone: "is-cache", label: localize("缓存"), rawValue: today.cache_tokens, formatter: formatTokenMillions, hint: input > 0 ? localize`相当于输入的 ${(numericValue(today.cache_tokens) / input * 100).toFixed(1)}%` : "" },
+    { key: "request_count", tone: "is-requests", label: localize("调用次数"), rawValue: today.request_count, formatter: formatNumber, hint: success !== null && requests > 0 ? localize`成功率 ${(success / requests * 100).toFixed(2)}%` : "" }
   ];
   const row = document.createElement("div");
   row.className = "token-breakdown";
@@ -697,7 +700,7 @@ function renderTokenDetails(rows) {
   const data = Array.isArray(rows) ? rows.slice(0, 8) : [];
   const host = $("token-details");
   if (data.length === 0) {
-    renderEmpty(host, "暂无模型 Token 数据");
+    renderEmpty(host, localize("暂无模型 Token 数据"));
     return;
   }
   host.replaceChildren(...data.map((model) => {
@@ -706,8 +709,8 @@ function renderTokenDetails(rows) {
     const item = document.createElement("div");
     item.className = "token-detail-row";
     item.append(
-      createText("span", "", model.model_name || "未知模型"),
-      createText("strong", "", `${formatTokenMillions(tokens)} / ${formatNumber(requests)} 次`)
+      createText("span", "", model.model_name || localize("未知模型")),
+      createText("strong", "", localize`${formatTokenMillions(tokens)} / ${formatNumber(requests)} 次`)
     );
     return item;
   }));
@@ -718,18 +721,18 @@ function renderModelShare(rows) {
   const host = $("model-share-chart");
   const all = Array.isArray(rows) ? rows.filter((row) => Number(row.total_tokens || 0) > 0) : [];
   if (all.length === 0) {
-    renderEmpty(host, "暂无模型占比数据");
+    renderEmpty(host, localize("暂无模型占比数据"));
     return;
   }
   const totalTokens = all.reduce((sum, row) => sum + numericValue(row.total_tokens), 0);
   const share = (row) => (row.percent != null ? numericValue(row.percent) : (totalTokens > 0 ? numericValue(row.total_tokens) / totalTokens * 100 : 0));
-  const top = all.slice(0, all.length > 6 ? 5 : 6).map((row, index) => ({ name: row.model_name || `模型 ${index + 1}`, tokens: numericValue(row.total_tokens), percent: share(row), color: SHARE_COLORS[index] || SHARE_OTHER_COLOR }));
+  const top = all.slice(0, all.length > 6 ? 5 : 6).map((row, index) => ({ name: row.model_name || localize`模型 ${index + 1}`, tokens: numericValue(row.total_tokens), percent: share(row), color: SHARE_COLORS[index] || SHARE_OTHER_COLOR }));
   const rest = all.slice(top.length);
   if (rest.length > 0) {
-    top.push({ name: `其他 ${rest.length} 个`, tokens: rest.reduce((sum, row) => sum + numericValue(row.total_tokens), 0), percent: rest.reduce((sum, row) => sum + share(row), 0), color: SHARE_OTHER_COLOR });
+    top.push({ name: localize`其他 ${rest.length} 个`, tokens: rest.reduce((sum, row) => sum + numericValue(row.total_tokens), 0), percent: rest.reduce((sum, row) => sum + share(row), 0), color: SHARE_OTHER_COLOR });
   }
 
-  const svg = svgEl("svg", { viewBox: "0 0 180 180", class: "model-chart-ring", role: "img", "aria-label": `模型 Token 占比：${top.map((row) => `${row.name} ${formatPercent(row.percent)}`).join("，")}` });
+  const svg = svgEl("svg", { viewBox: "0 0 180 180", class: "model-chart-ring", role: "img", "aria-label": localize`模型 Token 占比：${top.map((row) => `${row.name} ${formatPercent(row.percent)}`).join("，")}` });
   const radius = 70;
   const circumference = 2 * Math.PI * radius;
   svg.append(svgEl("circle", { cx: 90, cy: 90, r: radius, class: "ring-track" }));
@@ -748,7 +751,7 @@ function renderModelShare(rows) {
   const count = svgEl("text", { x: 90, y: 90, class: "ring-value" });
   count.textContent = String(all.length);
   const caption = svgEl("text", { x: 90, y: 112, class: "ring-caption" });
-  caption.textContent = "在用模型";
+  caption.textContent = localize("在用模型");
   svg.append(count, caption);
 
   const legend = el("div", "model-legend", top.map((row) => {
@@ -762,7 +765,7 @@ function renderModelShare(rows) {
       createText("strong", "", formatPercent(row.percent))
     ]);
   }));
-  legend.title = `本月合计 ${formatNumber(totalTokens)} Token`;
+  legend.title = localize`本月合计 ${formatNumber(totalTokens)} Token`;
   host.replaceChildren(svg, legend);
 }
 
@@ -770,7 +773,7 @@ function renderModelUsage(rows) {
   const host = $("model-usage");
   const data = Array.isArray(rows) ? rows.slice(0, 10) : [];
   if (data.length === 0) {
-    renderEmpty(host, "暂无模型使用数据");
+    renderEmpty(host, localize("暂无模型使用数据"));
     return;
   }
   const max = Math.max(1, ...data.map((row) => Number(row.total_tokens || 0)));
@@ -778,23 +781,23 @@ function renderModelUsage(rows) {
     const item = el("div", `model-row ${index === 0 ? "is-top" : ""}`.trim(), [
       el("header", "", [
         createText("span", "model-rank", String(index + 1).padStart(2, "0")),
-        createText("span", "model-name", row.model_name || "未知模型"),
-        createText("span", "model-requests", `${formatNumber(row.request_count)} 次`),
+        createText("span", "model-name", row.model_name || localize("未知模型")),
+        createText("span", "model-requests", localize`${formatNumber(row.request_count)} 次`),
         createText("strong", "", formatTokenCompact(row.total_tokens))
       ]),
       bar("model-progress", numericValue(row.total_tokens) / max)
     ]);
-    item.title = `${formatNumber(row.request_count)} 次 · 输入 ${formatNumber(row.input_tokens)} / 输出 ${formatNumber(row.output_tokens)}`;
+    item.title = localize`${formatNumber(row.request_count)} 次 · 输入 ${formatNumber(row.input_tokens)} / 输出 ${formatNumber(row.output_tokens)}`;
     return item;
   }));
 }
 
 function renderPeriodTotals(periods) {
   const labels = [
-    ["week", "本周"],
-    ["month", "本月"],
-    ["quarter", "本季"],
-    ["year", "本年"]
+    ["week", localize("本周")],
+    ["month", localize("本月")],
+    ["quarter", localize("本季")],
+    ["year", localize("本年")]
   ];
   $("period-totals").replaceChildren(...labels.map(([key, label]) => {
     const row = periods?.[key] || {};
@@ -807,45 +810,45 @@ function renderPeriodTotals(periods) {
 }
 
 const TASK_TYPES = {
-  image: ["图像", "is-image", "图像生成"],
-  video: ["视频", "is-video", "视频生成"],
-  speech: ["语音", "is-audio", "语音合成"],
-  audio: ["语音", "is-audio", "音频生成"],
-  tts: ["语音", "is-audio", "语音合成"],
-  asr: ["转写", "is-audio", "语音识别"],
-  music: ["音乐", "is-audio", "音乐生成"]
+  image: [localize("图像"), "is-image", localize("图像生成")],
+  video: [localize("视频"), "is-video", localize("视频生成")],
+  speech: [localize("语音"), "is-audio", localize("语音合成")],
+  audio: [localize("语音"), "is-audio", localize("音频生成")],
+  tts: [localize("语音"), "is-audio", localize("语音合成")],
+  asr: [localize("转写"), "is-audio", localize("语音识别")],
+  music: [localize("音乐"), "is-audio", localize("音乐生成")]
 };
 
 function taskType(type) {
   const key = Object.keys(TASK_TYPES).find((name) => String(type || "").toLowerCase().includes(name));
-  return key ? TASK_TYPES[key] : ["任务", "is-other", type || "生成任务"];
+  return key ? TASK_TYPES[key] : [localize("任务"), "is-other", type || localize("生成任务")];
 }
 
 const LIVE_STATUS_LABELS = {
-  queued: "排队中",
-  processing: "生成中",
-  succeeded: "已生成",
-  failed: "失败",
-  blocked: "已阻断",
-  timeout: "超时"
+  queued: localize("排队中"),
+  processing: localize("生成中"),
+  succeeded: localize("已生成"),
+  failed: localize("失败"),
+  blocked: localize("已阻断"),
+  timeout: localize("超时")
 };
 
 function renderLiveGenerations(rows) {
   const host = $("live-generations");
   const all = Array.isArray(rows) ? rows : [];
   const activeCount = all.filter((row) => ["processing", "queued"].includes(row.status || "processing")).length;
-  setText($("live-count"), all.length ? `${activeCount} 路进行中` : "");
+  setText($("live-count"), all.length ? localize`${activeCount} 路进行中` : "");
   // Running work first, then the most recent finished tasks.
   const rank = (row) => ({ processing: 0, queued: 1 }[row.status || "processing"] ?? 2);
   const data = all.map((row, index) => ({ row, index })).sort((a, b) => rank(a.row) - rank(b.row) || a.index - b.index).slice(0, 5).map(({ row }) => row);
   if (data.length === 0) {
-    renderEmpty(host, "暂无正在生成内容");
+    renderEmpty(host, localize("暂无正在生成内容"));
     return;
   }
   host.replaceChildren(...data.map((row) => {
     const status = row.status || "processing";
     const [short, tone, typeLabel] = taskType(row.task_type);
-    const who = row.department_name || row.user_name || (row.department_id ? `部门 ${row.department_id}` : "生成任务");
+    const who = row.department_name || row.user_name || (row.department_id ? localize`部门 ${row.department_id}` : localize("生成任务"));
     const progress = numericValue(row.progress);
     const main = el("div", "live-main", [
       createText("strong", "", who),
@@ -855,7 +858,7 @@ function renderLiveGenerations(rows) {
     ]);
     const side = el("div", "live-side", [
       createText("span", "live-tokens", status === "processing" && progress > 0 ? `${Math.round(progress)}%` : row.total_tokens ? formatNumber(row.total_tokens) : formatRelative(row.created_at)),
-      createText("span", "live-status", LIVE_STATUS_LABELS[status] || "生成中")
+      createText("span", "live-status", LIVE_STATUS_LABELS[status] || localize("生成中"))
     ]);
     return el("div", `live-row is-${status}`, [createText("span", `live-type ${tone}`, short), main, side]);
   }));
@@ -930,13 +933,13 @@ function renderOverviewTrend(rows, stats = dayComparison(rows)) {
   const summary = $("overview-trend-summary");
   if (!stats.any) {
     summary?.replaceChildren();
-    renderEmpty(host, "暂无趋势数据");
+    renderEmpty(host, localize("暂无趋势数据"));
     return;
   }
   const { today, yesterday } = stats.calls;
   const runRate = stats.nowFraction >= 0.1 ? (today[stats.nowHour] || 0) / stats.nowFraction : 0;
   const max = niceMax(Math.max(1, runRate, ...yesterday, ...today.filter((value) => value !== null)) * 1.08);
-  const label = `今日累计调用 ${formatNumber(stats.todayCalls)} 次，昨日同时段 ${formatNumber(stats.yesterdaySame)} 次`;
+  const label = localize`今日累计调用 ${formatNumber(stats.todayCalls)} 次，昨日同时段 ${formatNumber(stats.yesterdaySame)} 次`;
   const frame = chartFrame(max, formatAxis, label);
   const x = (hour) => (hour + 0.5) / 24 * frame.width;
   const defs = svgEl("defs");
@@ -967,22 +970,22 @@ function renderOverviewTrend(rows, stats = dayComparison(rows)) {
   }
   const hourLabel = `${String(stats.nowHour).padStart(2, "0")}:00`;
   chartMarker(frame.plot, nowX / frame.width, nowY / frame.height, projected !== null
-    ? `${hourLabel} 已 ${formatNumber(nowValue)} 次 · 预计 ${formatNumber(Math.round(projected))}`
-    : `${hourLabel} · ${formatNumber(nowValue)} 次`);
+    ? localize`${hourLabel} 已 ${formatNumber(nowValue)} 次 · 预计 ${formatNumber(Math.round(projected))}`
+    : localize`${hourLabel} · ${formatNumber(nowValue)} 次`);
 
   axisLabels(frame.xaxis, ["00:00", "06:00", "12:00", "18:00", "24:00"].map((text, index) => [index / 4, text]));
   host.replaceChildren(frame.body);
 
   summary?.replaceChildren(...[
-    createText("span", "", "今日"),
+    createText("span", "", localize("今日")),
     createText("strong", "", formatNumber(stats.todayCalls)),
-    createText("span", "", "次"),
-    deltaNode(stats.callChange, "较昨日同时段")
+    createText("span", "", localize("次")),
+    deltaNode(stats.callChange, localize("较昨日同时段"))
   ].filter(Boolean));
 }
 
 function rankingName(row, index) {
-  return row.name || row.department_name || row.model_name || row.model || row.provider || row.api_key_name || (row.id ? `#${row.id}` : `第 ${index + 1} 名`);
+  return row.name || row.department_name || row.model_name || row.model || row.provider || row.api_key_name || (row.id ? `#${row.id}` : localize`第 ${index + 1} 名`);
 }
 
 function renderOverviewRankings(rows) {
@@ -990,7 +993,7 @@ function renderOverviewRankings(rows) {
   if (!host) return;
   const data = Array.isArray(rows) ? rows.slice(0, 10) : [];
   if (data.length === 0) {
-    renderEmpty(host, "暂无排行数据");
+    renderEmpty(host, localize("暂无排行数据"));
     return;
   }
   const max = Math.max(1, ...data.map((row) => numericValue(row.request_count)));
@@ -1023,15 +1026,15 @@ function renderOverviewPerformance(data, totals) {
   const success = totals?.success_count != null ? numericValue(totals.success_count) : null;
   host.replaceChildren(
     createText("strong", "", latest ? formatSeconds(latest.p95_latency_ms) : "--"),
-    createText("small", "mini-good", success !== null && requests > 0 ? `成功率 ${(success / requests * 100).toFixed(2)}%` : "最近时段")
+    createText("small", "mini-good", success !== null && requests > 0 ? localize`成功率 ${(success / requests * 100).toFixed(2)}%` : localize("最近时段"))
   );
 }
 
-const SECURITY_ACTION_LABELS = { block: "拦截", redact: "脱敏", replace: "替换", summary: "摘要", log: "记录", allow: "放行", remove_header: "移除请求头" };
+const SECURITY_ACTION_LABELS = { block: localize("拦截"), redact: localize("脱敏"), replace: localize("替换"), summary: localize("摘要"), log: localize("记录"), allow: localize("放行"), remove_header: localize("移除请求头") };
 
 function securityEvents(data) {
   const source = data?.data || data || {};
-  const desensitization = Array.isArray(source.desensitization) ? source.desensitization.map((item) => ({ ...item, type: "脱敏" })) : [];
+  const desensitization = Array.isArray(source.desensitization) ? source.desensitization.map((item) => ({ ...item, type: localize("脱敏") })) : [];
   return desensitization.slice(0, 8);
 }
 
@@ -1043,7 +1046,7 @@ function renderOverviewSecurity(data) {
   const blocked = events.filter((event) => String(event.action || "") === "block").reduce((sum, event) => sum + numericValue(event.event_count || event.count), 0);
   host.replaceChildren(
     createText("strong", "", formatNumber(total)),
-    createText("small", blocked > 0 ? "mini-warn" : "", blocked > 0 ? `其中拦截 ${formatNumber(blocked)}` : "今日 · 按策略处理")
+    createText("small", blocked > 0 ? "mini-warn" : "", blocked > 0 ? localize`其中拦截 ${formatNumber(blocked)}` : localize("今日 · 按策略处理"))
   );
 }
 
@@ -1066,7 +1069,7 @@ function renderLivePanel(live) {
   const host = $("live-metrics");
   if (!host) return;
   if (!live || live.blocked) {
-    renderEmpty(host, "暂无实时数据");
+    renderEmpty(host, localize("暂无实时数据"));
     renderProviders(null);
     return;
   }
@@ -1080,16 +1083,16 @@ function renderLivePanel(live) {
   const openCircuits = numericValue(circuits.open);
   const halfOpen = numericValue(circuits.half_open);
   const pending = numericValue(queue.pending);
-  setText($("live-window"), `近 ${live.window_minutes || 5} 分钟 · 每分钟`);
+  setText($("live-window"), localize`近 ${live.window_minutes || 5} 分钟 · 每分钟`);
   const cards = [
-    { label: "QPS", value: numericValue(live.qps).toFixed(2), meta: `近 ${live.window_minutes || 5} 分钟 ${formatNumber(live.request_count)} 次`, spark: perMinute("request_count") },
-    { label: "TPS", value: formatNumber(Math.round(numericValue(live.tps))), meta: "Token / 秒", spark: perMinute("total_tokens") },
-    { label: "错误率", value: formatPercent(errorRate), meta: `${formatNumber(live.failed_count)} 次失败`, spark: errorSeries, tone: errorRate >= 20 ? "is-danger" : errorRate >= 5 ? "is-warn" : "" },
-    { label: "延迟 P95", value: formatSeconds(live.p95_latency_ms), meta: `P99 ${formatSeconds(live.p99_latency_ms)}`, tone: numericValue(live.p95_latency_ms) >= 30000 ? "is-warn" : "" },
-    { label: "首 Token", value: ttft.available ? formatSeconds(ttft.avg_ms) : "--", meta: ttft.available ? "平均首 Token 延迟" : "待网关记录" },
-    { label: "未处理告警", value: live.open_alerts == null ? "--" : formatNumber(live.open_alerts), meta: live.open_alerts == null ? "仅全局大屏显示" : "状态为待处理", tone: numericValue(live.open_alerts) > 0 ? "is-warn" : "" },
-    { label: "熔断", value: formatNumber(openCircuits), meta: `半开 ${formatNumber(halfOpen)} · 正常 ${formatNumber(circuits.closed || 0)}`, tone: openCircuits > 0 ? "is-danger" : halfOpen > 0 ? "is-warn" : "" },
-    { label: "队列待处理", value: queue.pending == null ? "--" : formatNumber(pending), meta: queue.worker_alive === false ? "worker 无心跳" : (queue.worker_alive ? "worker 在线" : "队列状态"), tone: queue.worker_alive === false ? "is-danger" : pending >= 100 ? "is-warn" : "" }
+    { label: "QPS", value: numericValue(live.qps).toFixed(2), meta: localize`近 ${live.window_minutes || 5} 分钟 ${formatNumber(live.request_count)} 次`, spark: perMinute("request_count") },
+    { label: "TPS", value: formatNumber(Math.round(numericValue(live.tps))), meta: localize("Token / 秒"), spark: perMinute("total_tokens") },
+    { label: localize("错误率"), value: formatPercent(errorRate), meta: localize`${formatNumber(live.failed_count)} 次失败`, spark: errorSeries, tone: errorRate >= 20 ? "is-danger" : errorRate >= 5 ? "is-warn" : "" },
+    { label: localize("延迟 P95"), value: formatSeconds(live.p95_latency_ms), meta: `P99 ${formatSeconds(live.p99_latency_ms)}`, tone: numericValue(live.p95_latency_ms) >= 30000 ? "is-warn" : "" },
+    { label: localize("首 Token"), value: ttft.available ? formatSeconds(ttft.avg_ms) : "--", meta: ttft.available ? localize("平均首 Token 延迟") : localize("待网关记录") },
+    { label: localize("未处理告警"), value: live.open_alerts == null ? "--" : formatNumber(live.open_alerts), meta: live.open_alerts == null ? localize("仅全局大屏显示") : localize("状态为待处理"), tone: numericValue(live.open_alerts) > 0 ? "is-warn" : "" },
+    { label: localize("熔断"), value: formatNumber(openCircuits), meta: localize`半开 ${formatNumber(halfOpen)} · 正常 ${formatNumber(circuits.closed || 0)}`, tone: openCircuits > 0 ? "is-danger" : halfOpen > 0 ? "is-warn" : "" },
+    { label: localize("队列待处理"), value: queue.pending == null ? "--" : formatNumber(pending), meta: queue.worker_alive === false ? localize("worker 无心跳") : (queue.worker_alive ? localize("worker 在线") : localize("队列状态")), tone: queue.worker_alive === false ? "is-danger" : pending >= 100 ? "is-warn" : "" }
   ];
   host.replaceChildren(...cards.map((card) => el("article", `live-metric-card ${card.tone || ""}`.trim(), [
     createText("span", "metric-label", card.label),
@@ -1107,21 +1110,21 @@ function renderProviders(live) {
   const rows = Array.isArray(live?.providers) ? live.providers : [];
   if (rows.length === 0) {
     setText($("provider-meta"), "");
-    renderEmpty(providers, "近 5 分钟暂无调用");
+    renderEmpty(providers, localize("近 5 分钟暂无调用"));
   } else {
     const total = rows.reduce((sum, row) => sum + numericValue(row.request_count), 0);
     const max = Math.max(1, ...rows.map((row) => numericValue(row.request_count)));
-    setText($("provider-meta"), `${rows.length} 家 · ${formatNumber(total)} 次`);
+    setText($("provider-meta"), localize`${rows.length} 家 · ${formatNumber(total)} 次`);
     providers.replaceChildren(...rows.slice(0, 8).map((row) => {
       const errorRate = numericValue(row.error_rate);
       const tone = errorRate >= 20 ? " is-warn is-danger" : errorRate >= 5 ? " is-warn" : "";
       const item = el("div", `provider-row${tone}`, [
-        createText("strong", "rank-name", row.name || (row.id ? `厂商 #${row.id}` : "未知厂商")),
-        createText("small", "rank-meta", `错误 ${formatPercent(errorRate)} · ${formatSeconds(row.avg_latency_ms)}`),
+        createText("strong", "rank-name", row.name || (row.id ? localize`厂商 #${row.id}` : localize("未知厂商"))),
+        createText("small", "rank-meta", localize`错误 ${formatPercent(errorRate)} · ${formatSeconds(row.avg_latency_ms)}`),
         createText("span", "rank-value", formatNumber(row.request_count)),
         bar("rank-bar", numericValue(row.request_count) / max)
       ]);
-      item.title = `QPS ${numericValue(row.qps).toFixed(2)} · 错误率 ${formatPercent(errorRate)} · 平均延迟 ${formatSeconds(row.avg_latency_ms)}`;
+      item.title = localize`QPS ${numericValue(row.qps).toFixed(2)} · 错误率 ${formatPercent(errorRate)} · 平均延迟 ${formatSeconds(row.avg_latency_ms)}`;
       return item;
     }));
   }
@@ -1135,10 +1138,10 @@ function renderProviders(live) {
   circuitsHost.hidden = false;
   const channels = Array.isArray(circuits.open_channels) ? circuits.open_channels : [];
   circuitsHost.replaceChildren(
-    createText("span", "circuit-title", "渠道熔断"),
+    createText("span", "circuit-title", localize("渠道熔断")),
     ...(channels.length
-      ? channels.slice(0, 6).map((channel) => createText("span", `circuit-chip is-${channel.state || "open"}`, `${channel.name || "未命名渠道"} · ${channel.state === "half_open" ? "半开" : "熔断"}`))
-      : [createText("span", "circuit-ok", `全部 ${formatNumber(circuits.closed || 0)} 个渠道正常`)])
+      ? channels.slice(0, 6).map((channel) => createText("span", `circuit-chip is-${channel.state || "open"}`, `${channel.name || localize("未命名渠道")} · ${channel.state === "half_open" ? localize("半开") : localize("熔断")}`))
+      : [createText("span", "circuit-ok", localize`全部 ${formatNumber(circuits.closed || 0)} 个渠道正常`)])
   );
 }
 
@@ -1149,7 +1152,7 @@ function renderTrendBars(rows) {
   const list = Array.isArray(rows) ? rows : [];
   if (list.length === 0) {
     summary?.replaceChildren();
-    renderEmpty(host, "暂无趋势数据");
+    renderEmpty(host, localize("暂无趋势数据"));
     return;
   }
   const byHour = new Map();
@@ -1170,7 +1173,7 @@ function renderTrendBars(rows) {
   const totalRequests = slots.reduce((sum, slot) => sum + slot.requests, 0);
   const totalFailed = slots.reduce((sum, slot) => sum + slot.failed, 0);
   const max = niceMax(Math.max(1, ...slots.map((slot) => slot.requests)) * 1.08);
-  const frame = chartFrame(max, formatAxis, `近 48 小时调用 ${formatNumber(totalRequests)} 次，失败 ${formatNumber(totalFailed)} 次`);
+  const frame = chartFrame(max, formatAxis, localize`近 48 小时调用 ${formatNumber(totalRequests)} 次，失败 ${formatNumber(totalFailed)} 次`);
   const slotWidth = frame.width / slots.length;
   const barWidth = slotWidth * 0.68;
   let dayStartIndex = -1;
@@ -1183,7 +1186,7 @@ function renderTrendBars(rows) {
     if (slot.success > 0) {
       const rect = svgEl("rect", { x: x.toFixed(2), y: successTop.toFixed(2), width: barWidth.toFixed(2), height: (frame.height - successTop).toFixed(2), class: `bar-success${isToday ? " is-today" : ""}` });
       const title = svgEl("title");
-      title.textContent = `${slot.parts.label} · ${formatNumber(slot.requests)} 次（失败 ${formatNumber(slot.failed)}）`;
+      title.textContent = localize`${slot.parts.label} · ${formatNumber(slot.requests)} 次（失败 ${formatNumber(slot.failed)}）`;
       rect.append(title);
       frame.svg.append(rect);
     }
@@ -1194,17 +1197,17 @@ function renderTrendBars(rows) {
   if (dayStartIndex > 0) {
     const lineX = dayStartIndex * slotWidth;
     frame.svg.append(svgEl("path", { d: `M${lineX} 0V${frame.height}`, class: "bar-day-line" }));
-    const label = createText("span", "chart-day-label", "今日");
+    const label = createText("span", "chart-day-label", localize("今日"));
     label.style.left = `calc(${(lineX / frame.width * 100).toFixed(2)}% + 6px)`;
     frame.plot.append(label);
   }
   const latest = slots[slots.length - 1];
-  chartMarker(frame.plot, (slots.length - 0.5) / slots.length, frame.y(latest.requests) / frame.height, `${latest.parts.hourLabel} · ${formatNumber(latest.requests)} 次`);
+  chartMarker(frame.plot, (slots.length - 0.5) / slots.length, frame.y(latest.requests) / frame.height, localize`${latest.parts.hourLabel} · ${formatNumber(latest.requests)} 次`);
   axisLabels(frame.xaxis, slots.map((slot, index) => [(index + 0.5) / slots.length, slot]).filter(([, slot]) => slot.parts.hour % 6 === 0).map(([ratio, slot]) => [ratio, slot.parts.hour === 0 ? `${slot.parts.month}/${slot.parts.date}` : slot.parts.hourLabel]));
   host.replaceChildren(frame.body);
   summary?.replaceChildren(
     createText("strong", "", formatNumber(totalRequests)),
-    createText("span", "", "次 · 失败率"),
+    createText("span", "", localize("次 · 失败率")),
     createText("strong", "", totalRequests > 0 ? `${(totalFailed / totalRequests * 100).toFixed(2)}%` : "--")
   );
 }
@@ -1214,28 +1217,28 @@ function renderRankingList(rows) {
   if (!host) return;
   const data = Array.isArray(rows) ? rows.slice(0, 10) : [];
   if (data.length === 0) {
-    renderEmpty(host, "暂无排行数据");
+    renderEmpty(host, localize("暂无排行数据"));
     return;
   }
   const max = Math.max(1, ...data.map((row) => numericValue(row.request_count)));
   host.replaceChildren(...data.map((row, index) => el("div", "rank-row", [
     createText("span", "rank-index", String(index + 1).padStart(2, "0")),
     createText("strong", "rank-name", rankingName(row, index)),
-    createText("small", "rank-meta", `${formatTokenCompact(row.total_tokens)} · ${formatNumber(row.error_count)} 错误`),
+    createText("small", "rank-meta", localize`${formatTokenCompact(row.total_tokens)} · ${formatNumber(row.error_count)} 错误`),
     createText("span", "rank-value", formatNumber(row.request_count)),
     bar("rank-bar", numericValue(row.request_count) / max)
   ])));
 }
 
 const AUDIT_RESOURCES = {
-  admin: "管理员", user: "用户", users: "用户", api_key: "API 密钥", api_keys: "API 密钥", provider: "厂商", providers: "厂商",
-  model: "模型", models: "模型", department: "部门", departments: "部门", dashboard_share_link: "大屏链接", rag: "知识库",
-  asset: "媒体资源", settings_center: "系统设置", system_settings: "系统设置", smtp: "邮件", mcp_oauth: "MCP 授权", export: "导出", migration: "数据库迁移", install: "安装"
+  admin: localize("管理员"), user: localize("用户"), users: localize("用户"), api_key: localize("API 密钥"), api_keys: localize("API 密钥"), provider: localize("厂商"), providers: localize("厂商"),
+  model: localize("模型"), models: localize("模型"), department: localize("部门"), departments: localize("部门"), dashboard_share_link: localize("大屏链接"), rag: localize("知识库"),
+  asset: localize("媒体资源"), settings_center: localize("系统设置"), system_settings: localize("系统设置"), smtp: localize("邮件"), mcp_oauth: localize("MCP 授权"), export: localize("导出"), migration: localize("数据库迁移"), install: localize("安装")
 };
 const AUDIT_VERBS = {
-  create: "新增", update: "修改", delete: "删除", disable: "停用", enable: "启用", login: "登录", logout: "退出", reset: "重置",
-  password_reset: "重置密码", revoke: "撤销", revoke_all: "全部撤销", sessions_revoke: "撤销会话", download_url: "下载", test: "测试",
-  replace: "替换", batch: "批量操作", move: "移动", applied: "执行", allow_client_ip: "放行 IP"
+  create: localize("新增"), update: localize("修改"), delete: localize("删除"), disable: localize("停用"), enable: localize("启用"), login: localize("登录"), logout: localize("退出"), reset: localize("重置"),
+  password_reset: localize("重置密码"), revoke: localize("撤销"), revoke_all: localize("全部撤销"), sessions_revoke: localize("撤销会话"), download_url: localize("下载"), test: localize("测试"),
+  replace: localize("替换"), batch: localize("批量操作"), move: localize("移动"), applied: localize("执行"), allow_client_ip: localize("放行 IP")
 };
 
 function auditLabel(action) {
@@ -1243,7 +1246,7 @@ function auditLabel(action) {
   const resource = AUDIT_RESOURCES[parts[0]];
   const verb = AUDIT_VERBS[parts[parts.length - 1]];
   if (resource && verb) return `${resource} · ${verb}`;
-  return resource || String(action || "审计事件");
+  return resource || String(action || localize("审计事件"));
 }
 
 function renderSecurityPanel(data) {
@@ -1252,7 +1255,7 @@ function renderSecurityPanel(data) {
   const source = data?.data || data || {};
   const audit = Array.isArray(source.audit) ? source.audit.slice(0, 6) : [];
   if (events.length === 0 && audit.length === 0) {
-    renderEmpty(host, "今日暂无安全事件");
+    renderEmpty(host, localize("今日暂无安全事件"));
     return;
   }
   const count = (event) => numericValue(event.event_count || event.match_count || event.count);
@@ -1260,16 +1263,16 @@ function renderSecurityPanel(data) {
   const max = Math.max(1, ...events.map(count));
   const blocked = events.filter((event) => event.action === "block").reduce((sum, event) => sum + count(event), 0);
   const nodes = [
-    el("div", "security-total", [createText("strong", "", formatNumber(total)), createText("span", "", blocked > 0 ? `次脱敏事件 · 拦截 ${formatNumber(blocked)}` : "次脱敏事件")]),
+    el("div", "security-total", [createText("strong", "", formatNumber(total)), createText("span", "", blocked > 0 ? localize`次脱敏事件 · 拦截 ${formatNumber(blocked)}` : localize("次脱敏事件"))]),
     ...events.map((event) => el("div", `security-row${event.action === "block" ? " is-block" : ""}`, [
-      createText("strong", "security-title", SECURITY_ACTION_LABELS[event.action] || event.rule_name || event.policy_name || event.action || "安全事件"),
+      createText("strong", "security-title", SECURITY_ACTION_LABELS[event.action] || event.rule_name || event.policy_name || event.action || localize("安全事件")),
       createText("span", "security-count", formatNumber(count(event))),
       bar("security-bar", count(event) / max),
-      event.match_count ? createText("small", "security-meta", `命中 ${formatNumber(event.match_count)} 处`) : null
+      event.match_count ? createText("small", "security-meta", localize`命中 ${formatNumber(event.match_count)} 处`) : null
     ]))
   ];
   if (audit.length > 0) {
-    nodes.push(createText("div", "security-section", "审计操作"));
+    nodes.push(createText("div", "security-section", localize("审计操作")));
     nodes.push(...audit.map((item) => el("div", "security-row is-audit", [
       createText("span", "security-title", auditLabel(item.action)),
       createText("span", "security-count", formatNumber(item.event_count || item.count))
@@ -1283,26 +1286,26 @@ function renderPerformancePanel(data) {
   const host = $("performance");
   const buckets = sortedBuckets(data).slice(-24);
   if (buckets.length === 0) {
-    renderEmpty(host, "暂无性能数据");
+    renderEmpty(host, localize("暂无性能数据"));
     return;
   }
   const latest = buckets[buckets.length - 1];
   const stats = el("div", "performance-stats", [
-    ["平均", latest.avg_latency_ms, `${formatNumber(latest.request_count)} 请求`],
+    [localize("平均"), latest.avg_latency_ms, localize`${formatNumber(latest.request_count)} 请求`],
     ["P95", latest.p95_latency_ms, formatBucketTime(latest.bucket_at)],
-    ["P99", latest.p99_latency_ms, "最近一小时"]
+    ["P99", latest.p99_latency_ms, localize("最近一小时")]
   ].map(([label, value, meta]) => el("article", "performance-card", [
     createText("span", "performance-time", label),
     createText("strong", "performance-main", formatSeconds(value)),
     createText("small", "performance-meta", meta)
   ])));
   if (buckets.length < 2) {
-    host.replaceChildren(stats, createText("div", "empty-state", "至少两个小时的数据后显示延迟曲线"));
+    host.replaceChildren(stats, createText("div", "empty-state", localize("至少两个小时的数据后显示延迟曲线")));
     return;
   }
   const peak = Math.max(1, ...buckets.map((row) => numericValue(row.p99_latency_ms)), ...buckets.map((row) => numericValue(row.p95_latency_ms)));
   const max = niceMax(peak * 1.05);
-  const frame = chartFrame(max, (value) => (value >= 1000 ? `${+(value / 1000).toFixed(1)} s` : `${Math.round(value)} ms`), `最近 ${buckets.length} 小时延迟：最新平均 ${formatSeconds(latest.avg_latency_ms)}，P95 ${formatSeconds(latest.p95_latency_ms)}`);
+  const frame = chartFrame(max, (value) => (value >= 1000 ? `${+(value / 1000).toFixed(1)} s` : `${Math.round(value)} ms`), localize`最近 ${buckets.length} 小时延迟：最新平均 ${formatSeconds(latest.avg_latency_ms)}，P95 ${formatSeconds(latest.p95_latency_ms)}`);
   const x = (index) => index / (buckets.length - 1) * frame.width;
   for (const [key, className] of [["p99_latency_ms", "is-p99"], ["p95_latency_ms", "is-p95"], ["avg_latency_ms", "is-avg"]]) {
     frame.svg.append(svgEl("path", { d: smoothPath(buckets.map((row, index) => [x(index), frame.y(row[key])])), class: `trend-line ${className}` }));
@@ -1358,7 +1361,7 @@ function renderAll(payloads) {
 }
 
 async function render() {
-  setStatus("刷新中", "busy");
+  setStatus(localize("刷新中"), "busy");
   const results = await Promise.allSettled(SCREEN_METRICS.map((metric) => api(`/screen-api/dashboard/${metric}`)));
   const failure = results.find((result) => result.status === "rejected");
   const authFailure = results.find((result) => result.status === "rejected" && isAuthError(result.reason));
@@ -1384,12 +1387,12 @@ async function render() {
   }
   updateClock();
   if (failure) {
-    setStatus(failure.reason?.code === "SCREEN_TIMEOUT" ? "部分数据超时" : "部分数据刷新失败", "error");
+    setStatus(failure.reason?.code === "SCREEN_TIMEOUT" ? localize("部分数据超时") : localize("部分数据刷新失败"), "error");
     throw failure.reason;
   }
   lastSuccessAt = Date.now();
   renderStale();
-  setStatus("已更新", "ready");
+  setStatus(localize("已更新"), "ready");
 }
 
 async function showScreen(session) {
@@ -1425,7 +1428,7 @@ function updateFullscreenButton() {
   if (!button) return;
   const active = Boolean(document.fullscreenElement);
   document.body.classList.toggle("fullscreen-active", active);
-  setText(button, active ? "退出全屏" : "全屏");
+  setText(button, active ? localize("退出全屏") : localize("全屏"));
 }
 
 async function toggleFullscreen() {
@@ -1437,7 +1440,7 @@ async function toggleFullscreen() {
     }
     updateFullscreenButton();
   } catch {
-    setStatus("全屏切换失败", "error");
+    setStatus(localize("全屏切换失败"), "error");
   }
 }
 
@@ -1449,14 +1452,14 @@ function showLogin(message = "") {
   $("screen").hidden = true;
   $("login").hidden = false;
   $("credential-fields").hidden = shareCodeFromPath() !== "";
-  setText($("entry-status"), message ? "无法进入大屏" : "正在进入大屏");
+  setText($("entry-status"), message ? localize("无法进入大屏") : localize("正在进入大屏"));
   setText($("error"), message);
 }
 
 function showCredentialLogin(message = "") {
   showLogin(message);
   $("credential-fields").hidden = false;
-  setText($("entry-status"), "请输入用户名和密码");
+  setText($("entry-status"), localize("请输入用户名和密码"));
 }
 
 async function enterByShareCode() {
@@ -1516,10 +1519,10 @@ async function refreshOnce() {
       }
     }
     if (isAuthError(error)) {
-      showLogin(screenErrorMessage(error, "大屏会话已失效，请重新登录"));
+      showLogin(screenErrorMessage(error, localize("大屏会话已失效，请重新登录")));
       return;
     }
-    setStatus(error?.code === "SCREEN_TIMEOUT" ? "刷新超时" : "刷新失败", "error");
+    setStatus(error?.code === "SCREEN_TIMEOUT" ? localize("刷新超时") : localize("刷新失败"), "error");
     throw error;
   }
 }
@@ -1535,7 +1538,7 @@ async function submitLogin() {
     if (shareCodeFromPath()) {
       showLogin(screenErrorMessage(error));
     } else {
-      showCredentialLogin(screenErrorMessage(error, "用户名或密码错误"));
+      showCredentialLogin(screenErrorMessage(error, localize("用户名或密码错误")));
     }
   }
 }
@@ -1554,7 +1557,7 @@ $("fullscreen-toggle").addEventListener("click", toggleFullscreen);
 document.addEventListener("fullscreenchange", updateFullscreenButton);
 document.addEventListener("keydown", (event) => {
   markActive();
-  if ((event.key === "f" || event.key === "F") && !event.ctrlKey && !event.metaKey && !event.altKey && !$("screen").hidden && !(event.target instanceof HTMLInputElement)) {
+  if ((event.key === "f" || event.key === "F") && !event.ctrlKey && !event.metaKey && !event.altKey && !$("screen").hidden && !event.target.closest?.("input, select")) {
     toggleFullscreen();
   }
 });
@@ -1563,6 +1566,7 @@ for (const name of ["mousemove", "pointerdown", "touchstart"]) {
 }
 window.addEventListener("resize", onResize);
 
+initLocaleControls();
 applyScreenScale();
 screenApplyBrandIdentity();
 screenRefreshBrandIdentity();

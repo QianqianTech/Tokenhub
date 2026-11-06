@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 require __DIR__ . '/../bootstrap.php';
 
-$resources = file_get_contents(__DIR__ . '/../../public/admin/assets/js/resources.js') ?: '';
+$resources = frontend_copy_source(__DIR__ . '/../../public/admin/assets/js/resources.js') ?: '';
 $table = admin_js_bundle() ?: '';
-$domains = file_get_contents(__DIR__ . '/../../public/admin/assets/js/domains.js') ?: '';
+$domains = frontend_copy_source(__DIR__ . '/../../public/admin/assets/js/domains.js') ?: '';
 
 assert_true(str_contains($resources, '"permission-config"'), 'Admin resources should expose a dedicated permission configuration page.');
 assert_true(str_contains($resources, 'admins.manage'), 'Permission configuration navigation should require administrator management capability.');

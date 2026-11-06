@@ -1,3 +1,4 @@
+import { localize } from "../i18n.js";
 import { api } from "../api.js";
 import { toast } from "../components/feedback.js";
 import { el, setText, statusMessage } from "../dom.js";
@@ -6,32 +7,32 @@ import { columnLabel, valueLabel } from "../resources.js";
 export async function openAdminDownload(path, method = "GET") {
   const result = await api(path, { method });
   const url = result.data?.download_url;
-  if (!url) throw new Error("下载链接生成失败");
+  if (!url) throw new Error(localize("下载链接生成失败"));
   window.open(url, "_blank", "noopener");
 }
 
-export function operationSuccessText(data = {}, fallback = "操作已完成") {
+export function operationSuccessText(data = {}, fallback = localize("操作已完成")) {
   const parts = [];
   for (const [key, label] of [
-    ["saved", "保存"],
-    ["created", "新增"],
-    ["updated", "更新"],
-    ["deleted", "删除"],
-    ["revoked", "撤销"],
-    ["queued", "已入队"]
+    ["saved", localize("保存")],
+    ["created", localize("新增")],
+    ["updated", localize("更新")],
+    ["deleted", localize("删除")],
+    ["revoked", localize("撤销")],
+    ["queued", localize("已入队")]
   ]) {
     if (Number.isFinite(Number(data?.[key]))) {
-      parts.push(`${label} ${Number(data[key])} 项`);
+      parts.push(localize`${label} ${Number(data[key])} 项`);
     }
   }
   if (parts.length > 0) {
     return parts.join("，");
   }
   if (data?.export_id) {
-    return `导出任务已创建：${data.export_id}`;
+    return localize`导出任务已创建：${data.export_id}`;
   }
   if (data?.status && typeof data.status === "string") {
-    return `操作已完成，状态：${valueLabel("status", data.status) || data.status}`;
+    return localize`操作已完成，状态：${valueLabel("status", data.status) || data.status}`;
   }
   return fallback;
 }
@@ -78,7 +79,7 @@ function detailValue(value) {
 export function renderDataDetails(data) {
   const rows = Array.isArray(data) ? data : [data];
   if (rows.length === 0) {
-    return statusMessage("暂无详情");
+    return statusMessage(localize("暂无详情"));
   }
   if (rows.every((row) => row === null || typeof row !== "object")) {
     return el("div", { className: "data-detail-list" }, rows.map((row) => statusMessage(detailValue(row))));

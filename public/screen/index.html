@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="color-scheme" content="dark">
     <meta name="theme-color" content="#0a0d11">
-    <title>TokenHub 运营大屏</title>
+    <title data-localize="text">TokenHub 运营大屏</title>
     <link rel="icon" href="/screen/assets/brand/favicon.ico" sizes="any">
     <link rel="apple-touch-icon" href="/screen/assets/brand/apple-touch-icon.png">
     <link rel="stylesheet" href="/screen/assets/screen.css">
@@ -16,14 +16,15 @@
         <div class="login-brand">
           <img class="login-logo" src="/screen/assets/brand/tokenhub-app-icon.svg" alt="">
           <span class="brand-kicker">TokenHub</span>
-          <h1>运营大屏</h1>
-          <p id="entry-status">正在进入大屏</p>
+          <h1 data-localize="text">运营大屏</h1>
+          <p data-localize="text" id="entry-status">正在进入大屏</p>
         </div>
         <div id="credential-fields" hidden>
-          <label>用户名<input id="username" autocomplete="username"></label>
-          <label>密码<input id="password" type="password" autocomplete="current-password"></label>
+          <label><span data-localize="text">用户名</span><input id="username" autocomplete="username"></label>
+          <label><span data-localize="text">密码</span><input id="password" type="password" autocomplete="current-password"></label>
         </div>
-        <button id="login-button" type="button">进入大屏</button>
+        <button data-localize="text" id="login-button" type="button">进入大屏</button>
+        <div data-locale-picker></div>
         <p id="error" role="alert"></p>
       </section>
 
@@ -32,15 +33,15 @@
           <div class="screen-heading">
             <img id="screen-logo" class="screen-logo" src="/screen/assets/brand/tokenhub-app-icon.svg" alt="">
             <div>
-              <span class="screen-kicker">实时 Token 监测<span id="screen-scope" class="screen-scope" hidden></span></span>
-              <h1 class="screen-title">TokenHub 运营大屏</h1>
-              <p class="screen-subtitle">Token 消耗、调用、生成任务与性能状态一屏掌握</p>
+              <span class="screen-kicker"><span data-localize="text">实时 Token 监测</span><span id="screen-scope" class="screen-scope" hidden></span></span>
+              <h1 data-localize="text" class="screen-title">TokenHub 运营大屏</h1>
+              <p data-localize="text" class="screen-subtitle">Token 消耗、调用、生成任务与性能状态一屏掌握</p>
             </div>
           </div>
           <div class="screen-toolbar">
-            <div id="screen-health" class="screen-health is-unknown" title="状态未知">状态未知</div>
+            <div data-localize="text" id="screen-health" class="screen-health is-unknown" title="状态未知">状态未知</div>
             <div class="screen-sync">
-              <div id="screen-status" class="screen-status">等待刷新</div>
+              <div data-localize="text" id="screen-status" class="screen-status">等待刷新</div>
               <div id="screen-updated" class="screen-updated" aria-live="polite"></div>
             </div>
             <div class="screen-time">
@@ -48,8 +49,9 @@
               <div id="screen-date" class="screen-date"></div>
             </div>
             <div class="screen-actions">
-              <button id="fullscreen-toggle" class="secondary-button" type="button" title="快捷键 F">全屏</button>
-              <button id="logout" class="secondary-button" type="button">退出</button>
+              <div data-locale-picker></div>
+              <button data-localize="text" id="fullscreen-toggle" class="secondary-button" type="button" title="快捷键 F">全屏</button>
+              <button data-localize="text" id="logout" class="secondary-button" type="button">退出</button>
             </div>
           </div>
         </header>
@@ -60,15 +62,15 @@
             <div class="screen-column">
               <article class="panel model-share-panel">
                 <header class="panel-head">
-                  <h2>大模型 Token 占比</h2>
-                  <span class="panel-tag">本月</span>
+                  <h2 data-localize="text">大模型 Token 占比</h2>
+                  <span data-localize="text" class="panel-tag">本月</span>
                 </header>
                 <div id="model-share-chart" class="model-chart"></div>
               </article>
               <article class="panel panel-fill">
                 <header class="panel-head">
-                  <h2>大模型使用排行</h2>
-                  <span class="panel-tag">本月</span>
+                  <h2 data-localize="text">大模型使用排行</h2>
+                  <span data-localize="text" class="panel-tag">本月</span>
                 </header>
                 <div id="model-usage" class="model-list"></div>
               </article>
@@ -76,7 +78,7 @@
             <div class="screen-column screen-column-center">
               <article class="panel token-flow-panel">
                 <header class="panel-head">
-                  <h2 id="token-title">今日实时 Token 消耗</h2>
+                  <h2 data-localize="text" id="token-title">今日实时 Token 消耗</h2>
                   <div id="period-totals" class="period-grid"></div>
                 </header>
                 <div id="token-summary" class="metrics metric-grid"></div>
@@ -84,9 +86,9 @@
               </article>
               <article class="panel panel-fill">
                 <header class="panel-head">
-                  <h2>调用趋势</h2>
+                  <h2 data-localize="text">调用趋势</h2>
                   <div id="overview-trend-summary" class="trend-summary"></div>
-                  <div class="trend-legend" aria-hidden="true"><span class="is-today">今日</span><span class="is-yesterday">昨日</span></div>
+                  <div class="trend-legend" aria-hidden="true"><span data-localize="text" class="is-today">今日</span><span data-localize="text" class="is-yesterday">昨日</span></div>
                 </header>
                 <div id="overview-trend" class="trend-chart"></div>
               </article>
@@ -94,22 +96,22 @@
             <div class="screen-column">
               <article class="panel live-panel">
                 <header class="panel-head">
-                  <h2>正在生成</h2>
+                  <h2 data-localize="text">正在生成</h2>
                   <span id="live-count" class="panel-meta"></span>
                 </header>
                 <div id="live-generations" class="live-list"></div>
               </article>
               <article class="panel panel-fill">
-                <h2>调用排行 · 部门</h2>
+                <h2 data-localize="text">调用排行 · 部门</h2>
                 <div id="overview-rankings" class="rank-list rank-list-bars"></div>
               </article>
               <div class="screen-mini-grid">
                 <article class="panel mini-panel">
-                  <h2>性能 · P95</h2>
+                  <h2 data-localize="text">性能 · P95</h2>
                   <div id="overview-performance" class="mini-metric"></div>
                 </article>
                 <article class="panel mini-panel">
-                  <h2>安全 · 脱敏事件</h2>
+                  <h2 data-localize="text">安全 · 脱敏事件</h2>
                   <div id="overview-security" class="mini-metric"></div>
                 </article>
               </div>
@@ -121,22 +123,22 @@
           <section class="screen-grid screen-primary-grid">
             <article class="panel ops-live">
               <header class="panel-head">
-                <h2>实时 · 近 5 分钟</h2>
-                <span id="live-window" class="panel-tag">每分钟</span>
+                <h2 data-localize="text">实时 · 近 5 分钟</h2>
+                <span data-localize="text" id="live-window" class="panel-tag">每分钟</span>
               </header>
               <div id="live-metrics" class="live-metrics"></div>
             </article>
             <article class="panel ops-trends">
               <header class="panel-head">
-                <h2>调用趋势 · 近 48 小时</h2>
+                <h2 data-localize="text">调用趋势 · 近 48 小时</h2>
                 <div id="trends-summary" class="trend-summary"></div>
-                <div class="trend-legend" aria-hidden="true"><span class="is-success">成功</span><span class="is-failed">失败</span></div>
+                <div class="trend-legend" aria-hidden="true"><span data-localize="text" class="is-success">成功</span><span data-localize="text" class="is-failed">失败</span></div>
               </header>
               <div id="trends" class="trend-bars"></div>
             </article>
             <article class="panel ops-providers">
               <header class="panel-head">
-                <h2>厂商 · 近 5 分钟</h2>
+                <h2 data-localize="text">厂商 · 近 5 分钟</h2>
                 <span id="provider-meta" class="panel-tag"></span>
               </header>
               <div id="provider-health" class="rank-list provider-list"></div>
@@ -144,19 +146,19 @@
             </article>
             <article class="panel ops-performance">
               <header class="panel-head">
-                <h2>性能 · 延迟</h2>
-                <div class="trend-legend" aria-hidden="true"><span class="is-avg">平均</span><span class="is-p95">P95</span><span class="is-p99">P99</span></div>
+                <h2 data-localize="text">性能 · 延迟</h2>
+                <div class="trend-legend" aria-hidden="true"><span data-localize="text" class="is-avg">平均</span><span class="is-p95">P95</span><span class="is-p99">P99</span></div>
               </header>
               <div id="performance" class="performance-grid"></div>
             </article>
             <article class="panel ops-rankings">
-              <h2>调用排行 · 部门</h2>
+              <h2 data-localize="text">调用排行 · 部门</h2>
               <div id="rankings" class="rank-list rank-list-bars"></div>
             </article>
             <article class="panel ops-security">
               <header class="panel-head">
-                <h2>安全</h2>
-                <span class="panel-tag">今日</span>
+                <h2 data-localize="text">安全</h2>
+                <span data-localize="text" class="panel-tag">今日</span>
               </header>
               <div id="security" class="security-list"></div>
             </article>

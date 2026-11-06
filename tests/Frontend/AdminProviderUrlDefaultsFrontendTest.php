@@ -5,7 +5,7 @@ declare(strict_types=1);
 require __DIR__ . '/../bootstrap.php';
 
 $tableJs = admin_js_bundle() ?: '';
-$domJs = file_get_contents(__DIR__ . '/../../public/admin/assets/js/dom.js') ?: '';
+$domJs = frontend_copy_source(__DIR__ . '/../../public/admin/assets/js/dom.js') ?: '';
 $adminCss = file_get_contents(__DIR__ . '/../../public/admin/assets/css/app.css') ?: '';
 
 assert_true(

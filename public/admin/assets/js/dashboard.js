@@ -1,3 +1,4 @@
+import { getLocale, localize } from "./i18n.js";
 import { adminErrorMessage, api, isAbortError } from "./api.js";
 import { button, el, statusMessage } from "./dom.js";
 import { errorState, loadingState, toast } from "./components/feedback.js";
@@ -6,7 +7,7 @@ import { formatDateTime, parseServerTime, utcStamp } from "./lib/format.js";
 import { departmentSelectOptions } from "./lib/references.js";
 import { canLookup, resolveLookup } from "./lib/lookups.js";
 
-const PERIODS = [["today", "今日"], ["7d", "近 7 天"], ["30d", "近 30 天"], ["custom", "自定义"]];
+const PERIODS = [["today", localize("今日")], ["7d", localize("近 7 天")], ["30d", localize("近 30 天")], ["custom", localize("自定义")]];
 const AUTO_REFRESH_MS = 60_000;
 
 export async function renderDashboard(content, navigate) {
@@ -16,16 +17,16 @@ export async function renderDashboard(content, navigate) {
   // of truth (it is what periodRange() and the custom range read).
   const period = select("period", PERIODS);
   period.value = "30d";
-  const bucket = select("bucket", [["hour", "按小时"], ["day", "按天"]]);
+  const bucket = select("bucket", [["hour", localize("按小时")], ["day", localize("按天")]]);
   bucket.value = "day";
-  const department = select("department_id", [["", "全部部门"]]);
-  const customFrom = el("input", { type: "datetime-local", name: "from", disabled: true, "aria-label": "开始时间" });
-  const customTo = el("input", { type: "datetime-local", name: "to", disabled: true, "aria-label": "结束时间" });
+  const department = select("department_id", [["", localize("全部部门")]]);
+  const customFrom = el("input", { type: "datetime-local", name: "from", disabled: true, "aria-label": localize("开始时间") });
+  const customTo = el("input", { type: "datetime-local", name: "to", disabled: true, "aria-label": localize("结束时间") });
   const customRange = el("div", { className: "dashboard-custom-range", hidden: true }, [
     customFrom,
-    el("span", { className: "dashboard-range-sep", text: "至", "aria-hidden": "true" }),
+    el("span", { className: "dashboard-range-sep", text: localize("至"), "aria-hidden": "true" }),
     customTo,
-    button("应用", () => load(), "secondary")
+    button(localize("应用"), () => load(), "secondary")
   ]);
   const periodButtons = PERIODS.map(([value, text]) => el("button", {
     type: "button",
@@ -35,27 +36,27 @@ export async function renderDashboard(content, navigate) {
     text,
     onClick: () => setPeriod(value)
   }));
-  const segmented = el("div", { className: "segmented dashboard-period", role: "group", "aria-label": "时间阶段" }, periodButtons);
-  const employeeQuery = el("input", { type: "search", name: "employee_query", className: "dash-search", placeholder: "搜索员工账号", "aria-label": "按员工账号筛选" });
+  const segmented = el("div", { className: "segmented dashboard-period", role: "group", "aria-label": localize("时间阶段") }, periodButtons);
+  const employeeQuery = el("input", { type: "search", name: "employee_query", className: "dash-search", placeholder: localize("搜索员工账号"), "aria-label": localize("按员工账号筛选") });
   let employeeSearchTimer = 0;
   employeeQuery.addEventListener("input", () => {
     window.clearTimeout(employeeSearchTimer);
     employeeSearchTimer = window.setTimeout(() => load(), 300);
   });
-  const exportButton = button("导出报表", () => exportTrend(), "secondary");
+  const exportButton = button(localize("导出报表"), () => exportTrend(), "secondary");
   const controls = el("form", { className: "dash-controls", onSubmit: (event) => {
     event.preventDefault();
     load();
   } }, [
     segmented,
     customRange,
-    el("label", { className: "inline-select" }, [el("span", { text: "部门" }), department]),
+    el("label", { className: "inline-select" }, [el("span", { text: localize("部门") }), department]),
     employeeQuery,
     exportButton
   ]);
   const subtitle = el("p", { className: "dashboard-subtitle" });
   const head = el("header", { className: "page-head dash-head" }, [
-    el("div", { className: "page-head-text" }, [el("h2", { text: "智慧分析" }), subtitle]),
+    el("div", { className: "page-head-text" }, [el("h2", { text: localize("智慧分析") }), subtitle]),
     controls
   ]);
   const notice = el("p", { className: "dashboard-notice", role: "status", "aria-live": "polite" });
@@ -90,7 +91,7 @@ export async function renderDashboard(content, navigate) {
   function exportTrend() {
     const columns = ["bucket_at", "request_count", "success_count", "failed_count", "total_cost"];
     if (!lastTrend.length) {
-      toast("当前时间段没有趋势数据可导出", { timeout: 2400 });
+      toast(localize("当前时间段没有趋势数据可导出"), { timeout: 2400 });
       return;
     }
     downloadCsv(`dashboard-trends-${bucket.value}.csv`, columns, lastTrend);
@@ -131,19 +132,19 @@ export async function renderDashboard(content, navigate) {
     const range = periodRange(period.value, customFrom.value, customTo.value);
     notice.textContent = "";
     if (!range) {
-      host.replaceChildren(statusMessage("请选择有效的自定义时间区间", "error"));
+      host.replaceChildren(statusMessage(localize("请选择有效的自定义时间区间"), "error"));
       return;
     }
     if (period.value === "custom") {
       // Short custom ranges read better by hour.
       bucket.value = range.hours <= 48 ? "hour" : "day";
     }
-    const departmentLabel = department.selectedOptions[0]?.textContent?.trim() || "全部部门";
+    const departmentLabel = department.selectedOptions[0]?.textContent?.trim() || localize("全部部门");
     subtitle.textContent = [
       departmentLabel,
-      employeeQuery.value.trim() ? `员工包含“${employeeQuery.value.trim()}”` : "",
+      employeeQuery.value.trim() ? localize`员工包含“${employeeQuery.value.trim()}”` : "",
       `${range.label} ${range.display}`,
-      period.value === "custom" ? "" : "每 60 秒自动刷新"
+      period.value === "custom" ? "" : localize("每 60 秒自动刷新")
     ].filter(Boolean).join(" · ");
     const params = {
       bucket: bucket.value,
@@ -163,7 +164,7 @@ export async function renderDashboard(content, navigate) {
     };
     if (!quiet) {
       host.setAttribute("aria-busy", "true");
-      host.replaceChildren(loadingState("正在加载仪表盘数据…", { rows: 4 }));
+      host.replaceChildren(loadingState(localize("正在加载仪表盘数据…"), { rows: 4 }));
     }
     const keys = Object.keys(requests);
     const [outcomes, previousToday, openAlerts] = await Promise.all([
@@ -179,13 +180,13 @@ export async function renderDashboard(content, navigate) {
     const results = Object.fromEntries(keys.map((key, index) => [key, outcomes[index]]));
     const failures = outcomes.filter((outcome) => outcome.status === "rejected" && !isAbortError(outcome.reason));
     if (failures.length === outcomes.length) {
-      host.replaceChildren(errorState(failures[0].reason, { fallback: "仪表盘数据加载失败", onRetry: () => load() }));
+      host.replaceChildren(errorState(failures[0].reason, { fallback: localize("仪表盘数据加载失败"), onRetry: () => load() }));
       scheduleRefresh();
       return;
     }
     if (failures.length) {
-      const describe = (error) => adminErrorMessage(error, "请求失败");
-      notice.textContent = `部分面板加载失败（${failures.length} 项）：${describe(failures[0].reason)}`;
+      const describe = (error) => adminErrorMessage(error, localize("请求失败"));
+      notice.textContent = localize`部分面板加载失败（${failures.length} 项）：${describe(failures[0].reason)}`;
     }
 
     const realtime = dataOf(results.realtime);
@@ -198,30 +199,30 @@ export async function renderDashboard(content, navigate) {
       children.push(operationsStatusStrip(today, dataOf(results.performance) || {}, security, openAlerts, navigate));
       children.push(metricGrid(today, range.label, previousToday, range));
     } else {
-      children.push(resultPanel("核心指标", "chart-panel panel-wide", results.realtime, requests.realtime, (data) => metricGrid(data?.today || {}, range.label, null, range), isCurrent));
+      children.push(resultPanel(localize("核心指标"), "chart-panel panel-wide", results.realtime, requests.realtime, (data) => metricGrid(data?.today || {}, range.label, null, range), isCurrent));
     }
-    const departmentPanel = resultPanel("部门用量排行", "chart-panel panel-half", results.departmentRankings, requests.departmentRankings, (data) => departmentRanking(data || [], navigate), isCurrent, {
-      aside: el("span", { className: "panel-aside", text: "按 Token" })
+    const departmentPanel = resultPanel(localize("部门用量排行"), "chart-panel panel-half", results.departmentRankings, requests.departmentRankings, (data) => departmentRanking(data || [], navigate), isCurrent, {
+      aside: el("span", { className: "panel-aside", text: localize("按 Token") })
     });
-    const userPanel = resultPanel("员工用量排行", "chart-panel panel-half", results.userRankings, requests.userRankings, (data) => userRanking(data || [], navigate), isCurrent, {
-      aside: el("a", { className: "panel-link", href: "#", text: "查看用量明细", onClick: (event) => {
+    const userPanel = resultPanel(localize("员工用量排行"), "chart-panel panel-half", results.userRankings, requests.userRankings, (data) => userRanking(data || [], navigate), isCurrent, {
+      aside: el("a", { className: "panel-link", href: "#", text: localize("查看用量明细"), onClick: (event) => {
         event.preventDefault();
         navigate("usage-records");
       } })
     });
     children.push(
-      resultPanel("请求趋势", "chart-panel panel-wide", results.trends, requests.trends, (data) => {
+      resultPanel(localize("请求趋势"), "chart-panel panel-wide", results.trends, requests.trends, (data) => {
         trends.data = data;
         lastTrend = ascendingByBucket(data || []);
         return trendChart(trends.data || [], bucket.value);
       }, isCurrent, { titleId: "dashboard-trend-title" }),
       departmentPanel,
       userPanel,
-      resultPanel("多模态分析", "chart-panel panel-third", results.multimodal, requests.multimodal, (data) => multimodalChart(data?.capabilities || []), isCurrent),
-      resultPanel("安全看板", "chart-panel panel-third", results.security, requests.security, (data) => securityCharts(data || {}, navigate, openAlerts), isCurrent, {
-        aside: openAlerts > 0 ? el("span", { className: "status-pill is-warning", text: `${formatNumber(openAlerts)} 条待处理` }) : null
+      resultPanel(localize("多模态分析"), "chart-panel panel-third", results.multimodal, requests.multimodal, (data) => multimodalChart(data?.capabilities || []), isCurrent),
+      resultPanel(localize("安全看板"), "chart-panel panel-third", results.security, requests.security, (data) => securityCharts(data || {}, navigate, openAlerts), isCurrent, {
+        aside: openAlerts > 0 ? el("span", { className: "status-pill is-warning", text: localize`${formatNumber(openAlerts)} 条待处理` }) : null
       }),
-      resultPanel("性能看板", "chart-panel panel-third", results.performance, requests.performance, (data) => performanceCharts(data || {}), isCurrent)
+      resultPanel(localize("性能看板"), "chart-panel panel-third", results.performance, requests.performance, (data) => performanceCharts(data || {}), isCurrent)
     );
     host.replaceChildren(...children);
     scheduleRefresh();
@@ -262,9 +263,9 @@ function resultPanel(title, className, outcome, request, render, isCurrent, opti
       return;
     }
     body.replaceChildren(errorState(result.reason, {
-      fallback: `${title}加载失败`,
+      fallback: localize`${title}加载失败`,
       onRetry: async () => {
-        body.replaceChildren(loadingState("正在重新加载…", { rows: 2 }));
+        body.replaceChildren(loadingState(localize("正在重新加载…"), { rows: 2 }));
         const next = await settle(request());
         if (isCurrent()) {
           show(next);
@@ -307,14 +308,14 @@ function periodRange(period, customFrom, customTo) {
       start: from,
       end: to,
       hours: (to - from) / 3_600_000,
-      label: "区间",
+      label: localize("区间"),
       display: `${shortStamp(from, true)} – ${shortStamp(to, true)}`
     };
   }
   const options = {
-    today: [0, "今日"],
-    "7d": [6, "近 7 天"],
-    "30d": [29, "近 30 天"]
+    today: [0, localize("今日")],
+    "7d": [6, localize("近 7 天")],
+    "30d": [29, localize("近 30 天")]
   };
   const [days, label] = options[period] || options.today;
   const start = startOfLocalDay(now);
@@ -335,7 +336,7 @@ function periodRange(period, customFrom, customTo) {
 // otherwise the window of the same length right before the selected one.
 async function previousTotals(params, range) {
   const length = range.end - range.start;
-  const sameTimeYesterday = range.label === "今日";
+  const sameTimeYesterday = range.label === localize("今日");
   const start = new Date(range.start.getTime() - (sameTimeYesterday ? 86_400_000 : length));
   const end = new Date((sameTimeYesterday ? range.end.getTime() - 86_400_000 : range.start.getTime()) - 1000);
   const query = { ...params, from: sqlTimestamp(start), to: sqlTimestamp(end) };
@@ -388,18 +389,18 @@ function operationsStatusStrip(today, performance, security, openAlerts, navigat
   const alerts = numberValue(openAlerts);
   const attention = failed > 0 || alerts > 0;
   const items = [
-    ["异常请求", formatNumber(failed), failed > 0 ? () => navigate("usage-records", { status: "failed" }) : null],
-    ["最新 P99", formatLatency(latest.p99_latency_ms), null],
-    ["安全事件", formatNumber(securityEvents), securityEvents > 0 ? () => navigate("desensitization-events") : null]
+    [localize("异常请求"), formatNumber(failed), failed > 0 ? () => navigate("usage-records", { status: "failed" }) : null],
+    [localize("最新 P99"), formatLatency(latest.p99_latency_ms), null],
+    [localize("安全事件"), formatNumber(securityEvents), securityEvents > 0 ? () => navigate("desensitization-events") : null]
   ];
   if (openAlerts !== null && openAlerts !== undefined) {
-    items.push(["待处理告警", formatNumber(alerts), alerts > 0 ? () => navigate("alert-events") : null]);
+    items.push([localize("待处理告警"), formatNumber(alerts), alerts > 0 ? () => navigate("alert-events") : null]);
   }
-  return el("section", { className: `dash-status ${attention ? "is-attention" : "is-stable"}`, "aria-label": "运行状态" }, [
+  return el("section", { className: `dash-status ${attention ? "is-attention" : "is-stable"}`, "aria-label": localize("运行状态") }, [
     el("div", { className: "dash-status-heading" }, [
       el("span", { className: "dash-status-dot", "aria-hidden": "true" }),
-      el("strong", { text: attention ? "需关注" : "运行平稳" }),
-      el("span", { className: "dash-status-desc", text: attention ? "当前时间段内存在需要核查的信号" : "当前时间段内未发现异常信号" })
+      el("strong", { text: attention ? localize("需关注") : localize("运行平稳") }),
+      el("span", { className: "dash-status-desc", text: attention ? localize("当前时间段内存在需要核查的信号") : localize("当前时间段内未发现异常信号") })
     ]),
     el("div", { className: "dash-status-items" }, items.map(([labelText, value, open]) => (
       open
@@ -421,7 +422,7 @@ function compactNumber(value) {
   const number = numberValue(value);
   const abs = Math.abs(number);
   if (abs >= 1e8) {
-    return `${(number / 1e8).toFixed(2)} 亿`;
+    return localize`${(number / 1e8).toFixed(2)} 亿`;
   }
   if (abs >= 1e6) {
     return `${(number / 1e6).toFixed(2)}M`;
@@ -438,12 +439,12 @@ function numberValue(value) {
 }
 
 function formatNumber(value) {
-  return numberValue(value).toLocaleString("zh-CN");
+  return numberValue(value).toLocaleString(getLocale());
 }
 
 function formatIntegerCost(value) {
   const number = numberValue(value);
-  return Math.round(number).toLocaleString("zh-CN");
+  return Math.round(number).toLocaleString(getLocale());
 }
 
 
@@ -494,15 +495,15 @@ function delta(current, previous, { higherIsBetter = true, compareLabel }) {
   }
   const change = (now - before) / before * 100;
   if (Math.abs(change) < 0.05) {
-    return { text: `与${compareLabel}持平`, tone: "flat" };
+    return { text: localize`与${compareLabel}持平`, tone: "flat" };
   }
   const up = change > 0;
   const good = up === higherIsBetter;
-  return { text: `${up ? "↑" : "↓"} ${Math.abs(change).toFixed(1)}% 较${compareLabel}`, tone: good ? "good" : "bad" };
+  return { text: localize`${up ? "↑" : "↓"} ${Math.abs(change).toFixed(1)}% 较${compareLabel}`, tone: good ? "good" : "bad" };
 }
 
-function metricGrid(today, periodLabel = "今日", previous = null, range = null) {
-  const compareLabel = periodLabel === "今日" ? "昨日同时段" : "上一周期";
+function metricGrid(today, periodLabel = localize("今日"), previous = null, range = null) {
+  const compareLabel = periodLabel === localize("今日") ? localize("昨日同时段") : localize("上一周期");
   const prev = (key) => (previous ? previous[key] : null);
   const requests = numberValue(today.request_count);
   const success = successCount(today);
@@ -511,43 +512,43 @@ function metricGrid(today, periodLabel = "今日", previous = null, range = null
   const cost = numberValue(today.total_cost);
   const metrics = [
     {
-      name: `${periodLabel}请求`,
+      name: localize`${periodLabel}请求`,
       value: formatNumber(today.request_count),
-      note: delta(requests, prev("request_count"), { compareLabel }) || (days > 1 ? { text: `日均 ${formatNumber(Math.round(requests / days))}`, tone: "flat" } : null)
+      note: delta(requests, prev("request_count"), { compareLabel }) || (days > 1 ? { text: localize`日均 ${formatNumber(Math.round(requests / days))}`, tone: "flat" } : null)
     },
     {
-      name: "成功请求",
+      name: localize("成功请求"),
       value: formatNumber(success),
-      note: requests > 0 ? { text: `成功率 ${(success / requests * 100).toFixed(2)}%`, tone: "flat" } : null
+      note: requests > 0 ? { text: localize`成功率 ${(success / requests * 100).toFixed(2)}%`, tone: "flat" } : null
     },
     {
-      name: "失败请求",
+      name: localize("失败请求"),
       value: formatNumber(today.failed_count),
-      note: delta(failed, prev("failed_count"), { higherIsBetter: false, compareLabel }) || (requests > 0 ? { text: `失败率 ${(failed / requests * 100).toFixed(2)}%`, tone: "flat" } : null)
+      note: delta(failed, prev("failed_count"), { higherIsBetter: false, compareLabel }) || (requests > 0 ? { text: localize`失败率 ${(failed / requests * 100).toFixed(2)}%`, tone: "flat" } : null)
     },
     {
-      name: "总 Token",
+      name: localize("总 Token"),
       value: compactNumber(today.total_tokens),
       title: formatNumber(today.total_tokens),
       note: delta(today.total_tokens, prev("total_tokens"), { compareLabel })
-        || { text: `输入 ${compactNumber(today.input_tokens)} · 输出 ${compactNumber(today.output_tokens)}`, tone: "flat" }
+        || { text: localize`输入 ${compactNumber(today.input_tokens)} · 输出 ${compactNumber(today.output_tokens)}`, tone: "flat" }
     },
     {
-      name: "平均延迟",
+      name: localize("平均延迟"),
       value: formatLatency(today.avg_latency_ms),
       note: delta(today.avg_latency_ms, prev("avg_latency_ms"), { higherIsBetter: false, compareLabel })
     },
     {
-      name: "成本",
+      name: localize("成本"),
       // Kept whole: the dashboard shows magnitude, the usage records show cents.
-      value: cost > 0 ? `¥${formatIntegerCost(today.total_cost)}` : "未配置",
+      value: cost > 0 ? `¥${formatIntegerCost(today.total_cost)}` : localize("未配置"),
       note: cost > 0
         ? delta(cost, prev("total_cost"), { higherIsBetter: false, compareLabel })
-        : { text: "在价格配置中设置模型单价后计算", tone: "flat" },
+        : { text: localize("在价格配置中设置模型单价后计算"), tone: "flat" },
       muted: cost <= 0
     }
   ];
-  const grid = el("section", { className: "dash-kpis", "aria-label": `${periodLabel}指标` });
+  const grid = el("section", { className: "dash-kpis", "aria-label": localize`${periodLabel}指标` });
   for (const metric of metrics) {
     grid.append(el("article", { className: `dash-kpi ${metric.muted ? "is-muted" : ""}`.trim() }, [
       el("span", { className: "dash-kpi-label", text: metric.name }),
@@ -585,15 +586,15 @@ function svgNode(tag, attributes = {}, text = "") {
 }
 
 const TREND_SERIES = [
-  { key: "request", label: "请求量", field: "request_count", color: "var(--primary)" },
-  { key: "failed", label: "失败请求（右轴）", field: "failed_count", color: "var(--danger)" }
+  { key: "request", label: localize("请求量"), field: "request_count", color: "var(--primary)" },
+  { key: "failed", label: localize("失败请求（右轴）"), field: "failed_count", color: "var(--danger)" }
 ];
 
 function trendChart(rows, bucket = "hour") {
   const maxPoints = bucket === "day" ? 30 : 24;
   const data = ascendingByBucket(rows).slice(-maxPoints);
   if (!data.length) {
-    return statusMessage("暂无趋势数据");
+    return statusMessage(localize("暂无趋势数据"));
   }
   const width = 960;
   const height = 260;
@@ -609,7 +610,7 @@ function trendChart(rows, bucket = "hour") {
     viewBox: `0 0 ${width} ${height}`,
     role: "img",
     tabindex: "0",
-    "aria-label": "按时间展示请求量与失败请求的趋势折线图，可用左右方向键逐点查看"
+    "aria-label": localize("按时间展示请求量与失败请求的趋势折线图，可用左右方向键逐点查看")
   });
   const tooltip = el("div", { className: "chart-tooltip", hidden: true });
   const live = el("span", { className: "visually-hidden", "aria-live": "polite" });
@@ -731,10 +732,10 @@ function trendChart(rows, bucket = "hour") {
     }
   });
 
-  const legend = el("div", { className: "chart-legend", role: "group", "aria-label": "显示的数据序列" }, TREND_SERIES.map((series) => {
+  const legend = el("div", { className: "chart-legend", role: "group", "aria-label": localize("显示的数据序列") }, TREND_SERIES.map((series) => {
     const toggle = el("button", { type: "button", "aria-pressed": "true", onClick: () => {
       if (visible.has(series.key) && visible.size === 1) {
-        toast("至少保留一条数据序列", { timeout: 2000 });
+        toast(localize("至少保留一条数据序列"), { timeout: 2000 });
         return;
       }
       visible.has(series.key) ? visible.delete(series.key) : visible.add(series.key);
@@ -752,7 +753,7 @@ function trendChart(rows, bucket = "hour") {
   return el("div", { className: "chart-area trend-chart" }, [
     el("div", { className: "chart-toolbar" }, [legend]),
     frame,
-    dataTable("查看趋势数据表", columns, data, bucket)
+    dataTable(localize("查看趋势数据表"), columns, data, bucket)
   ]);
 }
 
@@ -771,11 +772,11 @@ function dataTable(summary, columns, rows, bucket = "hour") {
 }
 
 const TABLE_LABELS = {
-  bucket_at: "时间（本地）",
-  request_count: "请求量",
-  success_count: "成功请求",
-  failed_count: "失败请求",
-  total_cost: "成本"
+  bucket_at: localize("时间（本地）"),
+  request_count: localize("请求量"),
+  success_count: localize("成功请求"),
+  failed_count: localize("失败请求"),
+  total_cost: localize("成本")
 };
 
 function csvCell(value) {
@@ -818,12 +819,12 @@ function rankingLabel(row, fallback) {
 function departmentRanking(rows, navigate) {
   const data = Array.isArray(rows) ? rows.slice(0, 8) : [];
   if (!data.length) {
-    return statusMessage("暂无排行数据");
+    return statusMessage(localize("暂无排行数据"));
   }
   const max = Math.max(1, ...data.map((row) => numberValue(row.total_tokens)));
   const names = new Map();
   const list = el("ol", { className: "chart-bars ranking-chart department-ranking" }, data.map((row, index) => {
-    const name = rankingLabel(row, "未归属部门");
+    const name = rankingLabel(row, localize("未归属部门"));
     const label = el("span", { className: "ranking-name", text: name });
     names.set(Number(row.id), label);
     const hasId = Number(row.id) > 0;
@@ -832,10 +833,10 @@ function departmentRanking(rows, navigate) {
       el("span", { className: "bar-track", "aria-hidden": "true" }, [
         el("span", { className: `bar-fill ${index === 0 ? "is-top" : ""}`.trim(), style: `width: ${Math.max(2, Math.round(numberValue(row.total_tokens) / max * 100))}%` })
       ]),
-      el("span", { className: "ranking-value", text: compactNumber(row.total_tokens), title: `${formatNumber(row.total_tokens)} Token · ${formatNumber(row.request_count)} 次调用` })
+      el("span", { className: "ranking-value", text: compactNumber(row.total_tokens), title: localize`${formatNumber(row.total_tokens)} Token · ${formatNumber(row.request_count)} 次调用` })
     ];
     return el("li", {}, [hasId
-      ? el("button", { type: "button", className: "ranking-row", "aria-label": `${name}：${formatNumber(row.total_tokens)} Token，查看用量明细`, onClick: () => navigate("usage-records", { department_id: row.id }) }, inner)
+      ? el("button", { type: "button", className: "ranking-row", "aria-label": localize`${name}：${formatNumber(row.total_tokens)} Token，查看用量明细`, onClick: () => navigate("usage-records", { department_id: row.id }) }, inner)
       : el("div", { className: "ranking-row" }, inner)]);
   }));
   fillNames(data, "departments", (byId) => {
@@ -843,7 +844,7 @@ function departmentRanking(rows, navigate) {
       const found = byId.get(id);
       if (found?.name) {
         node.textContent = found.name;
-        node.closest("button")?.setAttribute("aria-label", `${found.name}：查看用量明细`);
+        node.closest("button")?.setAttribute("aria-label", localize`${found.name}：查看用量明细`);
       }
     }
   });
@@ -853,14 +854,14 @@ function departmentRanking(rows, navigate) {
 function userRanking(rows, navigate) {
   const data = Array.isArray(rows) ? rows.slice(0, 8) : [];
   if (!data.length) {
-    return statusMessage("暂无排行数据");
+    return statusMessage(localize("暂无排行数据"));
   }
   const cells = new Map();
   const body = el("tbody", {}, data.map((row, index) => {
-    const name = rankingLabel(row, "未归属员工");
+    const name = rankingLabel(row, localize("未归属员工"));
     const hasId = Number(row.id) > 0;
     const nameNode = hasId
-      ? el("button", { type: "button", className: "link-button", text: name, "aria-label": `${name} 用量明细`, onClick: () => navigate("usage-records", { user_id: row.id }) })
+      ? el("button", { type: "button", className: "link-button", text: name, "aria-label": localize`${name} 用量明细`, onClick: () => navigate("usage-records", { user_id: row.id }) })
       : el("span", { text: name });
     const deptCell = el("td", { className: "ranking-dept", text: "" });
     cells.set(Number(row.id), { nameNode, deptCell });
@@ -878,7 +879,7 @@ function userRanking(rows, navigate) {
       const user = byId.get(id);
       if (user?.username) {
         nameNode.textContent = user.username;
-        nameNode.setAttribute?.("aria-label", `${user.username} 用量明细`);
+        nameNode.setAttribute?.("aria-label", localize`${user.username} 用量明细`);
       }
       if (user?.department_id) {
         departmentIds.push(user.department_id);
@@ -897,9 +898,9 @@ function userRanking(rows, navigate) {
     el("table", { className: "ranking-table" }, [
       el("thead", {}, [el("tr", {}, [
         el("th", { scope: "col", text: "#" }),
-        el("th", { scope: "col", text: "员工" }),
-        el("th", { scope: "col", text: "部门" }),
-        el("th", { scope: "col", className: "num", text: "调用" }),
+        el("th", { scope: "col", text: localize("员工") }),
+        el("th", { scope: "col", text: localize("部门") }),
+        el("th", { scope: "col", className: "num", text: localize("调用") }),
         el("th", { scope: "col", className: "num", text: "Token" })
       ])]),
       body
@@ -910,16 +911,16 @@ function userRanking(rows, navigate) {
 function multimodalChart(rows) {
   const data = Array.isArray(rows) ? rows.slice(0, 6) : [];
   if (!data.length) {
-    return statusMessage("暂无多模态数据");
+    return statusMessage(localize("暂无多模态数据"));
   }
   const total = data.reduce((sum, row) => sum + numberValue(row.request_count), 0);
   const maxRequests = Math.max(1, ...data.map((row) => numberValue(row.request_count)));
   const summary = data.map((row) => `${formatResourceValue("capability", row.capability)} ${formatNumber(row.request_count)}`).join("，");
   // Horizontal bars compare capabilities directly; a ring hid the small ones.
-  return el("ul", { className: "dash-bars", "aria-label": `多模态请求分布：${summary}` }, data.map((row) => {
+  return el("ul", { className: "dash-bars", "aria-label": localize`多模态请求分布：${summary}` }, data.map((row) => {
     const name = formatResourceValue("capability", row.capability);
     const share = total ? Math.round(numberValue(row.request_count) / total * 100) : 0;
-    return el("li", { title: `${formatNumber(row.total_tokens)} Token · ${formatNumber(row.error_count)} 异常` }, [
+    return el("li", { title: localize`${formatNumber(row.total_tokens)} Token · ${formatNumber(row.error_count)} 异常` }, [
       el("span", { className: "dash-bar-name", text: name }),
       el("span", { className: "dash-bar-value", text: `${formatNumber(row.request_count)} · ${share}%` }),
       el("span", { className: "bar-track", "aria-hidden": "true" }, [
@@ -939,9 +940,9 @@ function securityCharts(data, navigate, openAlerts = null) {
   const desensitization = Array.isArray(data.desensitization) ? data.desensitization : [];
   const blocked = desensitization.filter((row) => BLOCK_ACTIONS.has(String(row.action || "").toLowerCase()));
   const tiles = [
-    ["脱敏事件", formatNumber(sumRows(desensitization, "event_count")), ""],
-    ["待处理告警", openAlerts === null ? "—" : formatNumber(openAlerts), numberValue(openAlerts) > 0 ? "is-warning" : ""],
-    ["拦截请求", formatNumber(sumRows(blocked, "event_count")), ""]
+    [localize("脱敏事件"), formatNumber(sumRows(desensitization, "event_count")), ""],
+    [localize("待处理告警"), openAlerts === null ? "—" : formatNumber(openAlerts), numberValue(openAlerts) > 0 ? "is-warning" : ""],
+    [localize("拦截请求"), formatNumber(sumRows(blocked, "event_count")), ""]
   ];
   return el("div", { className: "chart-stack" }, [
     el("div", { className: "security-tiles" }, tiles.map(([title, value, tone]) => (
@@ -951,9 +952,9 @@ function securityCharts(data, navigate, openAlerts = null) {
       ])
     ))),
     el("div", { className: "chart-actions" }, [
-      button("查看告警事件", () => navigate("alert-events"), "secondary"),
-      button("脱敏事件", () => navigate("desensitization-events"), "secondary"),
-      button("审计日志", () => navigate("audit-logs"), "secondary")
+      button(localize("查看告警事件"), () => navigate("alert-events"), "secondary"),
+      button(localize("脱敏事件"), () => navigate("desensitization-events"), "secondary"),
+      button(localize("审计日志"), () => navigate("audit-logs"), "secondary")
     ])
   ]);
 }
@@ -963,18 +964,18 @@ function performanceCharts(data) {
   const buckets = ascendingByBucket(data.buckets).slice(-12);
   const latestBucket = buckets[buckets.length - 1] || {};
   const facts = el("dl", { className: "performance-facts" }, [
-    el("div", {}, [el("dt", { text: "导出队列" }), el("dd", { text: `${formatNumber(queue.pending_exports || 0)} 待处理` })]),
-    buckets.length ? el("div", {}, [el("dt", { text: "最近时段失败" }), el("dd", { text: formatNumber(latestBucket.failed_count) })]) : null,
-    buckets.length ? el("div", {}, [el("dt", { text: "统计时段" }), el("dd", { text: `${formatBucket(buckets[0].bucket_at)} – ${formatBucket(latestBucket.bucket_at)}` })]) : null
+    el("div", {}, [el("dt", { text: localize("导出队列") }), el("dd", { text: localize`${formatNumber(queue.pending_exports || 0)} 待处理` })]),
+    buckets.length ? el("div", {}, [el("dt", { text: localize("最近时段失败") }), el("dd", { text: formatNumber(latestBucket.failed_count) })]) : null,
+    buckets.length ? el("div", {}, [el("dt", { text: localize("统计时段") }), el("dd", { text: `${formatBucket(buckets[0].bucket_at)} – ${formatBucket(latestBucket.bucket_at)}` })]) : null
   ]);
   if (!buckets.length) {
-    return el("div", { className: "chart-stack" }, [statusMessage("暂无性能数据"), facts]);
+    return el("div", { className: "chart-stack" }, [statusMessage(localize("暂无性能数据")), facts]);
   }
   const maxP99 = Math.max(1, ...buckets.map((row) => numberValue(row.p99_latency_ms)));
   const lastIndex = buckets.length - 1;
   return el("div", { className: "chart-stack" }, [
     el("div", { className: "performance-summary" }, [
-      el("article", {}, [el("span", { text: "平均" }), el("strong", { text: formatLatency(latestBucket.avg_latency_ms) })]),
+      el("article", {}, [el("span", { text: localize("平均") }), el("strong", { text: formatLatency(latestBucket.avg_latency_ms) })]),
       el("article", {}, [el("span", { text: "P95" }), el("strong", { text: formatLatency(latestBucket.p95_latency_ms) })]),
       el("article", {}, [el("span", { text: "P99" }), el("strong", { text: formatLatency(latestBucket.p99_latency_ms) })])
     ]),
@@ -982,7 +983,7 @@ function performanceCharts(data) {
     el("div", {
       className: "sparkline",
       role: "img",
-      "aria-label": `最近 ${buckets.length} 个时段的 P99 延迟，最新 ${formatLatency(latestBucket.p99_latency_ms)}，最高 ${formatLatency(maxP99)}`
+      "aria-label": localize`最近 ${buckets.length} 个时段的 P99 延迟，最新 ${formatLatency(latestBucket.p99_latency_ms)}，最高 ${formatLatency(maxP99)}`
     }, buckets.map((row, index) => (
       el("span", {
         className: index === lastIndex ? "is-latest" : "",

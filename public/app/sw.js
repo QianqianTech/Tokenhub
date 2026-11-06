@@ -10,10 +10,14 @@ const SHELL = [
   "/app/",
   "/app/index.html",
   "/app/manifest.webmanifest",
+  "/app/manifest.en-US.webmanifest",
   "/app/assets/app.css",
   "/app/assets/js/main.js",
   "/app/assets/js/auth.js",
   "/app/assets/icons/icon-192.png",
+  "/admin/assets/js/i18n.js",
+  "/admin/assets/js/i18n/zh-CN.js",
+  "/admin/assets/js/i18n/en-US.js",
   "/admin/assets/css/tokens.css",
   "/admin/assets/css/app.css",
   "/admin/assets/css/components.css",
@@ -42,7 +46,8 @@ self.addEventListener("message", (event) => {
 function cacheable(url) {
   return url.origin === self.location.origin
     && (url.pathname === "/app/" || url.pathname.startsWith("/app/assets/") || url.pathname === "/app/index.html"
-      || url.pathname === "/app/manifest.webmanifest" || url.pathname.startsWith("/admin/assets/"));
+      || url.pathname === "/app/manifest.webmanifest" || url.pathname === "/app/manifest.en-US.webmanifest"
+      || url.pathname.startsWith("/admin/assets/"));
 }
 
 self.addEventListener("fetch", (event) => {
@@ -91,7 +96,7 @@ self.addEventListener("push", (event) => {
   }
   const title = data.title || "TokenHub";
   event.waitUntil(self.registration.showNotification(title, {
-    body: data.body || "有新的告警待处理",
+    body: data.body || (data.locale === "en-US" ? "Tap to review a new alert." : "有新的告警待处理"),
     tag: data.tag || "tokenhub-alert",
     renotify: true,
     icon: "/app/assets/icons/icon-192.png",

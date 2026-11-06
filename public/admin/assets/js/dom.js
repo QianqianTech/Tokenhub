@@ -2,7 +2,7 @@ import { isAbortError } from "./api.js";
 import { toastError } from "./components/feedback.js";
 import { openModal } from "./components/modal.js";
 import { remoteSelect } from "./components/remote-select.js";
-import { t } from "./i18n.js";
+import { localize, t } from "./i18n.js";
 
 export const $ = (id) => document.getElementById(id);
 
@@ -162,7 +162,7 @@ export function field(config, value = "", { mode = "create" } = {}) {
       ]));
     }
     if ((config.options || []).length === 0) {
-      list.append(el("p", { className: "multiselect-empty", text: "暂无可选项" }));
+      list.append(el("p", { className: "multiselect-empty", text: localize("暂无可选项") }));
     }
     const toolbar = el("div", { className: "multiselect-toolbar" }, [
       button(t("common.selectAll"), () => {

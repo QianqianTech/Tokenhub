@@ -1,3 +1,4 @@
+import { localize } from "../i18n.js";
 // Reference data for tables and forms: id -> label resolution through
 // /admin-api/lookups (only the ids on screen are fetched) and conversion of
 // form fields that reference other records into searchable pickers.
@@ -132,7 +133,7 @@ export function quotaPolicyLabel(value, context = {}) {
   if (!policy) {
     return formatResourceValue("quota_policy_id", value);
   }
-  return [policy.name || `策略 #${policy.id}`, valueLabel("period", policy.period), policy.status ? valueLabel("status", policy.status) : ""]
+  return [policy.name || localize`策略 #${policy.id}`, valueLabel("period", policy.period), policy.status ? valueLabel("status", policy.status) : ""]
     .filter(Boolean)
     .join(" / ");
 }
@@ -162,9 +163,9 @@ export function modelQuotaApiKeyLabel(value, context = {}) {
   if (!apiKey) {
     return formatResourceValue("api_key_id", value);
   }
-  const name = apiKey.name || `API 密钥 #${apiKey.id}`;
+  const name = apiKey.name || localize`API 密钥 #${apiKey.id}`;
   const user = context.usersById?.get(Number(apiKey.user_id));
-  const userLabel = user?.username || (apiKey.user_id ? `用户 #${apiKey.user_id}` : "");
+  const userLabel = user?.username || (apiKey.user_id ? localize`用户 #${apiKey.user_id}` : "");
   const keyDisplay = apiKey.display || (apiKey.key_suffix ? `****${apiKey.key_suffix}` : "");
   return [name, userLabel, keyDisplay].filter(Boolean).join(" / ");
 }
@@ -208,9 +209,9 @@ const REFERENCE_LOOKUPS = {
 };
 
 const QUOTA_TARGET_SOURCES = [
-  { lookup: "api-keys", prefix: "api_key", label: "API 密钥" },
-  { lookup: "users", prefix: "user", label: "用户" },
-  { lookup: "departments", prefix: "department", label: "部门" }
+  { lookup: "api-keys", prefix: "api_key", label: localize("API 密钥") },
+  { lookup: "users", prefix: "user", label: localize("用户") },
+  { lookup: "departments", prefix: "department", label: localize("部门") }
 ];
 
 /**
@@ -225,7 +226,7 @@ export async function lookupAwareFields(fields) {
     const isDepartment = config.reference === "departments" || (config.name === "department_id" && config.type === "number");
     if (isDepartment) {
       const multiple = config.type === "multiselect";
-      const empty = config.emptyOption ? [["", config.emptyOption]] : config.optional && !multiple ? [["", "不选择部门"]] : [];
+      const empty = config.emptyOption ? [["", config.emptyOption]] : config.optional && !multiple ? [["", localize("不选择部门")]] : [];
       return { ...config, type: multiple ? "multiselect" : "select", coerce: "number", options: [...empty, ...departmentOptions] };
     }
     if (config.reference === "quotaTargets") {

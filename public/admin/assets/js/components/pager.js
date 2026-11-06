@@ -1,5 +1,5 @@
 import { button, el } from "../dom.js";
-import { t } from "../i18n.js";
+import { localize, t } from "../i18n.js";
 
 export const PAGE_SIZES = [20, 50, 100];
 
@@ -36,7 +36,7 @@ export function pager({ total = null, limit, offset, count, onChange, pageSizes 
 
   const previous = button(t("pager.previous"), () => go(offset - limit), "secondary pager-step", { disabled: offset <= 0 });
   const next = button(t("pager.next"), () => go(offset + limit), "secondary pager-step", { disabled: !hasNext });
-  const size = el("select", { "aria-label": "每页条数" }, pageSizes.map((value) => el("option", { value: String(value), text: `${value} 条`, selected: value === limit })));
+  const size = el("select", { "aria-label": localize("每页条数") }, pageSizes.map((value) => el("option", { value: String(value), text: localize`${value} 条`, selected: value === limit })));
   size.addEventListener("change", () => go(0, Number(size.value)));
 
   const actions = [previous];
@@ -50,7 +50,7 @@ export function pager({ total = null, limit, offset, count, onChange, pageSizes 
         type: "button",
         className: `pager-page ${item === page ? "is-current" : ""}`.trim(),
         text: String(item),
-        "aria-label": `第 ${item} 页`,
+        "aria-label": localize`第 ${item} 页`,
         "aria-current": item === page ? "page" : null,
         onClick: () => {
           if (item !== page) go((item - 1) * limit);

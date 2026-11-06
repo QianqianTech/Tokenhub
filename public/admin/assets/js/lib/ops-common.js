@@ -1,3 +1,4 @@
+import { getLocale, localize } from "../i18n.js";
 // Shared helpers of the operations tools (provider catalog, API key tools,
 // diagnostics, capability editor): viewer checks and detail-grid rendering.
 import { el, setText } from "../dom.js";
@@ -37,7 +38,7 @@ export function opsNumber(value) {
   if (!Number.isFinite(number)) {
     return opsText(value);
   }
-  return Number.isInteger(number) ? number.toLocaleString("zh-CN") : number.toLocaleString("zh-CN", { maximumFractionDigits: 6 });
+  return Number.isInteger(number) ? number.toLocaleString(getLocale()) : number.toLocaleString(getLocale(), { maximumFractionDigits: 6 });
 }
 
 export function opsUtcTime(value) {
@@ -65,7 +66,7 @@ export function opsSection(title, children, className = "") {
 export async function copyTextToClipboard(text, feedback, sourceNode = null) {
   try {
     await navigator.clipboard.writeText(text);
-    setText(feedback, "已复制到剪贴板");
+    setText(feedback, localize("已复制到剪贴板"));
   } catch {
     if (sourceNode && window.getSelection) {
       const range = document.createRange();
@@ -74,7 +75,7 @@ export async function copyTextToClipboard(text, feedback, sourceNode = null) {
       selection.removeAllRanges();
       selection.addRange(range);
     }
-    setText(feedback, "浏览器未允许自动复制，已选中密钥，请按 Ctrl+C 手动复制");
+    setText(feedback, localize("浏览器未允许自动复制，已选中密钥，请按 Ctrl+C 手动复制"));
   }
   feedback.hidden = false;
 }

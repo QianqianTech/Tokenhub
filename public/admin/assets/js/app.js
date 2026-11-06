@@ -11,7 +11,7 @@ import { buildHash, hasTransientFilters, replaceHash, withoutTransientFilters } 
 import { hidePasswordRecovery, initPasswordRecovery, isPasswordRecoveryVisible } from "./password-recovery.js";
 import { confirmDialog } from "./components/modal.js";
 import { discardUnsavedChanges, hasUnsavedChanges } from "./lib/dirty-guard.js";
-import { t } from "./i18n.js";
+import { getLocale, initialLocale, initLocaleControls, localize, t } from "./i18n.js";
 
 const adminState = {
   page: "dashboard",
@@ -46,7 +46,7 @@ const ADMIN_DOMAIN_ICON_PATHS = {
   security: ["M5 11h14v10H5z", "M8 11V7a4 4 0 0 1 8 0v4", "M12 15v2"],
   system: ["M4 21v-7", "M4 10V3", "M12 21v-9", "M12 8V3", "M20 21v-5", "M20 12V3", "M1 14h6", "M9 8h6", "M17 16h6"]
 };
-let adminBrandTitle = "TokenHub 管理后台";
+let adminBrandTitle = localize("TokenHub 管理后台");
 const ADMIN_BRAND_DEFAULTS = {
   product_name: "TokenHub",
   admin_title: "TokenHub 管理后台",
@@ -132,9 +132,14 @@ function adminSafeLocalAssetUrl(value) {
   return "";
 }
 
-function adminApplyBrandIdentity(settings = {}) {
+let adminBrandSettings = {};
+
+function adminApplyBrandIdentity(settings = adminBrandSettings) {
+  adminBrandSettings = settings;
   const productName = String(settings.product_name || ADMIN_BRAND_DEFAULTS.product_name).trim() || ADMIN_BRAND_DEFAULTS.product_name;
-  const adminTitle = String(settings.admin_title || ADMIN_BRAND_DEFAULTS.admin_title).trim() || ADMIN_BRAND_DEFAULTS.admin_title;
+  const configuredTitle = String(settings.admin_title ?? "").trim();
+  const adminTitle = !configuredTitle || configuredTitle === ADMIN_BRAND_DEFAULTS.admin_title
+    ? localize(ADMIN_BRAND_DEFAULTS.admin_title) : configuredTitle;
   const logoUrl = adminSafeLocalAssetUrl(settings.logo_url || ADMIN_BRAND_DEFAULTS.logo_url);
   const faviconUrl = adminSafeLocalAssetUrl(settings.favicon_url || ADMIN_BRAND_DEFAULTS.favicon_url);
 
@@ -142,7 +147,7 @@ function adminApplyBrandIdentity(settings = {}) {
   document.title = adminTitle;
   const brand = document.querySelector(".brand");
   if (brand) {
-    adminRenderBrandNode(brand, productName, logoUrl, "统一模型网关");
+    adminRenderBrandNode(brand, productName, logoUrl, localize("统一模型网关"));
   }
   const loginBrand = $("login-brand");
   if (loginBrand) {
@@ -163,7 +168,7 @@ function adminApplyBrandIdentity(settings = {}) {
   const loginTitle = $("login-title");
   const loginSubtitle = $("login-subtitle");
   if (loginTitle && loginSubtitle) {
-    setText(loginSubtitle, `${adminTitle} · 使用管理员账号登录`);
+    setText(loginSubtitle, localize`${adminTitle} · 使用管理员账号登录`);
   }
 
   if (faviconUrl !== "") {
@@ -239,8 +244,8 @@ function writeNavOpenCookie(openKeys) {
 
 function adminDomainTabLabel(tabKey) {
   return resourceConfig[tabKey]?.label || {
-    "operations-status": "运行状态",
-    "rag-settings": "RAG 设置"
+    "operations-status": localize("运行状态"),
+    "rag-settings": localize("RAG 设置")
   }[tabKey] || tabKey;
 }
 
@@ -308,7 +313,7 @@ function adminUpdateSidebarModeToggle() {
   const mobileClose = window.innerWidth <= 900 && adminSidebarState.mobileOpen;
   const compact = adminSidebarState.mode === "compact";
   toggle.textContent = mobileClose ? "×" : compact ? "›" : "‹";
-  toggle.setAttribute("aria-label", mobileClose ? "关闭菜单" : compact ? "展开菜单" : "收起菜单");
+  toggle.setAttribute("aria-label", mobileClose ? localize("关闭菜单") : compact ? localize("展开菜单") : localize("收起菜单"));
   toggle.setAttribute("aria-pressed", compact ? "true" : "false");
 }
 
@@ -400,10 +405,10 @@ function adminRenderRecentNav() {
   host.append(el("button", {
     type: "button",
     className: "nav-recent-button",
-    title: `最近访问：${config?.label || recentKey}`,
+    title: localize`最近访问：${config?.label || recentKey}`,
     onClick: () => adminNavigate(recentKey)
   }, [
-    el("span", { className: "nav-recent-kicker", text: "最近访问" }),
+    el("span", { className: "nav-recent-kicker", text: localize("最近访问") }),
     el("span", { className: "nav-recent-label", text: config?.label || recentKey })
   ]));
 }
@@ -442,7 +447,7 @@ function adminRenderNavList() {
       type: "button",
       className: "nav-section-toggle",
       title: domain.label,
-      "aria-label": `${domain.label}，${isOpen ? "已展开" : "已收起"}`,
+      "aria-label": `${domain.label}，${isOpen ? localize("已展开") : localize("已收起")}`,
       "aria-expanded": isOpen ? "true" : "false",
       "aria-controls": listId,
       onClick: () => {
@@ -505,7 +510,7 @@ async function renderDomainPage(root) {
   const seq = ++adminRouteSeq;
   const domain = domainForPage(adminState.user, adminState.page) || domainsForUser(adminState.user)[0];
   adminState.domain = domain?.key || "operations";
-  const tabs = el("div", { className: "domain-tabs", role: "tablist", "aria-label": domain?.label || "页面" });
+  const tabs = el("div", { className: "domain-tabs", role: "tablist", "aria-label": domain?.label || localize("页面") });
   const panel = el("section", { className: "domain-page", role: "tabpanel" });
   for (const tabKey of domain?.tabs || []) {
     const active = tabKey === adminState.page;
@@ -546,7 +551,7 @@ async function renderDomainPage(root) {
       return;
     }
     // Any page whose initial load fails gets the same retryable error state.
-    const failure = errorState(error, { fallback: "页面加载失败，请刷新后重试", onRetry: () => renderDomainPage(root) });
+    const failure = errorState(error, { fallback: localize("页面加载失败，请刷新后重试"), onRetry: () => renderDomainPage(root) });
     failure.dataset.pageError = "true";
     panel.replaceChildren(failure);
   }
@@ -581,7 +586,7 @@ function adminUpdateNavState(host, sections, activeSectionKey) {
     section.classList.toggle("collapsed", !isOpen);
     const toggle = section.querySelector(".nav-section-toggle");
     toggle?.setAttribute("aria-expanded", isOpen ? "true" : "false");
-    toggle?.setAttribute("aria-label", `${domain.label}，${isOpen ? "已展开" : "已收起"}`);
+    toggle?.setAttribute("aria-label", `${domain.label}，${isOpen ? localize("已展开") : localize("已收起")}`);
     for (const link of section.querySelectorAll("a.nav-button")) {
       const itemActive = link.dataset.page === adminState.page;
       link.classList.toggle("active", itemActive);
@@ -803,7 +808,7 @@ function adminShowAlertCount() {
     if (domain) {
       bell.href = buildHash(domain.key, "alert-events");
     }
-    const label = count > 0 ? `告警事件，${count} 条待处理` : "告警事件，没有待处理告警";
+    const label = count > 0 ? localize`告警事件，${count} 条待处理` : localize("告警事件，没有待处理告警");
     bell.setAttribute("aria-label", label);
     bell.title = label;
     const dot = bell.querySelector(".alert-bell-dot");
@@ -871,6 +876,10 @@ function adminPaletteEntries() {
 }
 
 async function adminSignedIn(user, sessionData) {
+  if (getLocale() !== initialLocale) {
+    location.reload();
+    return;
+  }
   adminState.user = user;
   setCurrentUser(user);
   adminRestoreHashRoute();
@@ -915,8 +924,8 @@ function adminInitLoginForm() {
     const show = password.type === "password";
     password.type = show ? "text" : "password";
     toggle.setAttribute("aria-pressed", show ? "true" : "false");
-    toggle.setAttribute("aria-label", show ? "隐藏密码" : "显示密码");
-    toggle.title = show ? "隐藏密码" : "显示密码";
+    toggle.setAttribute("aria-label", show ? localize("隐藏密码") : localize("显示密码"));
+    toggle.title = show ? localize("隐藏密码") : localize("显示密码");
     password.focus();
   });
 }
@@ -934,13 +943,13 @@ async function adminSubmitLogin(event) {
   const errorNode = $("login-error");
   if (submit.disabled) return;
   if (!username.value.trim() || !password.value) {
-    setText(errorNode, "请输入用户名和密码");
+    setText(errorNode, localize("请输入用户名和密码"));
     (username.value.trim() ? password : username).focus();
     return;
   }
   const idleLabel = submit.textContent;
   submit.disabled = true;
-  submit.textContent = "登录中…";
+  submit.textContent = localize("登录中…");
   submit.setAttribute("aria-busy", "true");
   setText(errorNode, "");
   try {
@@ -950,7 +959,7 @@ async function adminSubmitLogin(event) {
     adminRememberUsername($("remember-username")?.checked ? username.value.trim() : "");
     await adminSignedIn(result.data.user, result.data);
   } catch (error) {
-    setText(errorNode, adminErrorMessage(error, "登录失败，请检查账号或密码"));
+    setText(errorNode, adminErrorMessage(error, localize("登录失败，请检查账号或密码")));
     password.value = "";
     password.focus();
   } finally {
@@ -961,6 +970,12 @@ async function adminSubmitLogin(event) {
 }
 
 async function adminBoot() {
+  initLocaleControls({
+    beforeChange: () => adminConfirmLeave(location.href),
+    // Password reset credentials are held in memory after removing the URL fragment.
+    applyInPlace: () => !$("reset-password").hidden,
+    onChange: () => adminApplyBrandIdentity()
+  });
   adminInitSidebarControls();
   adminInitThemeSwitcher();
   adminApplyBrandIdentity();
@@ -987,7 +1002,7 @@ async function adminBoot() {
   $("app-devices").addEventListener("click", () => {
     import("./pages/app-devices.js")
       .then((module) => module.openAppDevicesDialog())
-      .catch((error) => toastError(error, "无法打开 APP 设备"));
+      .catch((error) => toastError(error, localize("无法打开 APP 设备")));
   });
   $("logout").addEventListener("click", async () => {
     await api("/admin-api/logout", { method: "POST" }).catch(() => null);

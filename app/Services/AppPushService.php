@@ -8,6 +8,8 @@ use RuntimeException;
 use Throwable;
 use TokenHub\Support\App;
 use TokenHub\Support\Crypto;
+use TokenHub\Support\SchemaInspector;
+use TokenHub\Support\UiLocale;
 
 /**
  * Web Push for the TokenHub APP: VAPID keys (RFC 8292), message encryption
@@ -132,7 +134,7 @@ final class AppPushService
      * @param array<string, mixed> $subscription PushSubscription.toJSON()
      * @return array<string, mixed>
      */
-    public function subscribe(int $userId, int $deviceId, array $subscription): array
+    public function subscribe(int $userId, int $deviceId, array $subscription, string $locale = 'zh-CN'): array
     {
         $endpoint = trim((string) ($subscription['endpoint'] ?? ''));
         $p256dh = trim((string) ($subscription['keys']['p256dh'] ?? ''));
@@ -143,12 +145,13 @@ final class AppPushService
         if (strlen(self::unb64($p256dh)) !== 65 || strlen(self::unb64($auth)) < 16) {
             abort_json('ADMIN_INVALID_PAYLOAD', 'Invalid push subscription keys', 422);
         }
-        App::db()->transaction(function () use ($userId, $deviceId, $endpoint, $p256dh, $auth): void {
+        App::db()->transaction(function () use ($userId, $deviceId, $endpoint, $p256dh, $auth, $locale): void {
             App::db()->execute('DELETE FROM admin_app_push_subscriptions WHERE device_id = ? OR endpoint_hash = ?', [$deviceId, hash('sha256', $endpoint)]);
             App::db()->execute(
                 'INSERT INTO admin_app_push_subscriptions (user_id, device_id, endpoint, endpoint_hash, p256dh, auth) VALUES (?, ?, ?, ?, ?, ?)',
                 [$userId, $deviceId, $endpoint, hash('sha256', $endpoint), $p256dh, $auth]
             );
+            $this->saveLocale($deviceId, $locale);
         });
 
         return ['subscribed' => true];
@@ -252,7 +255,7 @@ final class AppPushService
      *
      * @return array<string, mixed>
      */
-    public function subscribeNative(int $userId, int $deviceId, string $platform, string $token): array
+    public function subscribeNative(int $userId, int $deviceId, string $platform, string $token, string $locale = 'zh-CN'): array
     {
         if (!in_array($platform, ['ios', 'android'], true)) {
             abort_json('ADMIN_INVALID_PAYLOAD', 'platform must be ios or android', 422);
@@ -268,12 +271,13 @@ final class AppPushService
             abort_json('APP_PUSH_UNAVAILABLE', 'Native push is not configured on this server', 503);
         }
         $endpoint = $platform . '://' . $token;
-        App::db()->transaction(function () use ($userId, $deviceId, $platform, $endpoint): void {
+        App::db()->transaction(function () use ($userId, $deviceId, $platform, $endpoint, $locale): void {
             App::db()->execute('DELETE FROM admin_app_push_subscriptions WHERE device_id = ? OR endpoint_hash = ?', [$deviceId, hash('sha256', $endpoint)]);
             App::db()->execute(
                 'INSERT INTO admin_app_push_subscriptions (user_id, device_id, kind, endpoint, endpoint_hash, p256dh, auth) VALUES (?, ?, ?, ?, ?, "", "")',
                 [$userId, $deviceId, $platform, $endpoint, hash('sha256', $endpoint)]
             );
+            $this->saveLocale($deviceId, $locale);
         });
 
         return ['subscribed' => true, 'kind' => $platform];
@@ -287,6 +291,15 @@ final class AppPushService
     public function subscribed(int $deviceId): bool
     {
         return App::db()->first('SELECT id FROM admin_app_push_subscriptions WHERE device_id = ?', [$deviceId]) !== null;
+    }
+
+    public function saveLocale(int $deviceId, string $locale): void
+    {
+        if (SchemaInspector::hasColumn('admin_app_push_subscriptions', 'locale')) {
+            $locale = UiLocale::normalize($locale);
+            App::db()->execute('UPDATE admin_app_push_subscriptions SET locale = ? WHERE device_id = ? AND locale <> ?',
+                [$locale, $deviceId, $locale]);
+        }
     }
 
     // -------------------------------------------------------- alert delivery
@@ -357,12 +370,15 @@ final class AppPushService
             return ['status' => 410, 'error' => 'subscription_gone', 'gone' => true];
         }
         $severity = (string) ($row['severity'] ?? 'warning');
+        $english = ($subscription['locale'] ?? null) === 'en-US';
         $message = [
-            'title' => $row['kind'] === 'escalated' ? 'TokenHub 告警升级' : 'TokenHub 新告警',
+            'title' => $row['kind'] === 'escalated'
+                ? ($english ? 'TokenHub alert escalated' : 'TokenHub 告警升级')
+                : ($english ? 'New TokenHub alert' : 'TokenHub 新告警'),
             'body' => match ($severity) {
-                'critical' => '有一条严重告警待处理，点按查看。',
-                'info' => '有一条提示类告警，点按查看。',
-                default => '有一条告警待处理，点按查看。',
+                'critical' => $english ? 'Tap to review a critical alert.' : '有一条严重告警待处理，点按查看。',
+                'info' => $english ? 'Tap to view an informational alert.' : '有一条提示类告警，点按查看。',
+                default => $english ? 'Tap to review a new alert.' : '有一条告警待处理，点按查看。',
             },
             'url' => '/app/#/security/alert-events',
             'tag' => 'tokenhub-alert-' . (int) ($row['alert_event_id'] ?? 0),

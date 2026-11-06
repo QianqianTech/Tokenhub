@@ -1,3 +1,4 @@
+import { getLocale, localize } from "/admin/assets/js/i18n.js";
 // 概览: today's usage, service health, queues and open alerts at a glance,
 // refreshed while the APP is in the foreground.
 import { api } from "/admin/assets/js/api.js";
@@ -9,17 +10,17 @@ import { createPoller } from "./poller.js";
 import { onRealtime, realtimeConnected } from "./realtime.js";
 
 const SERVICE_LABELS = {
-  php: "应用服务",
-  mysql: "数据库",
-  redis: "缓存 Redis",
-  qdrant: "向量库 Qdrant",
-  "queue-worker": "队列 Worker",
-  "rag-worker": "知识库 Worker",
-  schema: "数据库结构"
+  php: localize("应用服务"),
+  mysql: localize("数据库"),
+  redis: localize("缓存 Redis"),
+  qdrant: localize("向量库 Qdrant"),
+  "queue-worker": localize("队列 Worker"),
+  "rag-worker": localize("知识库 Worker"),
+  schema: localize("数据库结构")
 };
 
 function stamp(date = new Date()) {
-  return date.toLocaleTimeString("zh-CN", { hour12: false });
+  return date.toLocaleTimeString(getLocale(), { hourCycle: "h23" });
 }
 
 function kpi(label, value, hint = "", tone = "") {
@@ -53,16 +54,16 @@ export function renderOverview(content, { user, setUpdated }) {
   const sections = [];
 
   if (canAlerts) {
-    sections.push(card("待处理告警", alerts, link(user, "alert-events", "查看全部")));
+    sections.push(card(localize("待处理告警"), alerts, link(user, "alert-events", localize("查看全部"))));
   }
   if (canDashboard) {
-    sections.push(card("今日用量", kpis, link(user, "dashboard", "完整大盘")));
+    sections.push(card(localize("今日用量"), kpis, link(user, "dashboard", localize("完整大盘"))));
   }
   if (canOperations) {
-    sections.push(card("服务健康", [health, queues], link(user, "operations-status", "运行状态")));
+    sections.push(card(localize("服务健康"), [health, queues], link(user, "operations-status", localize("运行状态"))));
   }
   if (sections.length === 0) {
-    sections.push(card("概览", el("p", { className: "tha-muted", text: "当前账号没有查看大盘、运行状态或告警的权限。可以在「管理」中打开有权限的页面。" })));
+    sections.push(card(localize("概览"), el("p", { className: "tha-muted", text: localize("当前账号没有查看大盘、运行状态或告警的权限。可以在「管理」中打开有权限的页面。") })));
   }
   content.replaceChildren(el("div", { className: "tha-overview" }, sections));
 
@@ -73,11 +74,11 @@ export function renderOverview(content, { user, setUpdated }) {
     const success = requests > 0 ? (Number(today.success_count || 0) / requests) * 100 : 100;
     const cost = Number(today.total_cost || 0);
     kpis.replaceChildren(
-      kpi("请求数", formatNumber(requests)),
-      kpi("成功率", `${formatNumber(success, { digits: 1 })}%`, failed > 0 ? `失败 ${formatNumber(failed)}` : "", success < 95 && requests > 0 ? "danger" : ""),
+      kpi(localize("请求数"), formatNumber(requests)),
+      kpi(localize("成功率"), `${formatNumber(success, { digits: 1 })}%`, failed > 0 ? localize`失败 ${formatNumber(failed)}` : "", success < 95 && requests > 0 ? "danger" : ""),
       kpi("Token", formatNumber(Number(today.total_tokens || 0))),
-      kpi("费用", cost > 0 ? `¥${formatNumber(cost, { digits: 2 })}` : "¥0"),
-      kpi("平均延迟", `${formatNumber(Number(today.avg_latency_ms || 0))} ms`)
+      kpi(localize("费用"), cost > 0 ? `¥${formatNumber(cost, { digits: 2 })}` : "¥0"),
+      kpi(localize("平均延迟"), `${formatNumber(Number(today.avg_latency_ms || 0))} ms`)
     );
     setUpdated(stamp());
   };
@@ -87,26 +88,26 @@ export function renderOverview(content, { user, setUpdated }) {
     health.replaceChildren(...services.map(([key, value]) => el("li", { className: `tha-health-item ${value?.healthy ? "is-ok" : "is-bad"}` }, [
       el("span", { className: "tha-dot", "aria-hidden": "true" }),
       el("span", { text: SERVICE_LABELS[key] || key }),
-      el("span", { className: "tha-health-state", text: value?.healthy ? "正常" : "异常" })
+      el("span", { className: "tha-health-state", text: value?.healthy ? localize("正常") : localize("异常") })
     ])));
     const queue = data?.queues || {};
     const pipeline = data?.usage_pipeline || {};
     const entries = [
-      ["待处理任务", queue.pending],
-      ["处理中", queue.processing],
-      ["失败任务", queue.failed],
-      ["待汇总用量", pipeline.unaggregated]
+      [localize("待处理任务"), queue.pending],
+      [localize("处理中"), queue.processing],
+      [localize("失败任务"), queue.failed, true],
+      [localize("待汇总用量"), pipeline.unaggregated]
     ];
-    queues.replaceChildren(...entries.flatMap(([label, value]) => [
+    queues.replaceChildren(...entries.flatMap(([label, value, highlight]) => [
       el("dt", { text: label }),
-      el("dd", { className: label === "失败任务" && Number(value) > 0 ? "is-bad" : "", text: value === null || value === undefined ? "—" : formatNumber(Number(value)) })
+      el("dd", { className: highlight && Number(value) > 0 ? "is-bad" : "", text: value === null || value === undefined ? "—" : formatNumber(Number(value)) })
     ]));
     setUpdated(stamp());
   };
   const showAlerts = (total, rows) => {
     alerts.replaceChildren(
-      el("strong", { className: `tha-alert-count ${total > 0 ? "is-bad" : "is-ok"}`, text: total > 0 ? `${formatNumber(total)} 条待处理` : "没有待处理告警" }),
-      ...rows.slice(0, 3).map((row) => el("p", { className: "tha-alert-line", text: `${row.title || row.message || row.event_type || "告警"}${row.severity ? ` · ${valueLabel("severity", row.severity)}` : ""}` }))
+      el("strong", { className: `tha-alert-count ${total > 0 ? "is-bad" : "is-ok"}`, text: total > 0 ? localize`${formatNumber(total)} 条待处理` : localize("没有待处理告警") }),
+      ...rows.slice(0, 3).map((row) => el("p", { className: "tha-alert-line", text: `${row.title || row.message || row.event_type || localize("告警")}${row.severity ? ` · ${valueLabel("severity", row.severity)}` : ""}` }))
     );
     setUpdated(stamp());
   };

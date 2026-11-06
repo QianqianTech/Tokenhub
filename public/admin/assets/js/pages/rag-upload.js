@@ -1,3 +1,4 @@
+import { getLocale, localize } from "../i18n.js";
 import { adminErrorMessage, api, isAbortError } from "../api.js";
 import { button, clear, el, field, readFields, statusMessage } from "../dom.js";
 import { emptyState, errorState, loadingState, toast } from "../components/feedback.js";
@@ -22,20 +23,20 @@ export async function renderRagUploadWorkbenchPage(content, options = {}) {
   const uploadResult = el("section", { className: "rag-upload-result" });
 
   form.append(
-    field({ name: "kb_id", label: "知识库", type: "select", options: kbOptions }),
-    field({ name: "target_dataset_id", label: "向量数据集", type: "select", options: datasetOptions }),
-    field({ name: "department_id", label: "部门", type: "select", coerce: "number", options: departmentOptions }),
-    field({ name: "template", label: "导入类型", type: "select", options: [["text", "文本（表格模板）"], ["qa", "问答（表格模板）"], ["document", "文档（PDF / Word / WPS / PPT / RTF / Markdown / HTML / TXT）"], ["image", "图片清单"], ["image_package", "ZIP 图片包"]] }),
+    field({ name: "kb_id", label: localize("知识库"), type: "select", options: kbOptions }),
+    field({ name: "target_dataset_id", label: localize("向量数据集"), type: "select", options: datasetOptions }),
+    field({ name: "department_id", label: localize("部门"), type: "select", coerce: "number", options: departmentOptions }),
+    field({ name: "template", label: localize("导入类型"), type: "select", options: [["text", localize("文本（表格模板）")], ["qa", localize("问答（表格模板）")], ["document", localize("文档（PDF / Word / WPS / PPT / RTF / Markdown / HTML / TXT）")], ["image", localize("图片清单")], ["image_package", localize("ZIP 图片包")]] }),
     // RAG-022: optional masking before indexing; nothing selected = knowledge base / system default.
-    field({ name: "redaction", label: "导入前脱敏（不选则按知识库或系统默认）", type: "multiselect", optional: true, options: [["phone", "手机号"], ["email", "邮箱"], ["id_card", "身份证号"], ["bank_card", "银行卡号"], ["ipv4", "IP 地址"]] }),
-    field({ name: "confirm_required", label: "上传后确认", type: "select", options: [["true", "需要预览确认"], ["false", "允许自动向量化"]] }),
+    field({ name: "redaction", label: localize("导入前脱敏（不选则按知识库或系统默认）"), type: "multiselect", optional: true, options: [["phone", localize("手机号")], ["email", localize("邮箱")], ["id_card", localize("身份证号")], ["bank_card", localize("银行卡号")], ["ipv4", localize("IP 地址")]] }),
+    field({ name: "confirm_required", label: localize("上传后确认"), type: "select", options: [["true", localize("需要预览确认")], ["false", localize("允许自动向量化")]] }),
     el("label", { className: "field" }, [
-      el("span", { text: "上传文件" }),
+      el("span", { text: localize("上传文件") }),
       fileInput,
-      el("small", { className: "field-hint", text: "文档：PDF、Word（.docx/.doc）、WPS 文字（.wps）、RTF、ODT、PPT（.pptx/.ppt）、WPS 演示（.dps）、ODP、Markdown、HTML、TXT；表格：XLSX、XLS、WPS 表格（.et）、ODS、CSV。单个文件不超过 20 MB；扫描版 PDF 需要启用 OCR。" })
+      el("small", { className: "field-hint", text: localize("文档：PDF、Word（.docx/.doc）、WPS 文字（.wps）、RTF、ODT、PPT（.pptx/.ppt）、WPS 演示（.dps）、ODP、Markdown、HTML、TXT；表格：XLSX、XLS、WPS 表格（.et）、ODS、CSV。单个文件不超过 20 MB；扫描版 PDF 需要启用 OCR。") })
     ]),
     el("div", { className: "toolbar-actions" }, [
-      button("上传并生成预览", async () => {
+      button(localize("上传并生成预览"), async () => {
         await submitRagUploadWorkbench(form, fileInput, output, uploadResult, options.onUploaded);
       }, "primary", { disabled: kbOptions.length === 0 || datasetOptions.length === 0 })
     ]),
@@ -54,7 +55,7 @@ export async function renderRagUploadWorkbenchPage(content, options = {}) {
   });
 
   content.append(el("section", { className: "panel" }, [
-    el("h2", { text: "RAG 上传工作台" }),
+    el("h2", { text: localize("RAG 上传工作台") }),
     form
   ]), uploadResult);
 }
@@ -79,7 +80,7 @@ async function submitRagUploadWorkbench(form, fileInput, output, uploadResult, o
   ]);
   const file = fileInput.files?.[0];
   if (!file) {
-    setErrorOutput(output, "请选择要上传的文档（PDF、Word、PPT 等）、表格或 ZIP 文件");
+    setErrorOutput(output, localize("请选择要上传的文档（PDF、Word、PPT 等）、表格或 ZIP 文件"));
     return;
   }
   const template = String(values.template || "text");
@@ -114,10 +115,10 @@ async function submitRagUploadWorkbench(form, fileInput, output, uploadResult, o
       await onUploaded(uploadId);
       return;
     }
-    setOperationOutput(output, result.data, "上传已解析，请在导入任务中预览确认");
+    setOperationOutput(output, result.data, localize("上传已解析，请在导入任务中预览确认"));
     uploadResult.replaceChildren(renderRagUploadStatusCard(result.data));
   } catch (error) {
-    setErrorOutput(output, adminErrorMessage(error, "RAG 上传失败"));
+    setErrorOutput(output, adminErrorMessage(error, localize("RAG 上传失败")));
   }
 }
 
@@ -139,20 +140,20 @@ export async function renderRagUploadDetailPage(content, initialFilters = {}) {
     page: 1,
     uploadLoaded: false
   };
-  const uploadField = taskMode ? null : field({ name: "upload_id", label: "导入任务编号" }, state.uploadId);
-  const statusPanel = el("section", { className: "panel rag-upload-status-panel" }, [statusMessage(taskMode ? "正在加载导入任务…" : "请输入导入任务编号查询上传详情。")]);
+  const uploadField = taskMode ? null : field({ name: "upload_id", label: localize("导入任务编号") }, state.uploadId);
+  const statusPanel = el("section", { className: "panel rag-upload-status-panel" }, [statusMessage(taskMode ? localize("正在加载导入任务…") : localize("请输入导入任务编号查询上传详情。"))]);
   const previewPanel = el("section", { className: "panel rag-upload-preview-panel" });
   const output = el("p", { className: "notice", hidden: true });
-  const approveButton = button("审核通过", async () => reviewRagUpload(state.uploadId, "approve", output, refresh), "secondary", { disabled: !state.uploadLoaded });
-  const rejectButton = button("审核拒绝", async () => reviewRagUpload(state.uploadId, "reject", output, refresh), "secondary", { disabled: !state.uploadLoaded });
-  const vectorizeButton = button("确认向量化", async () => confirmRagUpload(state.uploadId, output, refresh), "primary", { disabled: !state.uploadLoaded });
+  const approveButton = button(localize("审核通过"), async () => reviewRagUpload(state.uploadId, "approve", output, refresh), "secondary", { disabled: !state.uploadLoaded });
+  const rejectButton = button(localize("审核拒绝"), async () => reviewRagUpload(state.uploadId, "reject", output, refresh), "secondary", { disabled: !state.uploadLoaded });
+  const vectorizeButton = button(localize("确认向量化"), async () => confirmRagUpload(state.uploadId, output, refresh), "primary", { disabled: !state.uploadLoaded });
 
   const refresh = async () => {
     if (uploadField) {
       state.uploadId = String(uploadField.querySelector("[name=\"upload_id\"]")?.value || "").trim();
     }
     if (state.uploadId === "") {
-      statusPanel.replaceChildren(statusMessage(taskMode ? "尚未创建导入任务，请先上传文件。" : "请输入导入任务编号查询上传详情。"));
+      statusPanel.replaceChildren(statusMessage(taskMode ? localize("尚未创建导入任务，请先上传文件。") : localize("请输入导入任务编号查询上传详情。")));
       previewPanel.replaceChildren();
       return;
     }
@@ -160,10 +161,10 @@ export async function renderRagUploadDetailPage(content, initialFilters = {}) {
   };
 
   content.append(el("section", { className: "panel rag-upload-detail" }, [
-    el("h2", { text: taskMode ? "导入任务" : "RAG 上传详情" }),
+    el("h2", { text: taskMode ? localize("导入任务") : localize("RAG 上传详情") }),
     el("div", { className: "toolbar-actions" }, [
       uploadField,
-      uploadField ? button("查询", refresh) : null,
+      uploadField ? button(localize("查询"), refresh) : null,
       approveButton,
       rejectButton,
       vectorizeButton
@@ -225,52 +226,52 @@ async function refreshRagUploadDetail(state, statusPanel, previewPanel, output, 
     if (isAbortError(error)) {
       return;
     }
-    statusPanel.replaceChildren(errorState(error, { fallback: "RAG 上传详情加载失败", onRetry: () => refresh() }));
+    statusPanel.replaceChildren(errorState(error, { fallback: localize("RAG 上传详情加载失败"), onRetry: () => refresh() }));
     previewPanel.replaceChildren();
   }
 }
 
 const RAG_STATE_LABELS = {
-  pending: "待处理",
-  uploaded: "已上传",
-  parsing: "解析中",
-  parsed: "已解析",
-  validating: "校验中",
-  previewing: "待预览",
-  waiting_review: "待审核",
-  pending_review: "待审核",
-  not_required: "无需审核",
-  approved: "已通过",
-  rejected: "已拒绝",
-  queued: "排队中",
-  processing: "处理中",
-  vectorizing: "向量化中",
-  succeeded: "成功",
-  completed: "已完成",
-  failed: "失败",
-  valid: "校验通过",
-  passed: "校验通过",
-  invalid: "校验未通过",
-  warning: "有警告"
+  pending: localize("待处理"),
+  uploaded: localize("已上传"),
+  parsing: localize("解析中"),
+  parsed: localize("已解析"),
+  validating: localize("校验中"),
+  previewing: localize("待预览"),
+  waiting_review: localize("待审核"),
+  pending_review: localize("待审核"),
+  not_required: localize("无需审核"),
+  approved: localize("已通过"),
+  rejected: localize("已拒绝"),
+  queued: localize("排队中"),
+  processing: localize("处理中"),
+  vectorizing: localize("向量化中"),
+  succeeded: localize("成功"),
+  completed: localize("已完成"),
+  failed: localize("失败"),
+  valid: localize("校验通过"),
+  passed: localize("校验通过"),
+  invalid: localize("校验未通过"),
+  warning: localize("有警告")
 };
 
 const RAG_FIELD_LABELS = {
-  purpose: "用途",
-  description: "简述",
-  short_description: "简述",
-  detailed_description: "详细描述",
-  title: "标题",
-  tags: "标签",
-  labels: "标签",
-  caption: "图片说明",
-  ocr_text: "OCR 文本",
-  confidence: "置信度",
-  model: "模型",
-  model_name: "模型",
-  language: "语言",
-  objects: "识别对象",
-  status: "状态",
-  error: "错误"
+  purpose: localize("用途"),
+  description: localize("简述"),
+  short_description: localize("简述"),
+  detailed_description: localize("详细描述"),
+  title: localize("标题"),
+  tags: localize("标签"),
+  labels: localize("标签"),
+  caption: localize("图片说明"),
+  ocr_text: localize("OCR 文本"),
+  confidence: localize("置信度"),
+  model: localize("模型"),
+  model_name: localize("模型"),
+  language: localize("语言"),
+  objects: localize("识别对象"),
+  status: localize("状态"),
+  error: localize("错误")
 };
 
 const PREVIEW_QUERY_DEFAULTS = { page_size: 20 };
@@ -291,10 +292,10 @@ function ragValueText(value) {
     return Object.entries(value).map(([key, nested]) => `${RAG_FIELD_LABELS[key] || columnLabel(key)}：${ragValueText(nested)}`).join("；");
   }
   if (typeof value === "number") {
-    return value.toLocaleString("zh-CN");
+    return value.toLocaleString(getLocale());
   }
   if (typeof value === "boolean") {
-    return value ? "是" : "否";
+    return value ? localize("是") : localize("否");
   }
   return String(value);
 }
@@ -303,7 +304,7 @@ function ragValueText(value) {
 function ragFacts(title, data) {
   const entries = Object.entries(data || {}).filter(([, value]) => value !== null && value !== undefined && value !== "" && !(Array.isArray(value) && value.length === 0));
   if (!entries.length) {
-    return el("div", { className: "rag-facts" }, [el("h4", { text: title }), el("p", { className: "chart-subtle", text: "暂无" })]);
+    return el("div", { className: "rag-facts" }, [el("h4", { text: title }), el("p", { className: "chart-subtle", text: localize("暂无") })]);
   }
   return el("div", { className: "rag-facts" }, [
     el("h4", { text: title }),
@@ -329,29 +330,29 @@ function renderRagUploadStatusCard(upload) {
   const progress = Number(upload?.progress || upload?.progress_percent || 0);
   const reviewStatus = upload?.review_status || "not_required";
   return el("section", { className: "rag-upload-status-card" }, [
-    el("h3", { text: upload?.original_filename || upload?.upload_id || "导入任务" }),
-    el("div", { className: "rag-upload-progress", role: "progressbar", "aria-valuemin": "0", "aria-valuemax": "100", "aria-valuenow": String(Math.max(0, Math.min(100, progress))), "aria-label": "导入进度" }, [
+    el("h3", { text: upload?.original_filename || upload?.upload_id || localize("导入任务") }),
+    el("div", { className: "rag-upload-progress", role: "progressbar", "aria-valuemin": "0", "aria-valuemax": "100", "aria-valuenow": String(Math.max(0, Math.min(100, progress))), "aria-label": localize("导入进度") }, [
       el("div", { className: "rag-upload-progress-bar", style: `width: ${Math.max(0, Math.min(100, progress))}%` })
     ]),
     el("dl", { className: "rag-upload-facts" }, [
-      ["任务编号", upload?.upload_id || "-"],
-      ["状态", ragStateLabel(upload?.status)],
-      ["当前阶段", ragStateLabel(upload?.stage || upload?.current_stage)],
-      ["审核", ragStateLabel(reviewStatus)],
-      ["向量化", ragStateLabel(upload?.vectorize_status)],
-      ["进度", `${progress}%`]
+      [localize("任务编号"), upload?.upload_id || "-"],
+      [localize("状态"), ragStateLabel(upload?.status)],
+      [localize("当前阶段"), ragStateLabel(upload?.stage || upload?.current_stage)],
+      [localize("审核"), ragStateLabel(reviewStatus)],
+      [localize("向量化"), ragStateLabel(upload?.vectorize_status)],
+      [localize("进度"), `${progress}%`]
     ].flatMap(([label, value]) => [el("dt", { text: label }), el("dd", { text: value })])),
-    reviewStatus === "waiting_review" ? el("p", { className: "notice", text: "该任务需要审核：确认预览内容无误后点击“审核通过”，再提交向量化。" }) : null,
+    reviewStatus === "waiting_review" ? el("p", { className: "notice", text: localize("该任务需要审核：确认预览内容无误后点击“审核通过”，再提交向量化。") }) : null,
     el("details", { className: "chart-data-table" }, [
-      el("summary", { text: "查看全部字段" }),
+      el("summary", { text: localize("查看全部字段") }),
       renderDataDetails(upload || {})
     ])
   ]);
 }
 
 function renderRagPreviewTabs(state, previewPanel, refresh) {
-  const tabs = [["text", "文本"], ["image", "图片"], ["error", "错误行"]];
-  const group = el("section", { className: "rag-preview-tabs", role: "group", "aria-label": "预览类型" });
+  const tabs = [["text", localize("文本")], ["image", localize("图片")], ["error", localize("错误行")]];
+  const group = el("section", { className: "rag-preview-tabs", role: "group", "aria-label": localize("预览类型") });
   const sync = () => {
     for (const node of group.querySelectorAll("button")) {
       const active = node.dataset.previewType === state.previewType;
@@ -378,12 +379,12 @@ function previewPager(data, onPage) {
     offset: (page - 1) * limit,
     count: Array.isArray(data?.items) ? data.items.length : 0,
     pageSizes: [limit],
-    label: "预览分页",
+    label: localize("预览分页"),
     onChange: ({ offset }) => onPage(Math.floor(offset / limit) + 1)
   });
 }
 
-const PREVIEW_TYPE_LABELS = { text: "文本", image: "图片", error: "错误行", all: "全部" };
+const PREVIEW_TYPE_LABELS = { text: localize("文本"), image: localize("图片"), error: localize("错误行"), all: localize("全部") };
 
 function renderRagPreviewPage(data, refresh, onPage) {
   const items = Array.isArray(data?.items) ? data.items : [];
@@ -392,38 +393,38 @@ function renderRagPreviewPage(data, refresh, onPage) {
     : renderRagPreviewTextItem(item));
   return el("section", { className: "rag-preview-page" }, [
     el("header", { className: "table-toolbar" }, [
-      el("h2", { text: `预览：${PREVIEW_TYPE_LABELS[data?.type] || PREVIEW_TYPE_LABELS.all}` }),
-      el("span", { className: "chart-subtle", text: `共 ${Number(data?.total || 0).toLocaleString("zh-CN")} 条` })
+      el("h2", { text: localize`预览：${PREVIEW_TYPE_LABELS[data?.type] || PREVIEW_TYPE_LABELS.all}` }),
+      el("span", { className: "chart-subtle", text: localize`共 ${Number(data?.total || 0).toLocaleString(getLocale())} 条` })
     ]),
-    ...(body.length > 0 ? body : [emptyState({ title: "暂无预览数据" })]),
+    ...(body.length > 0 ? body : [emptyState({ title: localize("暂无预览数据") })]),
     Number(data?.total || 0) > 0 ? previewPager(data, onPage) : null
   ]);
 }
 
 function renderRagPreviewTextItem(item) {
   return el("article", { className: "rag-preview-item" }, [
-    el("h3", { text: item.title || item.question || item.preview_item_id || "文本条目" }),
+    el("h3", { text: item.title || item.question || item.preview_item_id || localize("文本条目") }),
     el("p", { text: item.content || item.answer || item.description || "" }),
-    el("p", { className: "chart-subtle", text: `校验：${ragStateLabel(item.validation_status)}` }),
-    ragIssues("校验问题", item.validation_errors)
+    el("p", { className: "chart-subtle", text: localize`校验：${ragStateLabel(item.validation_status)}` }),
+    ragIssues(localize("校验问题"), item.validation_errors)
   ]);
 }
 
 function renderRagPreviewImageItem(item, refresh) {
   const image = item.image_asset || {};
   const ai = image.metadata?.ai_annotation || {};
-  const title = item.title || image.original_filename || item.preview_item_id || "图片";
+  const title = item.title || image.original_filename || item.preview_item_id || localize("图片");
   return el("article", { className: "rag-image-preview-item" }, [
-    image.thumbnail_path ? el("img", { className: "rag-image-preview-thumb", alt: `${title} 缩略图`, src: image.thumbnail_path }) : el("div", { className: "rag-image-preview-thumb", text: "无缩略图" }),
+    image.thumbnail_path ? el("img", { className: "rag-image-preview-thumb", alt: localize`${title} 缩略图`, src: image.thumbnail_path }) : el("div", { className: "rag-image-preview-thumb", text: localize("无缩略图") }),
     el("div", { className: "rag-image-preview-body" }, [
       el("h3", { text: title }),
-      ragFacts("人工标注", { purpose: item.purpose || image.purpose, description: item.description || image.short_description, detailed_description: item.detailed_description || image.detailed_description }),
-      ragFacts("AI 标注", ai),
+      ragFacts(localize("人工标注"), { purpose: item.purpose || image.purpose, description: item.description || image.short_description, detailed_description: item.detailed_description || image.detailed_description }),
+      ragFacts(localize("AI 标注"), ai),
       ragFacts("OCR", { ocr_text: image.ocr_text || ai.ocr_text }),
-      ragIssues("警告", image.warnings || item.validation_errors),
-      image.image_id ? button("重新 AI 标注", async () => {
+      ragIssues(localize("警告"), image.warnings || item.validation_errors),
+      image.image_id ? button(localize("重新 AI 标注"), async () => {
         await api(`/admin-api/rag/image-assets/${encodeURIComponent(image.image_id)}/reprocess-ai`, { method: "POST" });
-        toast("已提交重新标注", { tone: "success" });
+        toast(localize("已提交重新标注"), { tone: "success" });
         await refresh();
       }, "secondary") : null
     ].filter(Boolean))
@@ -432,7 +433,7 @@ function renderRagPreviewImageItem(item, refresh) {
 
 async function reviewRagUpload(uploadId, decision, output, refresh) {
   if (!uploadId) {
-    setErrorOutput(output, "请先输入导入任务编号");
+    setErrorOutput(output, localize("请先输入导入任务编号"));
     return;
   }
   try {
@@ -440,24 +441,24 @@ async function reviewRagUpload(uploadId, decision, output, refresh) {
       method: "POST",
       body: JSON.stringify({ decision, comment: decision === "approve" ? "web approve" : "web reject" })
     });
-    setOperationOutput(output, result.data, "审核状态已更新");
+    setOperationOutput(output, result.data, localize("审核状态已更新"));
     await refresh();
   } catch (error) {
-    setErrorOutput(output, adminErrorMessage(error, "审核操作失败"));
+    setErrorOutput(output, adminErrorMessage(error, localize("审核操作失败")));
   }
 }
 
 async function confirmRagUpload(uploadId, output, refresh) {
   if (!uploadId) {
-    setErrorOutput(output, "请先输入导入任务编号");
+    setErrorOutput(output, localize("请先输入导入任务编号"));
     return;
   }
   try {
     const result = await api(`/admin-api/rag/uploads/${encodeURIComponent(uploadId)}/confirm-vectorization`, { method: "POST" });
-    setOperationOutput(output, result.data, "确认向量化已提交");
+    setOperationOutput(output, result.data, localize("确认向量化已提交"));
     await refresh();
   } catch (error) {
-    setErrorOutput(output, adminErrorMessage(error, "确认向量化失败"));
+    setErrorOutput(output, adminErrorMessage(error, localize("确认向量化失败")));
   }
 }
 
@@ -467,19 +468,19 @@ export async function renderRagImagePreviewPage(content, initialFilters = {}) {
     uploadId: String(initialFilters.upload_id || ""),
     page: Math.max(1, Number(initialFilters.page || 1) || 1),
   };
-  const uploadField = field({ name: "upload_id", label: "导入任务编号" }, state.uploadId);
+  const uploadField = field({ name: "upload_id", label: localize("导入任务编号") }, state.uploadId);
   const output = el("p", { className: "notice", hidden: true });
   const list = el("section", { className: "rag-image-preview-list" }, [
-    statusMessage("请输入导入任务编号查询图片预览。")
+    statusMessage(localize("请输入导入任务编号查询图片预览。"))
   ]);
   const refresh = async () => {
     state.uploadId = String(uploadField.querySelector("[name=\"upload_id\"]")?.value || "").trim();
     if (state.uploadId === "") {
-      list.replaceChildren(statusMessage("请输入导入任务编号查询图片预览。"));
+      list.replaceChildren(statusMessage(localize("请输入导入任务编号查询图片预览。")));
       return;
     }
     try {
-      list.replaceChildren(loadingState("正在加载图片预览…"));
+      list.replaceChildren(loadingState(localize("正在加载图片预览…")));
       const result = await api(`/admin-api/rag/uploads/${encodeURIComponent(state.uploadId)}/preview`, {
         query: { ...PREVIEW_QUERY_DEFAULTS, type: "image", page: state.page }
       });
@@ -492,19 +493,19 @@ export async function renderRagImagePreviewPage(content, initialFilters = {}) {
       if (isAbortError(error)) {
         return;
       }
-      list.replaceChildren(errorState(error, { fallback: "RAG 图片预览加载失败", onRetry: () => refresh() }));
+      list.replaceChildren(errorState(error, { fallback: localize("RAG 图片预览加载失败"), onRetry: () => refresh() }));
     }
   };
   content.append(el("section", { className: "panel rag-image-preview-page" }, [
-    el("h2", { text: "RAG 图片预览" }),
+    el("h2", { text: localize("RAG 图片预览") }),
     el("div", { className: "toolbar-actions" }, [
       uploadField,
-      button("查询", () => {
+      button(localize("查询"), () => {
         state.page = 1;
         return refresh();
       })
     ]),
-    statusMessage("请在上传详情页审核预览后提交向量化。"),
+    statusMessage(localize("请在上传详情页审核预览后提交向量化。")),
     output
   ]));
   content.append(list);
@@ -525,31 +526,31 @@ function renderRagImagePreviewItems(data, refresh, onPage) {
     };
     const ai = metadata.ai_annotation || image.ai_annotation || {};
     const warnings = item.validation_errors || image.quality_warnings || metadata.quality_warnings || [];
-    const title = String(human.title || item.title || item.item_id || item.id || "图片");
+    const title = String(human.title || item.title || item.item_id || item.id || localize("图片"));
     return el("article", { className: "rag-image-preview-item" }, [
-      thumbnail ? el("img", { className: "rag-image-preview-thumb", alt: `${title} 缩略图`, src: thumbnail }) : el("div", { className: "rag-image-preview-thumb", text: "无缩略图" }),
+      thumbnail ? el("img", { className: "rag-image-preview-thumb", alt: localize`${title} 缩略图`, src: thumbnail }) : el("div", { className: "rag-image-preview-thumb", text: localize("无缩略图") }),
       el("div", { className: "rag-image-preview-body" }, [
         el("h3", { text: title }),
-        el("p", { className: "chart-subtle", text: `状态：${ragStateLabel(item.validation_status || item.status)}` }),
-        ragFacts("人工标注", human),
-        ragFacts("AI 标注", ai),
+        el("p", { className: "chart-subtle", text: localize`状态：${ragStateLabel(item.validation_status || item.status)}` }),
+        ragFacts(localize("人工标注"), human),
+        ragFacts(localize("AI 标注"), ai),
         ragFacts("OCR", { ocr_text: ai.ocr_text || image.ocr_text || metadata.ocr_text }),
-        ragIssues("质量警告", warnings),
-        image.image_id || item.image_id ? button("重新 AI 标注", async () => {
+        ragIssues(localize("质量警告"), warnings),
+        image.image_id || item.image_id ? button(localize("重新 AI 标注"), async () => {
           await api(`/admin-api/rag/image-assets/${encodeURIComponent(image.image_id || item.image_id)}/reprocess-ai`, { method: "POST" });
-          toast("已提交重新标注", { tone: "success" });
+          toast(localize("已提交重新标注"), { tone: "success" });
           await refresh();
         }, "secondary") : null
       ].filter(Boolean))
     ]);
   });
   if (rows.length === 0) {
-    rows.push(emptyState({ title: "暂无图片预览数据" }));
+    rows.push(emptyState({ title: localize("暂无图片预览数据") }));
   }
   return el("section", { className: "panel rag-image-preview-results" }, [
     el("header", { className: "table-toolbar" }, [
-      el("h2", { text: "图片预览" }),
-      el("span", { className: "chart-subtle", text: `共 ${Number(data?.total || 0).toLocaleString("zh-CN")} 条` })
+      el("h2", { text: localize("图片预览") }),
+      el("span", { className: "chart-subtle", text: localize`共 ${Number(data?.total || 0).toLocaleString(getLocale())} 条` })
     ]),
     ...rows,
     Number(data?.total || 0) > 0 ? previewPager(data, onPage) : null

@@ -3,7 +3,7 @@
 // password in a dialog on top of the current page so unsaved work survives.
 import { adminErrorMessage, api, login } from "../api.js";
 import { el } from "../dom.js";
-import { t } from "../i18n.js";
+import { localize, t } from "../i18n.js";
 import { toast } from "./feedback.js";
 import { confirmDialog, openModal } from "./modal.js";
 
@@ -92,8 +92,8 @@ export function requestRelogin() {
     const submit = el("button", { type: "submit", text: t("session.login") });
     const form = el("form", { className: "edit-form relogin-form", noValidate: true }, [
       el("p", { className: "notice", text: t("session.expiredMessage") }),
-      el("label", { className: "field" }, [el("span", { text: "用户名" }), username]),
-      el("label", { className: "field" }, [el("span", { text: "密码" }), password]),
+      el("label", { className: "field" }, [el("span", { text: localize("用户名") }), username]),
+      el("label", { className: "field" }, [el("span", { text: localize("密码") }), password]),
       error,
       el("div", { className: "form-actions" }, [submit])
     ]);
@@ -103,7 +103,7 @@ export function requestRelogin() {
       event.preventDefault();
       if (!username.value.trim() || !password.value) {
         error.hidden = false;
-        error.textContent = "请输入用户名和密码";
+        error.textContent = localize("请输入用户名和密码");
         return;
       }
       submit.disabled = true;
@@ -114,11 +114,11 @@ export function requestRelogin() {
         await handle.close({ force: true });
         reloginPromise = null;
         options.onRelogin(result.data);
-        toast("已重新登录，可以继续之前的操作", { tone: "success" });
+        toast(localize("已重新登录，可以继续之前的操作"), { tone: "success" });
         resolve(result.data);
       } catch (cause) {
         error.hidden = false;
-        error.textContent = adminErrorMessage(cause, "登录失败，请检查账号或密码");
+        error.textContent = adminErrorMessage(cause, localize("登录失败，请检查账号或密码"));
         password.value = "";
         password.focus();
       } finally {

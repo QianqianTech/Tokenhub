@@ -248,6 +248,9 @@ final class OAuthController
     private function page(Request $request, ?string $error, ?string $requestId, ?array $context, int $status = 200, string $activeMethod = ''): Response
     {
         $h = static fn (mixed $value): string => htmlspecialchars((string) $value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+        $preferred = trim(explode(',', $request->header('Accept-Language', '') ?? '')[0]);
+        $english = preg_match('/^en(?:-|;|$)/i', $preferred) === 1;
+        $copy = static fn (string $zh, string $en): string => $english ? $en : $zh;
         $passwordLogin = $this->flag('password_login');
         $apiKeyLogin = $this->flag('api_key_login');
         $body = '';
@@ -255,43 +258,50 @@ final class OAuthController
             $client = $context['client'];
             $redirectHost = (string) (parse_url($context['redirect_uri'], PHP_URL_HOST) ?: parse_url($context['redirect_uri'], PHP_URL_SCHEME));
             $name = $client['client_name'] ?? null;
-            $body .= '<p class="lead"><strong>' . $h($name ?: '一个 MCP 客户端') . '</strong> 请求连接到 TokenHub。</p>';
-            $body .= '<dl class="facts"><dt>授权后跳转到</dt><dd>' . $h($redirectHost) . '</dd>';
+            $body .= '<p class="lead"><strong>' . $h($name ?: $copy('一个 MCP 客户端', 'An MCP client'))
+                . '</strong> ' . $copy('请求连接到 TokenHub。', 'wants to connect to TokenHub.') . '</p>';
+            $body .= '<dl class="facts"><dt>' . $copy('授权后跳转到', 'Redirect after authorization') . '</dt><dd>' . $h($redirectHost) . '</dd>';
             if (str_starts_with((string) $client['client_id'], 'https://')) {
-                $body .= '<dt>客户端标识</dt><dd>' . $h(parse_url((string) $client['client_id'], PHP_URL_HOST)) . '</dd>';
+                $body .= '<dt>' . $copy('客户端标识', 'Client identifier') . '</dt><dd>' . $h(parse_url((string) $client['client_id'], PHP_URL_HOST)) . '</dd>';
             }
-            $body .= '<dt>可以做什么</dt><dd>以你选择的 API Key 的权限使用 TokenHub 的 MCP 工具（知识库检索、模型、额度与用量查询），不会获得管理权限。</dd></dl>';
+            $body .= '<dt>' . $copy('可以做什么', 'Requested access') . '</dt><dd>'
+                . $copy('以你选择的 API Key 的权限使用 TokenHub 的 MCP 工具（知识库检索、模型、额度与用量查询），不会获得管理权限。',
+                    'Use TokenHub MCP tools for knowledge retrieval, models, quotas, and usage within the permissions of the selected API key. Administrative access is excluded.')
+                . '</dd></dl>';
             if ($error !== null) {
                 $body .= '<p class="error" role="alert">' . $h($error) . '</p>';
             }
             $hidden = '<input type="hidden" name="request_id" value="' . $h($requestId) . '">';
+            $allow = $copy('授权', 'Authorize');
+            $deny = $copy('拒绝', 'Deny');
             if (isset($context['keys'])) {
                 $body .= '<form method="post" action="/oauth/authorize">' . $hidden . '<input type="hidden" name="method" value="password">';
-                $body .= '<fieldset><legend>' . $h($context['username'] ?? '') . '，选择要授权的 API Key</legend>';
+                $body .= '<fieldset><legend>' . $h($context['username'] ?? '') . $copy('，选择要授权的 API Key', ', choose an API key to authorize') . '</legend>';
                 foreach ($context['keys'] as $index => $key) {
                     $body .= '<label class="choice"><input type="radio" name="api_key_id" value="' . $h($key['id']) . '"' . ($index === 0 ? ' checked' : '') . '> <span>' . $h($key['name']) . ' <code>' . $h($key['display']) . '</code></span></label>';
                 }
-                $body .= '</fieldset><div class="actions"><button type="submit">授权</button><button type="submit" name="decision" value="deny" class="secondary" formnovalidate>拒绝</button></div></form>';
+                $body .= '</fieldset><div class="actions"><button type="submit">' . $allow . '</button><button type="submit" name="decision" value="deny" class="secondary" formnovalidate>' . $deny . '</button></div></form>';
             } else {
                 $useKey = $activeMethod === 'api_key' || !$passwordLogin;
                 if ($passwordLogin) {
-                    $body .= '<details' . ($useKey ? '' : ' open') . '><summary>用账号密码登录</summary><form method="post" action="/oauth/authorize">' . $hidden . '<input type="hidden" name="method" value="password">'
-                        . '<label>用户名<input name="username" autocomplete="username" required></label>'
-                        . '<label>密码<input name="password" type="password" autocomplete="current-password" required></label>'
-                        . '<div class="actions"><button type="submit">登录并授权</button></div></form></details>';
+                    $body .= '<details' . ($useKey ? '' : ' open') . '><summary>' . $copy('用账号密码登录', 'Sign in with username and password') . '</summary><form method="post" action="/oauth/authorize">' . $hidden . '<input type="hidden" name="method" value="password">'
+                        . '<label>' . $copy('用户名', 'Username') . '<input name="username" autocomplete="username" required></label>'
+                        . '<label>' . $copy('密码', 'Password') . '<input name="password" type="password" autocomplete="current-password" required></label>'
+                        . '<div class="actions"><button type="submit">' . $copy('登录并授权', 'Sign in and authorize') . '</button></div></form></details>';
                 }
                 if ($apiKeyLogin) {
-                    $body .= '<details' . ($useKey ? ' open' : '') . '><summary>粘贴 API Key</summary><form method="post" action="/oauth/authorize">' . $hidden . '<input type="hidden" name="method" value="api_key">'
+                    $body .= '<details' . ($useKey ? ' open' : '') . '><summary>' . $copy('粘贴 API Key', 'Paste an API key') . '</summary><form method="post" action="/oauth/authorize">' . $hidden . '<input type="hidden" name="method" value="api_key">'
                         . '<label>API Key<input name="api_key" type="password" autocomplete="off" spellcheck="false" required></label>'
-                        . '<div class="actions"><button type="submit">授权</button></div></form></details>';
+                        . '<div class="actions"><button type="submit">' . $allow . '</button></div></form></details>';
                 }
-                $body .= '<form method="post" action="/oauth/authorize" class="deny">' . $hidden . '<input type="hidden" name="decision" value="deny"><button type="submit" class="secondary">拒绝</button></form>';
+                $body .= '<form method="post" action="/oauth/authorize" class="deny">' . $hidden . '<input type="hidden" name="decision" value="deny"><button type="submit" class="secondary">' . $deny . '</button></form>';
             }
         } else {
-            $body .= '<p class="error" role="alert">' . $h($error ?? '无效的授权请求') . '</p><p class="muted">请回到 MCP 客户端重新发起连接。</p>';
+            $body .= '<p class="error" role="alert">' . $h($error ?? $copy('无效的授权请求', 'Invalid authorization request'))
+                . '</p><p class="muted">' . $copy('请回到 MCP 客户端重新发起连接。', 'Return to the MCP client to reconnect.') . '</p>';
         }
 
-        $html = '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer"><title>授权连接 · TokenHub</title><style>'
+        $html = '<!doctype html><html lang="' . $copy('zh-CN', 'en-US') . '"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer"><title>' . $copy('授权连接 · TokenHub', 'Authorize connection · TokenHub') . '</title><style>'
             . ':root{color-scheme:light dark;--bg:#f4f6f8;--card:#fff;--text:#151a21;--muted:#5b6573;--line:#d9dee5;--brand:#34d399;--brand-ink:#0b7a57;--danger:#b42318}'
             . '@media (prefers-color-scheme:dark){:root{--bg:#0f1318;--card:#151a21;--text:#e8edf2;--muted:#9aa5b1;--line:#2a313a;--brand-ink:#34d399;--danger:#f97066}}'
             . '*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;background:var(--bg);color:var(--text);font:15px/1.6 Inter,"PingFang SC","Noto Sans SC",system-ui,sans-serif;padding:16px}'
@@ -304,7 +314,7 @@ final class OAuthController
             . '.actions{display:flex;gap:8px;margin-top:12px}button{padding:9px 16px;border-radius:8px;border:0;background:var(--brand);color:#06120d;font:inherit;font-weight:600;cursor:pointer}'
             . 'button.secondary{background:transparent;color:var(--text);border:1px solid var(--line)}.deny{margin-top:12px}'
             . '.error{color:var(--danger);font-weight:600}.muted{color:var(--muted)}code{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:12px}'
-            . '</style></head><body><main><div class="brand">TokenHub</div><h1>授权 MCP 连接</h1>' . $body . '</main></body></html>';
+            . '</style></head><body><main><div class="brand">TokenHub</div><h1>' . $copy('授权 MCP 连接', 'Authorize MCP connection') . '</h1>' . $body . '</main></body></html>';
 
         return Response::raw($html, $status, [
             'Content-Type' => 'text/html; charset=utf-8',

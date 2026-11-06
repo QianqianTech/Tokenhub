@@ -1,3 +1,4 @@
+import { getLocale, localize } from "../i18n.js";
 // 模型管理 (design): provider status cards above the list, model name with
 // its upstream name, context in K, price per thousand tokens and an
 // enable switch that uses the batch endpoint.
@@ -18,7 +19,7 @@ function hostOf(url) {
 
 /** Provider cards: status, endpoint, model count; clicking filters the list. */
 export async function providerCards(state, onPick) {
-  const host = el("section", { className: "provider-cards", "aria-label": "厂商状态" });
+  const host = el("section", { className: "provider-cards", "aria-label": localize("厂商状态") });
   let providers = [];
   try {
     const result = await api("/admin-api/providers", { query: { limit: 12, offset: 0 }, silent: true });
@@ -41,15 +42,15 @@ export async function providerCards(state, onPick) {
       className: `provider-card ${disabled ? "is-disabled" : ""} ${active ? "is-active" : ""}`.trim(),
       dataset: { providerId: String(provider.id) },
       "aria-pressed": active ? "true" : "false",
-      title: active ? "再次点击取消按厂商筛选" : `只看${provider.name}的模型`,
+      title: active ? localize("再次点击取消按厂商筛选") : localize`只看${provider.name}的模型`,
       onClick: () => onPick(card.getAttribute("aria-pressed") === "true" ? "" : provider.id)
     }, [
       el("span", { className: "provider-card-head" }, [
         el("strong", { text: provider.name || `#${provider.id}` }),
-        el("span", { className: `provider-card-status ${disabled ? "is-muted" : "is-positive"}`, text: disabled ? valueLabel("status", provider.status) : "启用" })
+        el("span", { className: `provider-card-status ${disabled ? "is-muted" : "is-positive"}`, text: disabled ? valueLabel("status", provider.status) : localize("启用") })
       ]),
       el("span", { className: "provider-card-endpoint", text: [hostOf(provider.base_url), formatResourceValue("protocol", provider.protocol)].filter(Boolean).join(" · ") }),
-      el("span", { className: "provider-card-foot", text: Number.isFinite(counts[index]) ? `${counts[index]} 个模型` : "" })
+      el("span", { className: "provider-card-foot", text: Number.isFinite(counts[index]) ? localize`${counts[index]} 个模型` : "" })
     ]);
     return card;
   });
@@ -91,22 +92,22 @@ function perThousand(value) {
 
 export function priceCell(price) {
   if (!price) {
-    return el("span", { className: "cell-muted", text: "未配置" });
+    return el("span", { className: "cell-muted", text: localize("未配置") });
   }
   const symbol = CURRENCY[String(price.currency || "CNY").toUpperCase()] || "";
   if (price.input_token_price != null || price.output_token_price != null) {
-    return el("span", { className: "cell-mono", title: "每千 Token：输入 / 输出" }, [`${symbol}${perThousand(price.input_token_price)} / ${perThousand(price.output_token_price)}`]);
+    return el("span", { className: "cell-mono", title: localize("每千 Token：输入 / 输出") }, [`${symbol}${perThousand(price.input_token_price)} / ${perThousand(price.output_token_price)}`]);
   }
   const unit = [
-    ["image_price", "张"],
-    ["video_second_price", "秒视频"],
-    ["audio_second_price", "秒音频"],
-    ["tts_char_price", "字"],
-    ["request_price", "次"]
+    ["image_price", localize("张")],
+    ["video_second_price", localize("秒视频")],
+    ["audio_second_price", localize("秒音频")],
+    ["tts_char_price", localize("字")],
+    ["request_price", localize("次")]
   ].find(([key]) => price[key] != null && price[key] !== "");
   return unit
     ? el("span", { className: "cell-mono", text: `${symbol}${Number(price[unit[0]])} / ${unit[1]}` })
-    : el("span", { className: "cell-muted", text: "未配置" });
+    : el("span", { className: "cell-muted", text: localize("未配置") });
 }
 
 export function modelNameCell(row) {
@@ -123,7 +124,7 @@ export function contextCell(value) {
     return el("span", { className: "cell-muted", text: "–" });
   }
   const text = number >= 1_000_000 ? `${Math.round(number / 100_000) / 10}M` : number >= 1000 ? `${Math.round(number / 1000)}K` : String(number);
-  return el("span", { className: "cell-mono", text, title: `${number.toLocaleString("zh-CN")} Token` });
+  return el("span", { className: "cell-mono", text, title: `${number.toLocaleString(getLocale())} Token` });
 }
 
 /** Enable switch: flips the model through the batch endpoint. */
@@ -134,8 +135,8 @@ export function modelSwitch(row, onChanged) {
     className: "switch",
     role: "switch",
     "aria-checked": on ? "true" : "false",
-    "aria-label": `${on ? "停用" : "启用"}模型 ${row.name || row.id}`,
-    title: on ? "已启用，点击停用" : "已停用，点击启用"
+    "aria-label": localize`${on ? localize("停用") : localize("启用")}模型 ${row.name || row.id}`,
+    title: on ? localize("已启用，点击停用") : localize("已停用，点击启用")
   });
   node.addEventListener("click", async () => {
     node.disabled = true;
@@ -143,10 +144,10 @@ export function modelSwitch(row, onChanged) {
     try {
       await api("/admin-api/models/batch", { method: "POST", body: JSON.stringify({ action: next ? "enable" : "disable", ids: [Number(row.id)] }) });
       node.setAttribute("aria-checked", next ? "true" : "false");
-      toast(`${row.name || "模型"}已${next ? "启用" : "停用"}`, { tone: "success" });
+      toast(localize`${row.name || localize("模型")}已${next ? localize("启用") : localize("停用")}`, { tone: "success" });
       await onChanged();
     } catch (error) {
-      toast(adminErrorMessage(error, "切换失败，请确认权限"), { tone: "error" });
+      toast(adminErrorMessage(error, localize("切换失败，请确认权限")), { tone: "error" });
     } finally {
       node.disabled = false;
     }

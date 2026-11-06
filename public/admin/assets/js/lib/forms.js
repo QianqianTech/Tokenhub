@@ -1,3 +1,4 @@
+import { localize } from "../i18n.js";
 import { adminErrorMessage, api } from "../api.js";
 import { copyButton, toast } from "../components/feedback.js";
 import { button, el, field, readFields, showModal } from "../dom.js";
@@ -48,7 +49,7 @@ export async function showCreateModal(resourceKey, config, onSaved, initialValue
   }
   let modal = null;
   form.append(el("div", { className: "form-actions" }, [
-    submitButton(config.oneTimeSecret ? (config.createLabel || "创建并显示一次明文") : "保存", async () => {
+    submitButton(config.oneTimeSecret ? (config.createLabel || localize("创建并显示一次明文")) : localize("保存"), async () => {
       let values;
       try {
         values = readFields(form, formFields, { validate: true, mode: "create" });
@@ -68,7 +69,7 @@ export async function showCreateModal(resourceKey, config, onSaved, initialValue
         invalidateLookups(resourceKey);
         if (config.oneTimeSecret) {
           output.replaceChildren(
-            el("strong", { text: "请立即复制并妥善保存，关闭后无法再次查看：" }),
+            el("strong", { text: localize("请立即复制并妥善保存，关闭后无法再次查看：") }),
             ...oneTimeSecretEntries(resourceKey, result.data || {}).map(([label, value, copyLabel]) => el("div", { className: "secret-entry" }, [
               label ? el("span", { className: "secret-label", text: label }) : null,
               el("code", { className: "secret-value", text: value }),
@@ -82,17 +83,17 @@ export async function showCreateModal(resourceKey, config, onSaved, initialValue
             control.disabled = true;
           });
         } else {
-          toast(`${config.label}已新增`, { tone: "success" });
+          toast(localize`${config.label}已新增`, { tone: "success" });
           modal?.markClean();
           await modal?.close({ force: true });
         }
         await onSaved();
       } catch (error) {
-        setErrorOutput(output, adminErrorMessage(error, "新增失败，请检查输入内容"));
+        setErrorOutput(output, adminErrorMessage(error, localize("新增失败，请检查输入内容")));
       }
     })
   ]), output);
-  modal = showModal(`新增${recordNoun(config.label)}`, form);
+  modal = showModal(localize`新增${recordNoun(config.label)}`, form);
 }
 
 export async function showEditModal(resourceKey, config, row, onSaved) {
@@ -111,7 +112,7 @@ export async function showEditModal(resourceKey, config, row, onSaved) {
   }
   let modal = null;
   form.append(el("div", { className: "form-actions" }, [
-    submitButton("保存", async () => {
+    submitButton(localize("保存"), async () => {
       let values;
       try {
         values = readFields(form, formFields, { validate: true, mode: "edit" });
@@ -138,49 +139,49 @@ export async function showEditModal(resourceKey, config, row, onSaved) {
         capabilityEditor?.commit(result.data || {});
         scopeEditor?.commit(Array.isArray(result.data?.management_scopes) ? result.data.management_scopes : scopeEditor.selected());
         invalidateLookups(resourceKey);
-        toast(`${config.label}已保存`, { tone: "success" });
+        toast(localize`${config.label}已保存`, { tone: "success" });
         modal?.markClean();
         await modal?.close({ force: true });
         await onSaved();
       } catch (error) {
-        setErrorOutput(output, error.userMessage || adminErrorMessage(error, "保存失败，请检查输入内容"));
+        setErrorOutput(output, error.userMessage || adminErrorMessage(error, localize("保存失败，请检查输入内容")));
       }
     })
   ]), output);
-  modal = showModal(`编辑${recordNoun(config.label)}`, form);
+  modal = showModal(localize`编辑${recordNoun(config.label)}`, form);
 }
 
 export function showProviderSecretModal(row, onSaved) {
-  const fields = [{ name: "secret", label: "新 API Key", type: "password", required: true, placeholder: "粘贴新的完整 API Key", hint: "保存后立即替换当前 Key；原 Key 不会回显。" }];
+  const fields = [{ name: "secret", label: localize("新 API Key"), type: "password", required: true, placeholder: localize("粘贴新的完整 API Key"), hint: localize("保存后立即替换当前 Key；原 Key 不会回显。") }];
   const form = resourceForm(fields, {}, "", { mode: "edit" });
   form.classList.add("provider-key-form");
-  form.prepend(el("p", { className: "provider-secret-status", text: `${row.name || `厂商 #${row.id}`} · 当前 API Key：${providerSecretStatus(row)}` }));
+  form.prepend(el("p", { className: "provider-secret-status", text: localize`${row.name || localize`厂商 #${row.id}`} · 当前 API Key：${providerSecretStatus(row)}` }));
   bindProviderSecretVisibility(form);
   const output = el("p", { className: "notice", hidden: true, role: "status" });
   let modal;
   form.append(el("div", { className: "form-actions" }, [
-    submitButton("保存 Key", async () => {
+    submitButton(localize("保存 Key"), async () => {
       try {
         const payload = readFields(form, fields, { validate: true, mode: "edit" });
         await api(`/admin-api/providers/${row.id}`, { method: "PUT", body: JSON.stringify(payload) });
         form.querySelector('[name="secret"]').value = "";
-        toast("厂商 API Key 已更新", { tone: "success" });
+        toast(localize("厂商 API Key 已更新"), { tone: "success" });
         modal.markClean();
         await modal.close({ force: true });
         await onSaved();
       } catch (error) {
-        setErrorOutput(output, adminErrorMessage(error, error.code === "FORM_INVALID" ? error.message : "Key 保存失败，请重试"));
+        setErrorOutput(output, adminErrorMessage(error, error.code === "FORM_INVALID" ? error.message : localize("Key 保存失败，请重试")));
       }
     })
   ]), output);
-  modal = showModal(row.secret_status === "empty" ? "配置厂商 API Key" : "修改厂商 API Key", form, { size: "sm" });
+  modal = showModal(row.secret_status === "empty" ? localize("配置厂商 API Key") : localize("修改厂商 API Key"), form, { size: "sm" });
 }
 
 function appendVectorConfigProbe(resourceKey, form, fields, output) {
   if (resourceKey !== "rag-vector-configs") {
     return;
   }
-  form.append(button("测试向量模型", async () => {
+  form.append(button(localize("测试向量模型"), async () => {
     try {
       const result = await api("/admin-api/rag-vector-configs/test", {
         method: "POST",
@@ -188,12 +189,12 @@ function appendVectorConfigProbe(resourceKey, form, fields, output) {
       });
       const probe = result.data || {};
       if (probe.dimension_matches === false) {
-        setErrorOutput(output, `模型可用，但实际维度是 ${probe.dimension}，与填写的 ${probe.configured_dimension || "-"} 不一致，请把“向量维度”改为 ${probe.dimension}`);
+        setErrorOutput(output, localize`模型可用，但实际维度是 ${probe.dimension}，与填写的 ${probe.configured_dimension || "-"} 不一致，请把“向量维度”改为 ${probe.dimension}`);
         return;
       }
-      setOperationOutput(output, probe, `测试成功：${probe.model_name || "向量模型"}，维度 ${probe.dimension || "-"}`);
+      setOperationOutput(output, probe, localize`测试成功：${probe.model_name || localize("向量模型")}，维度 ${probe.dimension || "-"}`);
     } catch (error) {
-      setErrorOutput(output, adminErrorMessage(error, error.code === "FORM_INVALID" ? error.message : "向量模型测试失败"));
+      setErrorOutput(output, adminErrorMessage(error, error.code === "FORM_INVALID" ? error.message : localize("向量模型测试失败")));
     }
   }, "secondary"));
 }
@@ -204,9 +205,9 @@ export function oneTimeSecretEntries(resourceKey, data = {}) {
   if (resourceKey === "dashboard-share-links") {
     const url = data.share_url ? new URL(String(data.share_url), window.location.origin).href : "";
     return [
-      data.username ? ["登录账号", String(data.username), "复制账号"] : null,
-      data.password ? ["访问密码", String(data.password), "复制密码"] : null,
-      url ? ["分享链接", url, "复制链接"] : null
+      data.username ? [localize("登录账号"), String(data.username), localize("复制账号")] : null,
+      data.password ? [localize("访问密码"), String(data.password), localize("复制密码")] : null,
+      url ? [localize("分享链接"), url, localize("复制链接")] : null
     ].filter(Boolean);
   }
   return [["", oneTimeSecretText(data), undefined]];
@@ -397,7 +398,7 @@ export function resourceForm(fields, row = {}, resourceKey = "", { mode = "edit"
 
 // The scope objects picker follows the scope type: departments, users or
 // API keys; a global share has no objects.
-const SHARE_SCOPE_LOOKUPS = { department: ["departments", "部门"], user: ["users", "用户"], api_key: ["api-keys", "API 密钥"] };
+const SHARE_SCOPE_LOOKUPS = { department: ["departments", localize("部门")], user: ["users", localize("用户")], api_key: ["api-keys", localize("API 密钥")] };
 
 function bindShareScopePicker(form, fields, row) {
   const typeSelect = form.querySelector('select[name="scope_type"]');
@@ -408,7 +409,7 @@ function bindShareScopePicker(form, fields, row) {
   const render = (scopeType, value) => {
     const current = form.querySelector(`[data-field="${config.name}"]`);
     const lookup = SHARE_SCOPE_LOOKUPS[scopeType];
-    const next = field({ ...config, lookup: lookup?.[0] || "departments", label: lookup ? `范围对象（${lookup[1]}）` : config.label }, value, { mode: "edit" });
+    const next = field({ ...config, lookup: lookup?.[0] || "departments", label: lookup ? localize`范围对象（${lookup[1]}）` : config.label }, value, { mode: "edit" });
     next.hidden = !lookup;
     current?.replaceWith(next);
   };
@@ -430,7 +431,7 @@ function bindApiKeyDepartmentUserPicker(form) {
     const departmentId = departmentSelect.value;
     userPicker.setQuery(departmentId ? { department_id: departmentId } : {});
     userPicker.setDisabled(departmentId === "");
-    userPicker.input.placeholder = departmentId === "" ? "请先选择部门" : "搜索该部门的员工";
+    userPicker.input.placeholder = departmentId === "" ? localize("请先选择部门") : localize("搜索该部门的员工");
     if (clearValue) {
       userPicker.setValue("");
     }

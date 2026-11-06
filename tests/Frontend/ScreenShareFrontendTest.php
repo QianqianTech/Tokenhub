@@ -4,13 +4,13 @@ declare(strict_types=1);
 
 require __DIR__ . '/../bootstrap.php';
 
-$screenJs = file_get_contents(__DIR__ . '/../../public/screen/assets/screen.js');
-$screenHtml = file_get_contents(__DIR__ . '/../../public/screen/index.html');
+$screenJs = frontend_copy_source(__DIR__ . '/../../public/screen/assets/screen.js');
+$screenHtml = frontend_copy_source(__DIR__ . '/../../public/screen/index.html');
 $screenCss = file_get_contents(__DIR__ . '/../../public/screen/assets/screen.css');
-$adminAppJs = file_get_contents(__DIR__ . '/../../public/admin/assets/js/app.js');
-$adminDashboardJs = file_get_contents(__DIR__ . '/../../public/admin/assets/js/dashboard.js');
+$adminAppJs = frontend_copy_source(__DIR__ . '/../../public/admin/assets/js/app.js');
+$adminDashboardJs = frontend_copy_source(__DIR__ . '/../../public/admin/assets/js/dashboard.js');
 $adminTableJs = admin_js_bundle();
-$resourcesJs = file_get_contents(__DIR__ . '/../../public/admin/assets/js/resources.js');
+$resourcesJs = frontend_copy_source(__DIR__ . '/../../public/admin/assets/js/resources.js');
 $caddyfile = file_get_contents(__DIR__ . '/../../docker/caddy/Caddyfile');
 $kernel = file_get_contents(__DIR__ . '/../../app/Bootstrap/Kernel.php');
 
@@ -149,7 +149,7 @@ assert_true(!str_contains($adminTableJs, '/firewall') && !str_contains($adminTab
 assert_true(!str_contains($adminAppJs, 'dashboard-screen-1'), 'Admin app should not expose dashboard screen 1 as a direct admin page.');
 assert_true(!str_contains($adminAppJs, 'dashboard-screen-2'), 'Admin app should not expose dashboard screen 2 as a direct admin page.');
 assert_true(!str_contains($adminAppJs, 'dashboard-screen-3'), 'Admin app should not expose dashboard screen 3 as a direct admin page.');
-$adminRegistryJs = file_get_contents(__DIR__ . '/../../public/admin/assets/js/core/registry.js') ?: '';
+$adminRegistryJs = frontend_copy_source(__DIR__ . '/../../public/admin/assets/js/core/registry.js') ?: '';
 assert_true(str_contains($adminRegistryJs, 'dashboard: ["dashboard", (m, content, ctx) => m.renderDashboard(content, ctx.navigate)]'), 'Admin app should keep dashboard rendering scoped to the analysis page.');
 assert_true(!str_contains($adminDashboardJs, 'dashboard-screen-1'), 'Admin dashboard should not render screen 1 as an admin analysis page.');
 assert_true(!str_contains($adminDashboardJs, 'dashboard-screen-2'), 'Admin dashboard should not render screen 2 as an admin analysis page.');
@@ -167,7 +167,7 @@ assert_true(str_contains($kernel, '/screen-api/system/brand-identity'), 'Screen 
 assert_true(str_contains($kernel, "['overview', 'realtime', 'trends', 'rankings', 'security', 'performance', 'multimodal', 'live']"), 'Screen dashboard routes should expose overview, multimodal and live metrics for authorized shares.');
 
 // SCR-001 / SCR-006: polling discipline.
-$screenPoller = file_get_contents(__DIR__ . '/../../public/screen/assets/poller.js') ?: '';
+$screenPoller = frontend_copy_source(__DIR__ . '/../../public/screen/assets/poller.js') ?: '';
 assert_true(str_contains($screenJs, 'import { createPoller } from "./poller.js";'), 'Screen JS should poll through the shared visibility-aware poller (copied from the APP).');
 assert_true(str_contains($screenPoller, 'export function createPoller') && str_contains($screenPoller, 'visibilitychange') && str_contains($screenPoller, '"online"'), 'Screen poller should pause in the background and resume when visible or back online.');
 assert_true(!str_contains($screenJs, 'setInterval(refreshScreen'), 'Screen refresh must not use a bare setInterval that can stack requests.');

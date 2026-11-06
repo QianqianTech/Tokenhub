@@ -1,3 +1,4 @@
+import { localize } from "/admin/assets/js/i18n.js";
 // Optional APP lock: after the APP was in the background longer than the chosen
 // time, the PIN is verified by the server before the APP is shown again.
 import { requestPin } from "./stepup.js";
@@ -31,7 +32,7 @@ async function lockNow(onFailed) {
   const shell = document.getElementById("app");
   shell?.classList.add("is-locked");
   try {
-    const ok = await requestPin({ title: "解锁 TokenHub", pinSet: true, dismissible: false });
+    const ok = await requestPin({ title: localize("解锁 TokenHub"), pinSet: true, dismissible: false });
     if (!ok) {
       onFailed?.();
     }

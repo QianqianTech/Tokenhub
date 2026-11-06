@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 require __DIR__ . '/../bootstrap.php';
 
-$resources = file_get_contents(__DIR__ . '/../../public/admin/assets/js/resources.js') ?: '';
+$resources = frontend_copy_source(__DIR__ . '/../../public/admin/assets/js/resources.js') ?: '';
 $tableSource = admin_js_bundle() ?: '';
 $adminCss = file_get_contents(__DIR__ . '/../../public/admin/assets/css/app.css') ?: '';
 
@@ -205,7 +205,7 @@ assert_true(
 );
 
 assert_true(
-    str_contains((string) file_get_contents(__DIR__ . '/../../public/admin/assets/js/domains.js'), '{ key: "rag", label: "RAG 知识库", tabs: ["rag-build", "rag-retrieval-lab", "rag-quality", "rag-operations"] }'),
+    str_contains((string) frontend_copy_source(__DIR__ . '/../../public/admin/assets/js/domains.js'), '{ key: "rag", label: "RAG 知识库", tabs: ["rag-build", "rag-retrieval-lab", "rag-quality", "rag-operations"] }'),
     'RAG sidebar should expose four task workspaces instead of raw data categories.'
 );
 

@@ -36,7 +36,7 @@ if (platform === "ios") {
   // tokenhub:// deep links.
   edit(join(app, "Info.plist"), (text) => text.includes("<string>tokenhub</string>") ? text : text.replace(/<dict>\n/, "<dict>\n\t<key>CFBundleURLTypes</key>\n\t<array>\n\t\t<dict>\n\t\t\t<key>CFBundleURLSchemes</key>\n\t\t\t<array>\n\t\t\t\t<string>tokenhub</string>\n\t\t\t</array>\n\t\t</dict>\n\t</array>\n"));
   // Camera permission text: the /app/ page scans sign-in QR codes (getUserMedia).
-  edit(join(app, "Info.plist"), (text) => text.includes("NSCameraUsageDescription") ? text : text.replace(/<dict>\n/, "<dict>\n\t<key>NSCameraUsageDescription</key>\n\t<string>扫描后台显示的 TokenHub 认证二维码以登录。</string>\n"));
+  edit(join(app, "Info.plist"), (text) => text.includes("NSCameraUsageDescription") ? text : text.replace(/<dict>\n/, "<dict>\n\t<key>NSCameraUsageDescription</key>\n\t<string>Scan a TokenHub sign-in QR code from the admin console.</string>\n"));
   // Native push (APNs): hand the device token to @capacitor/push-notifications.
   edit(join(app, "AppDelegate.swift"), (text) => text.includes("capacitorDidRegisterForRemoteNotifications") ? text : text.replace(/\n\}\s*$/, `
 

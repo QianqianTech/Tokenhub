@@ -6,7 +6,7 @@ require __DIR__ . '/../bootstrap.php';
 
 // Models can be found by part of their name: the filter bar sends `keyword`
 // and the list query matches it against the model and upstream names.
-$resources = (string) file_get_contents(__DIR__ . '/../../public/admin/assets/js/resources.js');
+$resources = (string) frontend_copy_source(__DIR__ . '/../../public/admin/assets/js/resources.js');
 $crud = (string) file_get_contents(__DIR__ . '/../../app/Services/CrudService.php');
 
 assert_true(

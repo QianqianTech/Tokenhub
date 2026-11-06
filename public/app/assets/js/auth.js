@@ -1,3 +1,4 @@
+import { localize } from "/admin/assets/js/i18n.js";
 // TokenHub APP sign-in state.
 //
 // - The one-time link (…/app/link#c=thl_…) is exchanged for a device
@@ -43,7 +44,7 @@ export function platform() {
 
 function deviceName() {
   const ua = navigator.userAgent || "";
-  const os = { ios: /iPad/.test(ua) ? "iPad" : "iPhone", android: "Android", macos: "Mac", windows: "Windows", linux: "Linux" }[platform()] || "浏览器";
+  const os = { ios: /iPad/.test(ua) ? "iPad" : "iPhone", android: "Android", macos: "Mac", windows: "Windows", linux: "Linux" }[platform()] || localize("浏览器");
   const browser = /Edg\//.test(ua) ? "Edge" : /Chrome\//.test(ua) ? "Chrome" : /Firefox\//.test(ua) ? "Firefox" : /Safari\//.test(ua) ? "Safari" : "";
   const standalone = window.matchMedia?.("(display-mode: standalone)").matches || window.navigator.standalone === true;
   return [os, standalone ? "APP" : browser].filter(Boolean).join(" · ");
@@ -109,14 +110,14 @@ async function post(path, body = {}, headers = {}) {
       body: JSON.stringify(body)
     });
   } catch {
-    const error = new Error("网络连接失败");
+    const error = new Error(localize("网络连接失败"));
     error.code = "NETWORK_ERROR";
     error.status = 0;
     throw error;
   }
-  const payload = await response.json().catch(() => ({ ok: false, error: { code: "BAD_RESPONSE", message: "服务返回格式异常" } }));
+  const payload = await response.json().catch(() => ({ ok: false, error: { code: "BAD_RESPONSE", message: localize("服务返回格式异常") } }));
   if (!response.ok || payload.ok === false) {
-    const error = new Error(payload?.error?.message || "请求失败");
+    const error = new Error(payload?.error?.message || localize("请求失败"));
     error.code = payload?.error?.code || "REQUEST_FAILED";
     error.status = response.status;
     error.details = payload?.error?.details;

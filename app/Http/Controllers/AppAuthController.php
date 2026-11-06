@@ -466,7 +466,7 @@ final class AppAuthController
             return Response::error('APP_SESSION_REQUIRED', 'Only an APP device can subscribe to push', 400);
         }
         $actor = App::context()->adminUser() ?? [];
-        $result = (new AppPushService())->subscribe((int) ($actor['id'] ?? 0), (int) $auth['device_id'], $request->json());
+        $result = (new AppPushService())->subscribe((int) ($actor['id'] ?? 0), (int) $auth['device_id'], $request->json(), \TokenHub\Support\UiLocale::fromRequest($request));
         (new \TokenHub\Services\AuditService())->write('admin.app_device.push_subscribe', 'admin_app_devices', (int) $auth['device_id']);
 
         return Response::ok($result);
@@ -492,10 +492,21 @@ final class AppAuthController
         }
         $data = $request->json();
         $actor = App::context()->adminUser() ?? [];
-        $result = (new AppPushService())->subscribeNative((int) ($actor['id'] ?? 0), (int) $auth['device_id'], (string) ($data['platform'] ?? ''), (string) ($data['token'] ?? ''));
+        $result = (new AppPushService())->subscribeNative((int) ($actor['id'] ?? 0), (int) $auth['device_id'], (string) ($data['platform'] ?? ''), (string) ($data['token'] ?? ''), \TokenHub\Support\UiLocale::fromRequest($request));
         (new \TokenHub\Services\AuditService())->write('admin.app_device.push_subscribe', 'admin_app_devices', (int) $auth['device_id'], ['kind' => $result['kind']]);
 
         return Response::ok($result);
+    }
+
+    public function pushLocale(Request $request): Response
+    {
+        $auth = $this->appSession();
+        if ($auth === null) {
+            return Response::error('APP_SESSION_REQUIRED', 'Only an APP device has a push language', 400);
+        }
+        $locale = \TokenHub\Support\UiLocale::normalize($request->json()['locale'] ?? null);
+        (new AppPushService())->saveLocale((int) $auth['device_id'], $locale);
+        return Response::ok(['locale' => $locale]);
     }
 
     /** DELETE /admin-api/app-auth/push/subscription */

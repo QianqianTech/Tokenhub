@@ -1,3 +1,4 @@
+import { localize } from "../i18n.js";
 import { adminErrorMessage, api } from "../api.js";
 import { button, clear, el, field, readFields, setText, statusMessage } from "../dom.js";
 import { metric, operationSuccessText } from "../lib/output.js";
@@ -9,16 +10,16 @@ import { guardForm, markClean } from "../lib/dirty-guard.js";
 
 // What each settings page controls, shown under its title.
 const SETTINGS_DESCRIPTIONS = {
-  "settings-smtp": "配置密码找回邮件的发送服务，并发送测试邮件。仅超级管理员可以修改和测试。",
-  "settings-brand-identity": "产品名称、后台与大屏标题和图标；登录页、侧栏和浏览器标签会同步显示。",
-  "settings-tls-certificates": "申请、验证、部署和续期 HTTPS 证书，并查看服务器上的真实证书。",
-  "settings-entry-security": "限定管理后台与接口入口允许访问的网段。",
-  "settings-retention-export": "调用内容的留存方式和导出文件的保留时间。",
-  "settings-alert-thresholds": "厂商错误率、队列积压与证书到期等告警的触发阈值。",
-  "settings-rag-upload-review": "知识库上传后是否需要人工审核以及审核规则。",
-  "settings-rag-package-upload": "图片包上传的大小、数量与格式限制。",
-  "settings-rag-ai-image-processing": "上传图片的自动描述、识别与处理方式。",
-  "settings-rag-vectorization-monitoring": "向量化成功率的告警阈值与统计窗口。"
+  "settings-smtp": localize("配置密码找回邮件的发送服务，并发送测试邮件。仅超级管理员可以修改和测试。"),
+  "settings-brand-identity": localize("产品名称、后台与大屏标题和图标；登录页、侧栏和浏览器标签会同步显示。"),
+  "settings-tls-certificates": localize("申请、验证、部署和续期 HTTPS 证书，并查看服务器上的真实证书。"),
+  "settings-entry-security": localize("限定管理后台与接口入口允许访问的网段。"),
+  "settings-retention-export": localize("调用内容的留存方式和导出文件的保留时间。"),
+  "settings-alert-thresholds": localize("厂商错误率、队列积压与证书到期等告警的触发阈值。"),
+  "settings-rag-upload-review": localize("知识库上传后是否需要人工审核以及审核规则。"),
+  "settings-rag-package-upload": localize("图片包上传的大小、数量与格式限制。"),
+  "settings-rag-ai-image-processing": localize("上传图片的自动描述、识别与处理方式。"),
+  "settings-rag-vectorization-monitoring": localize("向量化成功率的告警阈值与统计窗口。")
 };
 
 export async function renderSettingsCenterPage(content) {
@@ -115,7 +116,7 @@ export async function renderSettingsSectionPage(content, resourceKey) {
   clear(content);
   const page = SETTINGS_SECTION_PAGES[resourceKey];
   if (!page) {
-    content.append(statusMessage("设置分区不存在", "error"));
+    content.append(statusMessage(localize("设置分区不存在"), "error"));
     return;
   }
   const result = await api("/admin-api/system/settings-center");
@@ -155,17 +156,17 @@ function createCertificateSettingsPage(page, values) {
   const element = el("section", { className: "panel certificate-center-page" }, [
     el("header", { className: "certificate-center-heading" }, [
       el("div", {}, [
-        el("h2", { text: "证书中心" }),
-        el("p", { text: "申请、验证、部署和续签必须以真实证书状态闭环。" })
+        el("h2", { text: localize("证书中心") }),
+        el("p", { text: localize("申请、验证、部署和续签必须以真实证书状态闭环。") })
       ]),
-      button("检查证书告警", async () => {
+      button(localize("检查证书告警"), async () => {
         await api("/admin-api/system/settings-center/certificate-alert-check", { method: "POST" });
       }, "secondary")
     ]),
     el("div", { className: "certificate-summary-grid" }, [
-      certificateSummaryCard("当前状态", "正在读取", "真实证书状态"),
-      certificateSummaryCard("自动续签", values.auto_renewal === "false" ? "未启用" : "已启用", "公网 IP 每 12 小时检查"),
-      certificateSummaryCard("签发类型", certificateRequestTypeLabel(values.certificate_mode), "请选择申请目标")
+      certificateSummaryCard(localize("当前状态"), localize("正在读取"), localize("真实证书状态")),
+      certificateSummaryCard(localize("自动续签"), values.auto_renewal === "false" ? localize("未启用") : localize("已启用"), localize("公网 IP 每 12 小时检查")),
+      certificateSummaryCard(localize("签发类型"), certificateRequestTypeLabel(values.certificate_mode), localize("请选择申请目标"))
     ]),
     el("div", { className: "certificate-request-workspace" }, [
       renderCertificateRequestForm(values),
@@ -183,9 +184,9 @@ function renderCertificateRequestForm(values) {
 
 function renderCertificateCenterRequestForm(values) {
   const fields = [
-    { name: "certificate_request_type", label: "申请类型", type: "select", options: [["domain", "域名证书"], ["public_ip", "公网 IP 证书"], ["internal_ip", "内网 IP 证书"]] },
-    { name: "request_domain_names", label: "申请域名（每行一个）", type: "textarea", optional: true, rows: 3 },
-    { name: "request_ip_addresses", label: "申请 IP（每行一个）", type: "textarea", optional: true, rows: 3 }
+    { name: "certificate_request_type", label: localize("申请类型"), type: "select", options: [["domain", localize("域名证书")], ["public_ip", localize("公网 IP 证书")], ["internal_ip", localize("内网 IP 证书")]] },
+    { name: "request_domain_names", label: localize("申请域名（每行一个）"), type: "textarea", optional: true, rows: 3 },
+    { name: "request_ip_addresses", label: localize("申请 IP（每行一个）"), type: "textarea", optional: true, rows: 3 }
   ];
   const initialType = ["domain", "public_ip", "internal_ip"].includes(values.certificate_mode) ? values.certificate_mode : "domain";
   const form = guardForm(el("form", { className: "edit-form certificate-request-form", onSubmit: (event) => event.preventDefault() }));
@@ -198,11 +199,11 @@ function renderCertificateCenterRequestForm(values) {
   const internalChoices = el("div", { className: "internal-ip-choices", hidden: true });
   const output = el("p", { className: "notice", hidden: true });
   const cards = [
-    certificateTypeCard("domain", "域名证书", "公网域名 · Caddy ACME 自动续签"),
-    certificateTypeCard("public_ip", "公网 IP 证书", "Let’s Encrypt · 约 6 天 · 每 12 小时检查"),
-    certificateTypeCard("internal_ip", "内网 IP 证书", "内部 CA / 自签名 · 信任内部根证书")
+    certificateTypeCard("domain", localize("域名证书"), localize("公网域名 · Caddy ACME 自动续签")),
+    certificateTypeCard("public_ip", localize("公网 IP 证书"), localize("Let’s Encrypt · 约 6 天 · 每 12 小时检查")),
+    certificateTypeCard("internal_ip", localize("内网 IP 证书"), localize("内部 CA / 自签名 · 信任内部根证书"))
   ];
-  form.append(el("div", { className: "certificate-type-grid", role: "radiogroup", "aria-label": "申请类型" }, cards), typeField, typeHelp, internalChoices, domainField, ipField);
+  form.append(el("div", { className: "certificate-type-grid", role: "radiogroup", "aria-label": localize("申请类型") }, cards), typeField, typeHelp, internalChoices, domainField, ipField);
   const typeControl = form.querySelector('[name="certificate_request_type"]');
   const showOutput = (text) => {
     setText(output, text);
@@ -235,7 +236,7 @@ function renderCertificateCenterRequestForm(values) {
   typeControl?.addEventListener("change", syncType);
   syncType();
   form.append(el("div", { className: "toolbar-actions" }, [
-    button("提交申请并开始验证", async () => {
+    button(localize("提交申请并开始验证"), async () => {
       try {
         const payload = readFields(form, fields);
         const result = await api("/admin-api/system/certificate-request", {
@@ -248,14 +249,14 @@ function renderCertificateCenterRequestForm(values) {
         });
         markClean(form);
         const verified = await certificateRequestIsDeployed(payload);
-        showOutput(verified ? "证书已部署，真实状态已回读。" : "申请已受理，正在验证与部署；只有真实证书回读成功后才视为完成。");
+        showOutput(verified ? localize("证书已部署，真实状态已回读。") : localize("申请已受理，正在验证与部署；只有真实证书回读成功后才视为完成。"));
       } catch (error) {
-        showOutput(adminErrorMessage(error, "证书申请失败，请检查域名或 IP 地址"));
+        showOutput(adminErrorMessage(error, localize("证书申请失败，请检查域名或 IP 地址")));
       }
     })
   ]));
   form.append(output);
-  return el("section", { className: "certificate-request" }, [el("h3", { text: "申请或更换证书" }), form]);
+  return el("section", { className: "certificate-request" }, [el("h3", { text: localize("申请或更换证书") }), form]);
 }
 
 async function renderInternalIpChoices(form, container, showOutput) {
@@ -264,12 +265,12 @@ async function renderInternalIpChoices(form, container, showOutput) {
     return;
   }
   clear(container);
-  container.append(el("strong", { text: "选择一个内网 IP" }), el("small", { text: "仅会为当前选中的一个 IP 申请内部 CA 证书。" }));
+  container.append(el("strong", { text: localize("选择一个内网 IP") }), el("small", { text: localize("仅会为当前选中的一个 IP 申请内部 CA 证书。") }));
   try {
     const result = await api("/admin-api/system/network-interface-ips");
     const ips = Array.isArray(result.data?.ips) ? result.data.ips : [];
     if (ips.length === 0) {
-      container.append(el("p", { className: "notice", text: "未发现可选内网 IP，请在下方手工输入一个 IP。" }));
+      container.append(el("p", { className: "notice", text: localize("未发现可选内网 IP，请在下方手工输入一个 IP。") }));
       return;
     }
     const choices = el("div", { className: "internal-ip-choice-list" });
@@ -291,7 +292,7 @@ async function renderInternalIpChoices(form, container, showOutput) {
     }
     container.append(choices);
   } catch (error) {
-    showOutput(adminErrorMessage(error, "获取内网 IP 候选失败，请手工输入一个 IP"));
+    showOutput(adminErrorMessage(error, localize("获取内网 IP 候选失败，请手工输入一个 IP")));
   }
 }
 
@@ -316,23 +317,23 @@ function certificateSummaryCard(label, value, detail) {
 }
 
 function certificateRequestTypeLabel(type) {
-  return { domain: "域名", public_ip: "公网 IP", internal_ip: "内网 IP" }[type] || "域名";
+  return { domain: localize("域名"), public_ip: localize("公网 IP"), internal_ip: localize("内网 IP") }[type] || localize("域名");
 }
 
 function certificateRequestTypeHelp(type) {
   return {
-    domain: "域名证书会使用公网 ACME 验证。请确保域名解析和 80/443 端口可达。",
-    public_ip: "公网 IP 证书使用 Let’s Encrypt short-lived profile；仅支持公网 IP 的 HTTP-01 或 TLS-ALPN-01 验证。",
-    internal_ip: "内网 IP 只使用内部 CA，不会向公网 CA 发起申请。客户端需要信任内部根证书。"
+    domain: localize("域名证书会使用公网 ACME 验证。请确保域名解析和 80/443 端口可达。"),
+    public_ip: localize("公网 IP 证书使用 Let’s Encrypt short-lived profile；仅支持公网 IP 的 HTTP-01 或 TLS-ALPN-01 验证。"),
+    internal_ip: localize("内网 IP 只使用内部 CA，不会向公网 CA 发起申请。客户端需要信任内部根证书。")
   }[type] || "";
 }
 
 function renderCertificateRequestProgress(request) {
   const status = request.status || "requested";
-  const stages = [["requested", "已受理", "已保存目标与签发策略"], ["validating", "验证中", "检查挑战条件与 CA 验证"], ["deploying", "部署中", "Caddy 正在加载证书"], ["verified", "已部署", "真实证书状态已回读"]];
+  const stages = [["requested", localize("已受理"), localize("已保存目标与签发策略")], ["validating", localize("验证中"), localize("检查挑战条件与 CA 验证")], ["deploying", localize("部署中"), localize("Caddy 正在加载证书")], ["verified", localize("已部署"), localize("真实证书状态已回读")]];
   const activeIndex = Math.max(0, stages.findIndex(([key]) => key === status));
   return el("aside", { className: "certificate-request-progress" }, [
-    el("h3", { text: "申请进度" }),
+    el("h3", { text: localize("申请进度") }),
     ...stages.map(([key, title, detail], index) => el("div", { className: `certificate-progress-step ${index <= activeIndex ? "active" : ""}`.trim() }, [
       el("span", { text: index < activeIndex ? "✓" : String(index + 1) }),
       el("div", {}, [el("strong", { text: title }), el("small", { text: detail })])
@@ -354,8 +355,8 @@ async function certificateRequestIsDeployed(payload) {
 function renderCertificateInventory(data) {
   const certificates = Array.isArray(data?.certificates) ? data.certificates : [];
   return el("section", { className: "certificate-inventory-results" }, [
-    el("header", { className: "table-toolbar" }, [el("h3", { text: "受管证书" }), el("span", { text: `共 ${certificates.length} 张` })]),
-    certificates.length > 0 ? renderCertificateStatusTable(certificates) : statusMessage("暂无可读取的真实证书。申请完成后会在此处显示已部署状态。")
+    el("header", { className: "table-toolbar" }, [el("h3", { text: localize("受管证书") }), el("span", { text: localize`共 ${certificates.length} 张` })]),
+    certificates.length > 0 ? renderCertificateStatusTable(certificates) : statusMessage(localize("暂无可读取的真实证书。申请完成后会在此处显示已部署状态。"))
   ]);
 }
 
@@ -368,13 +369,13 @@ function renderCertificateAlertCheck() {
     output.hidden = false;
   };
   return el("div", { className: "certificate-alert-check" }, [
-    el("p", { className: "notice", text: "根据真实证书状态和到期阈值生成证书告警。" }),
-    button("检查证书告警", async () => {
+    el("p", { className: "notice", text: localize("根据真实证书状态和到期阈值生成证书告警。") }),
+    button(localize("检查证书告警"), async () => {
       try {
         const checked = await api("/admin-api/system/settings-center/certificate-alert-check", { method: "POST" });
-        showOutput(operationSuccessText(checked.data, "证书告警检查已完成"));
+        showOutput(operationSuccessText(checked.data, localize("证书告警检查已完成")));
       } catch (error) {
-        showOutput(adminErrorMessage(error, "证书告警检查失败"));
+        showOutput(adminErrorMessage(error, localize("证书告警检查失败")));
       }
     }, "secondary"),
     output
@@ -395,7 +396,7 @@ function settingsFormPanel(title, section, fields, values, { standalone = false 
     output.hidden = false;
   };
   form.append(el("div", { className: "toolbar-actions" }, [
-    button("保存", async () => {
+    button(localize("保存"), async () => {
       try {
         const payload = readFields(form, fields);
         await api(`/admin-api/system/settings-center/${section}`, {
@@ -403,17 +404,17 @@ function settingsFormPanel(title, section, fields, values, { standalone = false 
           body: JSON.stringify(payload)
         });
         markClean(form);
-        showOutput(`${title}已保存`);
+        showOutput(localize`${title}已保存`);
       } catch (error) {
-        showOutput(adminErrorMessage(error, "保存设置失败，请检查输入内容"));
+        showOutput(adminErrorMessage(error, localize("保存设置失败，请检查输入内容")));
       }
     }),
-    section === "tls_certificates" ? button("检查证书告警", async () => {
+    section === "tls_certificates" ? button(localize("检查证书告警"), async () => {
       try {
         const checked = await api("/admin-api/system/settings-center/certificate-alert-check", { method: "POST" });
-        showOutput(operationSuccessText(checked.data, "证书告警检查已完成"));
+        showOutput(operationSuccessText(checked.data, localize("证书告警检查已完成")));
       } catch (error) {
-        showOutput(adminErrorMessage(error, "证书告警检查失败"));
+        showOutput(adminErrorMessage(error, localize("证书告警检查失败")));
       }
     }, "secondary") : null
   ].filter(Boolean)));
@@ -430,8 +431,8 @@ function settingsFormPanel(title, section, fields, values, { standalone = false 
 
 async function renderCertificateStatus(content) {
   const panel = el("section", { className: "panel table-panel" }, [
-    el("h2", { text: "真实证书状态" }),
-    statusMessage("正在读取真实证书信息")
+    el("h2", { text: localize("真实证书状态") }),
+    statusMessage(localize("正在读取真实证书信息"))
   ]);
   content.append(panel);
   try {
@@ -442,19 +443,19 @@ async function renderCertificateStatus(content) {
     panel.append(renderCertificateInventory(data));
   } catch (error) {
     clear(panel);
-    panel.append(el("h2", { text: "真实证书状态" }));
-    panel.append(statusMessage(adminErrorMessage(error, "证书状态加载失败"), "error"));
+    panel.append(el("h2", { text: localize("真实证书状态") }));
+    panel.append(statusMessage(adminErrorMessage(error, localize("证书状态加载失败")), "error"));
   }
 }
 
 function renderCertificateSummary(summary) {
   return el("section", { className: "metric-grid" }, [
-    metric("证书总数", summary.total || 0),
-    metric("域名证书", summary.domain_certificates || 0),
-    metric("IP 证书", summary.ip_certificates || 0),
-    metric("即将到期", summary.expiring_soon || 0),
-    metric("已过期", summary.expired || 0),
-    metric("自动续期", summary.auto_renewal_managed || 0)
+    metric(localize("证书总数"), summary.total || 0),
+    metric(localize("域名证书"), summary.domain_certificates || 0),
+    metric(localize("IP 证书"), summary.ip_certificates || 0),
+    metric(localize("即将到期"), summary.expiring_soon || 0),
+    metric(localize("已过期"), summary.expired || 0),
+    metric(localize("自动续期"), summary.auto_renewal_managed || 0)
   ]);
 }
 
@@ -476,7 +477,7 @@ function renderCertificateStatusTable(certificates) {
 
 function certificateStatusValue(certificate, column) {
   if (column === "certificate_type") {
-    return certificate.certificate_type === "ip" ? "IP 证书" : "域名证书";
+    return certificate.certificate_type === "ip" ? localize("IP 证书") : localize("域名证书");
   }
   if (column === "targets") {
     return [...(certificate.domains || []), ...(certificate.ip_addresses || [])].join(", ");
@@ -485,32 +486,32 @@ function certificateStatusValue(certificate, column) {
     return certificateStatusLabel(certificate.status);
   }
   if (column === "renewal_source") {
-    return certificate.renewal_source === "caddy" ? "Caddy 自动续期" : "证书文件";
+    return certificate.renewal_source === "caddy" ? localize("Caddy 自动续期") : localize("证书文件");
   }
   if (column === "source_type") {
-    return certificate.source_type === "caddy" ? "Caddy 存储" : "文件路径";
+    return certificate.source_type === "caddy" ? localize("Caddy 存储") : localize("文件路径");
   }
   return formatResourceValue(column, certificate[column]);
 }
 
 function certificateColumnLabel(column) {
   return {
-    name: "证书文件",
-    certificate_type: "类型",
-    targets: "域名或 IP",
-    issuer: "签发者",
-    status: "状态",
-    days_remaining: "剩余天数",
-    expires_at: "到期时间",
-    renewal_source: "续期来源",
-    source_type: "来源"
+    name: localize("证书文件"),
+    certificate_type: localize("类型"),
+    targets: localize("域名或 IP"),
+    issuer: localize("签发者"),
+    status: localize("状态"),
+    days_remaining: localize("剩余天数"),
+    expires_at: localize("到期时间"),
+    renewal_source: localize("续期来源"),
+    source_type: localize("来源")
   }[column] || columnLabel(column);
 }
 
 function certificateStatusLabel(status) {
   return {
-    valid: "正常",
-    expiring_soon: "即将到期",
-    expired: "已过期"
+    valid: localize("正常"),
+    expiring_soon: localize("即将到期"),
+    expired: localize("已过期")
   }[status] || status || "";
 }

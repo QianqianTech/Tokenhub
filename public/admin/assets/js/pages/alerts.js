@@ -1,3 +1,4 @@
+import { localize } from "../i18n.js";
 import { adminErrorMessage, api } from "../api.js";
 import { emptyState, errorState, loadingState, toast } from "../components/feedback.js";
 import { promptDialog } from "../components/modal.js";
@@ -7,26 +8,26 @@ import { formatDateTime } from "../lib/format.js";
 import { renderDataDetails } from "../lib/output.js";
 import { valueLabel } from "../resources.js";
 
-const STATUS_LABELS = { open: "待处理", acknowledged: "已确认", resolved: "已关闭" };
+const STATUS_LABELS = { open: localize("待处理"), acknowledged: localize("已确认"), resolved: localize("已关闭") };
 const STATUS_CARDS = [
-  ["open", "待处理"],
-  ["acknowledged", "已确认"],
-  ["resolved", "已关闭"],
-  ["", "全部"]
+  ["open", localize("待处理")],
+  ["acknowledged", localize("已确认")],
+  ["resolved", localize("已关闭")],
+  ["", localize("全部")]
 ];
 const SEVERITY_ORDER = ["critical", "warning", "info"];
 
-export async function renderAlertEventsPage(content, query = {}, title = "告警事件") {
+export async function renderAlertEventsPage(content, query = {}, title = localize("告警事件")) {
   clear(content);
   const state = { status: "open", offset: 0, limit: 20 };
   const list = el("div", { className: "alert-list", "aria-live": "polite" });
-  const cards = el("section", { className: "alert-summary", "aria-label": "按状态筛选告警" });
-  const settingsLink = el("a", { className: "button-link secondary", href: "#/system/settings-alert-thresholds", text: "告警设置" });
+  const cards = el("section", { className: "alert-summary", "aria-label": localize("按状态筛选告警") });
+  const settingsLink = el("a", { className: "button-link secondary", href: "#/system/settings-alert-thresholds", text: localize("告警设置") });
   content.append(
     el("header", { className: "page-head" }, [
       el("div", { className: "page-head-text" }, [
         el("h2", { text: title }),
-        el("p", { text: "额度、延迟、错误率与内容安全触发的告警。确认或关闭时需要填写处置说明，并记入审计日志。" })
+        el("p", { text: localize("额度、延迟、错误率与内容安全触发的告警。确认或关闭时需要填写处置说明，并记入审计日志。") })
       ]),
       el("div", { className: "page-head-actions" }, [settingsLink])
     ]),
@@ -95,14 +96,14 @@ export async function renderAlertEventsPage(content, query = {}, title = "告警
     try {
       result = await api("/admin-api/alert-events", { query: { ...query, ...(state.status ? { status: state.status } : {}), limit: state.limit, offset: state.offset, with_total: 1 }, silent: true });
     } catch (error) {
-      list.replaceChildren(errorState(error, { fallback: `${title}加载失败`, onRetry: load }));
+      list.replaceChildren(errorState(error, { fallback: localize`${title}加载失败`, onRetry: load }));
       return;
     }
     const rows = Array.isArray(result.data) ? result.data : [];
     if (rows.length === 0) {
       list.replaceChildren(emptyState({
-        title: state.status === "open" ? "没有待处理的告警" : `暂无${STATUS_LABELS[state.status] || ""}告警`,
-        description: state.status === "open" ? "额度、延迟、错误率或内容安全触发告警时会出现在这里。" : ""
+        title: state.status === "open" ? localize("没有待处理的告警") : localize`暂无${STATUS_LABELS[state.status] || ""}告警`,
+        description: state.status === "open" ? localize("额度、延迟、错误率或内容安全触发告警时会出现在这里。") : ""
       }));
       return;
     }
@@ -136,14 +137,14 @@ function alertCard(row, onRefresh) {
   const severityTone = SEVERITY_TONES[String(row.severity || "").toLowerCase()] || "is-info";
   const actions = [];
   if (pending) {
-    actions.push(button("确认", () => updateAlertStatus(row, "acknowledged", onRefresh), "secondary"));
+    actions.push(button(localize("确认"), () => updateAlertStatus(row, "acknowledged", onRefresh), "secondary"));
   }
   if (status !== "resolved") {
-    actions.push(button("关闭", () => updateAlertStatus(row, "resolved", onRefresh), "ghost"));
+    actions.push(button(localize("关闭"), () => updateAlertStatus(row, "resolved", onRefresh), "ghost"));
   }
-  actions.push(button("详情", () => showModal(row.title || row.event_type || `告警 #${row.id}`, renderDataDetails(row)), "ghost"));
+  actions.push(button(localize("详情"), () => showModal(row.title || row.event_type || localize`告警 #${row.id}`, renderDataDetails(row)), "ghost"));
   const target = [row.target_type ? valueLabel("target_type", row.target_type) : "", row.target_id ? `#${row.target_id}` : ""].filter(Boolean).join(" · ");
-  const titleText = row.title || valueLabel("event_type", row.event_type) || `告警 #${row.id}`;
+  const titleText = row.title || valueLabel("event_type", row.event_type) || localize`告警 #${row.id}`;
   return el("article", { className: `alert-item ${severityTone} ${pending ? "is-open" : ""}`.trim() }, [
     el("div", { className: "alert-item-main" }, [
       el("div", { className: "alert-item-title" }, [
@@ -163,19 +164,19 @@ function alertCard(row, onRefresh) {
 
 async function updateAlertStatus(row, status, onRefresh) {
   const note = await promptDialog({
-    title: status === "resolved" ? "关闭告警" : "确认告警",
-    label: "处置说明",
-    placeholder: "例如：已扩容队列 Worker；属误报，已调整阈值",
-    confirmLabel: status === "resolved" ? "关闭告警" : "确认告警"
+    title: status === "resolved" ? localize("关闭告警") : localize("确认告警"),
+    label: localize("处置说明"),
+    placeholder: localize("例如：已扩容队列 Worker；属误报，已调整阈值"),
+    confirmLabel: status === "resolved" ? localize("关闭告警") : localize("确认告警")
   });
   if (!note) {
     return;
   }
   try {
     await api(`/admin-api/alerts/${row.id}/status`, { method: "POST", body: JSON.stringify({ status, note }) });
-    toast(status === "resolved" ? "告警已关闭" : "告警已确认", { tone: "success" });
+    toast(status === "resolved" ? localize("告警已关闭") : localize("告警已确认"), { tone: "success" });
     await onRefresh();
   } catch (error) {
-    toast(adminErrorMessage(error, "告警处置失败"), { tone: "error" });
+    toast(adminErrorMessage(error, localize("告警处置失败")), { tone: "error" });
   }
 }
