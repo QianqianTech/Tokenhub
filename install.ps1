@@ -76,6 +76,10 @@ Upgrades: https://github.com/QianqianTech/Tokenhub/blob/main/docs/deployment/upg
         $composeVersion = & docker compose version --short
         if ($LASTEXITCODE -ne 0 -or $composeVersion -notmatch '^v?(\d+)\.(\d+)') { throw 'Docker Compose 2.20+ is required.' }
         if ([int]$Matches[1] -lt 2 -or ([int]$Matches[1] -eq 2 -and [int]$Matches[2] -lt 20)) { throw "Docker Compose is too old: $composeVersion" }
+        if (-not $NoStart) {
+            & docker buildx version *> $null
+            if ($LASTEXITCODE -ne 0) { throw 'Docker Buildx is required for source builds. Install or update Docker Desktop.' }
+        }
     }
     Write-Host "==> Prerequisites passed. Source: $Repository ($Ref)"
     if ($Check) { exit 0 }
@@ -92,7 +96,12 @@ Upgrades: https://github.com/QianqianTech/Tokenhub/blob/main/docs/deployment/upg
         $env:GIT_TERMINAL_PROMPT = '0'
         Invoke-Git init --quiet $source
         Invoke-Git -C $source remote add origin $Repository
-        Invoke-Git -C $source fetch --depth 1 --no-tags origin $Ref
+        try {
+            Invoke-Git -C $source fetch --depth 1 --no-tags origin $Ref
+        } catch {
+            Write-Host '==> GitHub download failed. Retrying once over HTTP/1.1...'
+            Invoke-Git -C $source -c http.version=HTTP/1.1 fetch --depth 1 --no-tags origin $Ref
+        }
         Invoke-Git -C $source checkout --quiet --detach FETCH_HEAD
         foreach ($file in @('deploy/docker/install.ps1', 'deploy/docker/compose.yml', 'docker/release/php/Dockerfile', '.env.example')) {
             if (-not (Test-Path -LiteralPath (Join-Path $source $file) -PathType Leaf)) { throw "Selected ref does not contain the Docker installer: $file" }

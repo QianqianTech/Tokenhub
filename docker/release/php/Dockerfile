@@ -6,8 +6,9 @@
 # The runtime stage carries no git, unzip or composer (SEC-008); they exist only in the
 # dependencies stage.
 ARG PHP_VERSION=8.4
-ARG PHP_BASE_IMAGE=php:${PHP_VERSION}-fpm-bookworm
-ARG COMPOSER_IMAGE=composer:2
+ARG BASE_IMAGE_PREFIX=
+ARG PHP_BASE_IMAGE=${BASE_IMAGE_PREFIX}php:${PHP_VERSION}-fpm-bookworm
+ARG COMPOSER_IMAGE=${BASE_IMAGE_PREFIX}composer:2
 
 FROM ${COMPOSER_IMAGE} AS composer-bin
 
@@ -15,10 +16,11 @@ FROM ${PHP_BASE_IMAGE} AS php-base
 
 # phpredis pinned to an explicit release (DEP-101).
 ARG PHPREDIS_VERSION=6.2.0
+ARG DEBIAN_MIRROR=https://deb.debian.org
 
 # poppler-utils: `pdftotext` lets PHP parse text PDFs for the RAG knowledge base with page
 # numbers; without it every PDF waits for the Python RAG worker.
-RUN sed -i 's|http://deb.debian.org|https://deb.debian.org|g' /etc/apt/sources.list.d/debian.sources \
+RUN sed -i -E "s|https?://deb\.debian\.org/|${DEBIAN_MIRROR%/}/|g" /etc/apt/sources.list.d/debian.sources \
     && apt-get -o Acquire::Retries=3 update \
     && apt-get -o Acquire::Retries=3 install -y --no-install-recommends libzip-dev libpng-dev libjpeg62-turbo-dev libfreetype6-dev default-mysql-client libfcgi-bin openssl poppler-utils \
     && docker-php-ext-configure gd --with-freetype --with-jpeg \

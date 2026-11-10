@@ -1,6 +1,7 @@
 ARG CADDY_VERSION=2.10
+ARG BASE_IMAGE_PREFIX=
 # Pinned by digest through scripts/release/pin-base-images.sh (docker/release/base-images.env).
-ARG CADDY_BASE_IMAGE=caddy:${CADDY_VERSION}
+ARG CADDY_BASE_IMAGE=${BASE_IMAGE_PREFIX}caddy:${CADDY_VERSION}
 FROM ${CADDY_BASE_IMAGE}
 
 # Build id for the APP service worker cache (empty: VERSION + content hash).

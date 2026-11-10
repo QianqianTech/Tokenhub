@@ -8,6 +8,7 @@
 
 - Docker Engine 24 以上（Linux），或 Docker Desktop（Windows 需使用 WSL 2 后端，也可用于 macOS）。
 - Docker Compose v2.20 以上，即 `docker compose` 子命令。
+- 源码构建还需要 Docker Buildx。
 - 建议配置：4 核 CPU、8 GB 内存、50 GB 磁盘。知识库数据量较大时，按向量规模增加内存。
 - 使用域名自动签发证书时，宿主机的 80 和 443 端口必须能从公网访问。
 
@@ -48,6 +49,33 @@ powershell -ExecutionPolicy Bypass -File .\install.ps1 -Build -Site tokenhub.exa
 
 - 首次登录后修改管理员密码，然后从 `.env` 中删除 `TOKENHUB_ADMIN_PASSWORD`。
 - 妥善备份 `.env`。其中的 `APP_KEY` 用于加密厂商密钥，丢失后已保存的密钥无法解密。
+
+## 安装网络排查
+
+Ubuntu 22.04 使用 `jammy` 软件源。按 Docker 文档配置 APT 源和 `Signed-By` 后，安装 Engine、Compose 和 Buildx，再从解压后的源码目录运行预检。若 `download.docker.com` 连接重置，可从联网机器下载匹配 Ubuntu 版本和 CPU 架构的官方 DEB 包，或采用阿里云等可信 Docker CE APT 镜像。[Docker Engine 安装文档](https://docs.docker.com/engine/install/ubuntu/) · [阿里云 Docker CE 镜像](https://developer.aliyun.com/mirror/docker-ce)
+
+```bash
+sudo apt-get install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+sudo systemctl enable --now docker
+bash deploy/docker/install.sh --check --build
+```
+
+Git 下载遇到 `curl 92` 或 `early EOF` 时，根目录安装入口会以 HTTP/1.1 重试一次。仍无法连接 GitHub 时，可从可信发布渠道取得并校验完整源码包，解压后直接运行 `deploy/docker/install.sh --build`。
+
+`registry-1.docker.io` 超时属于镜像拉取阶段。Docker daemon 负责运行镜像的拉取，独立的 BuildKit builder 可单独配置镜像站。如果有可直接访问的镜像仓库，也可以在首次安装命令加 `--no-start` 生成配置，再在 `deploy/docker/.env` 中填入所需镜像源。已有 `.env` 可以直接编辑。以下值是示例，请替换成实际可用的地址。[Docker 镜像站配置](https://docs.docker.com/docker-hub/image-library/mirror/) · [BuildKit 镜像站配置](https://docs.docker.com/build/buildkit/configure/)
+
+```dotenv
+TOKENHUB_BUILD_BASE_IMAGE_PREFIX=registry.example.com/dockerhub/library/
+MYSQL_IMAGE=registry.example.com/dockerhub/library/mysql:9.7
+REDIS_IMAGE=registry.example.com/dockerhub/library/redis:8.0-alpine
+QDRANT_IMAGE=registry.example.com/dockerhub/qdrant/qdrant:v1.15.0
+TOKENHUB_BUILD_DEBIAN_MIRROR=https://packages.example.com
+TOKENHUB_BUILD_PIP_INDEX_URL=https://packages.example.com/pypi/simple
+```
+
+基础镜像前缀需以 `/` 结尾。Debian 镜像需要同时提供 `/debian` 和 `/debian-security`。PyPI 镜像填写包索引的 `/simple` URL，例如清华镜像的 `https://pypi.tuna.tsinghua.edu.cn/simple`。构建参数请使用无需凭据的地址。[清华 PyPI 镜像](https://mirrors.tuna.tsinghua.edu.cn/help/pypi/)
+
+配置后回到原目录执行 `bash deploy/docker/install.sh --build --yes`，续用已有密钥和镜像缓存。目标机长期无法访问依赖源时，可以在联网机器制作与目标架构匹配的离线包。[离线安装包](../../docs/deployment/offline-docker-release.md)
 
 ## 管理员密码
 
@@ -124,7 +152,39 @@ Windows 使用 `upgrade.ps1` 和 `backup.ps1`，恢复需在 WSL 或 Git Bash �
 | 内网 IP + HTTP | `10.0.0.8` 或留空 | 不加密，`SESSION_SECURE=false`，仅用于可信网络 |
 | 前面已有负载均衡或 HTTPS 代理 | 留空 | 将 `TRUSTED_PROXY_CIDRS` 设为代理的地址 |
 
-安装后如需更改访问方式，修改 `.env` 中的 `TOKENHUB_SITE_ADDRESS`、`TOKENHUB_CADDY_TLS`、`TOKENHUB_CADDY_GLOBAL`、`APP_URL` 和 `SESSION_SECURE`，然后执行 `docker compose up -d`。
+### 公网 IPv4 和 8443
+
+首次安装时，可以显式使用 `--public-ip`，让安装器从本机路由或外部查询获取公网 IPv4 并配置 HTTPS。若出口 IP 和入站 IP 不同，或者查询失败，使用 `--site "https://$public_ip"` 明确指定实际入站地址，并把 `public_ip` 设为服务器的公网 IPv4。Windows 可通过 `-Site` 指定地址。
+
+```bash
+bash deploy/docker/install.sh --build --public-ip --https-port 8443 --yes
+```
+
+公网访问使用 `https://公网IPv4:8443/admin/`，云安全组和主机防火墙需允许 TCP 8443。使用 `--public-ip` 且公网 TCP 80 可达时，Caddy 会申请并自动续期浏览器信任的 Let's Encrypt IP 证书。申请失败或选择了其他 HTTP 端口时，Caddy 使用内部 CA。此时可从部署目录执行 `docker compose cp caddy:/data/caddy/pki/authorities/local/root.crt ./tokenhub-root.crt`，再将根证书导入客户端。[Let's Encrypt IP 证书](https://letsencrypt.org/2026/01/15/6day-and-ip-general-availability)
+
+公网域名使用 `--site tokenhub.example.com`，将域名解析到服务器并放行 80/443，以便 Caddy 自动签发证书。
+
+### 将已有本机安装切换到公网 HTTPS
+
+`--site http://localhost --bind 127.0.0.1` 用于 Docker 宿主机上的 HTTP 访问。要让现有实例通过公网 IP 的 8443 提供 HTTPS，先备份 `deploy/docker/.env`，然后更新下列配置。将示例 IP `203.0.113.9` 换成实际公网 IPv4。
+
+```dotenv
+APP_URL=https://203.0.113.9:8443
+SESSION_SECURE=true
+TOKENHUB_SITE_ADDRESS=https://203.0.113.9
+TOKENHUB_CADDY_TLS=tls internal
+TOKENHUB_CADDY_GLOBAL=default_sni 203.0.113.9
+TOKENHUB_BIND_ADDRESS=0.0.0.0
+TOKENHUB_HTTPS_PORT=8443
+TOKENHUB_HTTP_REDIRECT_URL=https://203.0.113.9:8443
+```
+
+在 `deploy/docker` 目录应用配置，使用原有镜像、密钥和数据卷。
+
+```bash
+docker compose up -d --no-build --pull never
+bash verify.sh
+```
 
 ## 知识库向量库
 

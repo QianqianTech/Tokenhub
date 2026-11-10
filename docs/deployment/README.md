@@ -59,7 +59,7 @@ Docker 服务端应显示 `linux/arm64`，Compose 需要 2.20 或以上。AMD64 
 Linux、macOS 或 WSL 2 从 GitHub 下载与镜像配套的部署文件。下面的配置仅允许本机访问。
 
 ```bash
-git clone --branch v1.0.3 --depth 1 https://github.com/QianqianTech/Tokenhub.git tokenhub &&
+git -c http.version=HTTP/1.1 clone --branch v1.0.3 --depth 1 https://github.com/QianqianTech/Tokenhub.git tokenhub &&
 cd tokenhub &&
 bash deploy/docker/install.sh \
   --image-prefix docker.io/leofan2022/ \
@@ -71,7 +71,7 @@ bash deploy/docker/install.sh \
 Windows PowerShell 也可使用这组镜像，前提是 Docker Desktop 的服务端显示 `linux/arm64`。
 
 ```powershell
-git clone --branch v1.0.3 --depth 1 https://github.com/QianqianTech/Tokenhub.git tokenhub
+git -c http.version=HTTP/1.1 clone --branch v1.0.3 --depth 1 https://github.com/QianqianTech/Tokenhub.git tokenhub
 if ($LASTEXITCODE -ne 0) { throw '下载 TokenHub 失败' }
 Set-Location .\tokenhub
 powershell -NoProfile -ExecutionPolicy Bypass -File .\deploy\docker\install.ps1 `

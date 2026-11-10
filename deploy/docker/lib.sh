@@ -17,14 +17,13 @@ compose() {
 }
 
 require_docker() {
-  command -v docker >/dev/null 2>&1 || die "Docker is not installed. Install Docker Engine (Linux) or Docker Desktop (Windows/macOS) first."
+  command -v docker >/dev/null 2>&1 || die "Install Docker Engine with the Compose plugin, or Docker Desktop: https://docs.docker.com/engine/install/"
   docker info >/dev/null 2>&1 || die "The Docker daemon is not running or this user cannot access it (try sudo or add the user to the docker group)."
-  docker compose version >/dev/null 2>&1 || die "Docker Compose v2 is required (the 'docker compose' plugin)."
   local version major minor
-  version="$(docker compose version --short 2>/dev/null | sed 's/^v//')"
-  major="${version%%.*}"
-  minor="$(printf '%s' "$version" | cut -d. -f2)"
-  if [ "${major:-0}" -lt 2 ] || { [ "${major:-0}" -eq 2 ] && [ "${minor:-0}" -lt 20 ]; }; then
+  version="$(docker compose version --short 2>/dev/null)" || die "Docker Compose 2.20+ is required (Ubuntu: install the docker-compose-plugin package)."
+  [[ "$version" =~ ^v?([0-9]+)\.([0-9]+) ]] || die "Cannot read Docker Compose version: $version"
+  major="${BASH_REMATCH[1]}" minor="${BASH_REMATCH[2]}"
+  if [ "$major" -lt 2 ] || { [ "$major" -eq 2 ] && [ "$minor" -lt 20 ]; }; then
     die "Docker Compose $version is too old; 2.20 or newer is required."
   fi
 }

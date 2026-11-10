@@ -23,6 +23,7 @@ param(
     [ValidateSet('qdrant', 'mysql_fallback')][string]$VectorStore = 'qdrant',
     [string]$AdminUser = 'admin',
     [string]$AdminPassword = '',
+    [switch]$Check,
     [switch]$NoStart,
     [switch]$Yes
 )
@@ -44,6 +45,19 @@ function Invoke-Compose {
     if ($Build) { $files += @('-f', (Join-Path $KitDir 'compose.build.yml')) }
     & docker compose --project-directory $KitDir --env-file $EnvFile @files @Arguments
     if ($LASTEXITCODE -ne 0) { throw ('docker compose ' + ($Arguments -join ' ') + ' failed') }
+}
+
+function Pull-Images {
+    $services = @($args)
+    Info 'Preparing Docker images...'
+    try {
+        Invoke-Compose pull @services
+    } catch {
+        Warn 'Image pull failed. Retrying once...'
+        Start-Sleep -Seconds 2
+        try { Invoke-Compose pull @services }
+        catch { Die "Image pull failed. Check the Docker daemon's registry access and the image tag and architecture. Configuration is preserved in $EnvFile." }
+    }
 }
 
 function New-Secret([int]$Length = 32) {
@@ -120,13 +134,17 @@ function Get-SiteSettings([string]$InputValue) {
         if ($hostPart -match '^\d+(\.\d+){3}$') {
             if (-not $scheme) { $scheme = 'http' }
             if ($scheme -eq 'https') {
-                $addresses.Add("https://$entry"); $ipHttps = $true
+                $addresses.Add("https://$hostPart"); $ipHttps = $true
                 if (-not $result.Global) { $result.Global = "default_sni $hostPart" }
             } elseif (-not $addresses.Contains(':80')) { $addresses.Add(':80') }
         } else {
             if ($hostPart -notmatch '^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?)*$') { Die "Invalid domain or IP: $hostPart" }
             if (-not $scheme) { $scheme = $(if ($hostPart -eq 'localhost') { 'http' } else { 'https' }) }
-            if ($scheme -eq 'https') { $addresses.Add($entry); $domain = $true } else { $addresses.Add("http://$entry") }
+            if ($scheme -eq 'https') { $addresses.Add($hostPart); $domain = $true } else { $addresses.Add("http://$hostPart") }
+        }
+        $port = if ($scheme -eq 'https') { $HttpsPort } else { $HttpPort }
+        if ($entry -ne $hostPart -and $entry -ne "${hostPart}:$port") {
+            Die "Use a domain or IP in -Site and set the published port with -HttpPort or -HttpsPort."
         }
         if ($first) {
             $first = $false
@@ -145,16 +163,26 @@ function Get-SiteSettings([string]$InputValue) {
 
 # ------------------------------------------------------------------ checks
 if (-not (Get-Command docker -ErrorAction SilentlyContinue)) { Die 'Docker Desktop is not installed (https://docs.docker.com/desktop/setup/install/windows-install/).' }
-& docker info *> $null
+$osType = & docker info --format '{{.OSType}}' 2>$null
 if ($LASTEXITCODE -ne 0) { Die 'Docker Desktop is not running. Start it and wait until the engine is running.' }
-$composeVersion = (& docker compose version --short) -replace '^v', ''
-if ($LASTEXITCODE -ne 0) { Die 'Docker Compose v2 is required.' }
-if ([version]($composeVersion -replace '[^0-9.].*$', '') -lt [version]'2.20') { Die "Docker Compose $composeVersion is too old; 2.20 or newer is required." }
-if ($Build -and -not (Test-Path (Join-Path $KitDir '..\..\docker\release\php\Dockerfile'))) { Die '-Build needs the full TokenHub source tree.' }
+if ($osType -ne 'linux') { Die 'Switch Docker Desktop to Linux containers.' }
+$engine = & docker version --format '{{.Server.Version}}'
+if ($LASTEXITCODE -ne 0 -or $engine -notmatch '^(\d+)\.' -or [int]$Matches[1] -lt 24) { Die 'Docker Engine 24+ is required.' }
+$composeVersion = & docker compose version --short
+if ($LASTEXITCODE -ne 0 -or $composeVersion -notmatch '^v?(\d+)\.(\d+)') { Die 'Docker Compose 2.20+ is required.' }
+if ([int]$Matches[1] -lt 2 -or ([int]$Matches[1] -eq 2 -and [int]$Matches[2] -lt 20)) { Die "Docker Compose $composeVersion is too old; 2.20 or newer is required." }
+if ($Build) {
+    if (-not (Test-Path (Join-Path $KitDir '..\..\docker\release\php\Dockerfile'))) { Die '-Build needs the full TokenHub source tree.' }
+    if (-not $NoStart) {
+        & docker buildx version *> $null
+        if ($LASTEXITCODE -ne 0) { Die 'Docker Buildx is required for source builds. Install or update Docker Desktop.' }
+    }
+}
+if ($Check) { Info "Docker prerequisites passed (Engine $engine)."; exit 0 }
 
 # ------------------------------------------------------------------ .env
 if (Test-Path $EnvFile) {
-    Info "Using existing $EnvFile (delete it to start over with new secrets)."
+    Info "Using existing configuration and secrets from $EnvFile."
 } else {
     $template = Join-Path $KitDir '.env.example'
     if (-not (Test-Path $template) -and $SourceRoot) { $template = Join-Path $SourceRoot '.env.example' }
@@ -189,6 +217,9 @@ if (Test-Path $EnvFile) {
         QDRANT_URL = 'http://qdrant:6333'; QDRANT_API_KEY = (New-Secret 32); RAG_VECTOR_STORE = $VectorStore
         CADDY_VALIDATE_COMMAND = ''; CADDY_RELOAD_COMMAND = ''
     }
+    if ($s.Secure -eq 'true' -and $HttpsPort -ne 443 -and $s.Address -notlike '*,*') {
+        $values['TOKENHUB_HTTP_REDIRECT_URL'] = $s.Url
+    }
     foreach ($key in $values.Keys) { Set-EnvValue $key $values[$key] }
     Info "Wrote $EnvFile with random secrets. Keep a copy of APP_KEY in a safe place."
 }
@@ -197,12 +228,16 @@ if ($NoStart) { exit 0 }
 
 # ------------------------------------------------------------------ images and start
 $tagNow = Get-EnvValue 'TOKENHUB_IMAGE_TAG'
+$upOptions = @('--no-build')
 if ($Build) {
-    Info 'Building images from source (first build takes several minutes)...'
-    Invoke-Compose build
+    Pull-Images mysql redis qdrant
+    Info 'Building images from source (first build downloads base images and packages)...'
+    try { Invoke-Compose build }
+    catch { Die "Source build failed. Check BuildKit registry and build dependency access (see deploy/docker/README.md). Fix the cause and rerun with -Build. Configuration is preserved in $EnvFile." }
+    $upOptions += @('--pull', 'never')
 } elseif (Get-EnvValue 'TOKENHUB_IMAGE_PREFIX') {
-    Info 'Pulling images...'
-    Invoke-Compose pull
+    Pull-Images
+    $upOptions += @('--pull', 'never')
 } else {
     foreach ($image in @('tokenhub-php', 'tokenhub-caddy', 'tokenhub-rag-worker', 'tokenhub-realtime-gateway')) {
         & docker image inspect "${image}:$tagNow" *> $null
@@ -211,7 +246,7 @@ if ($Build) {
 }
 
 Info 'Starting TokenHub...'
-Invoke-Compose up -d --remove-orphans
+Invoke-Compose up -d --remove-orphans @upOptions
 Wait-Init 900
 Info 'Waiting for the web services...'
 Wait-Healthy 'php' 300
@@ -220,6 +255,9 @@ Info 'Self-check:'
 try { Invoke-Compose exec -T php php bin/doctor.php } catch { Warn 'Some checks reported problems (see above).' }
 
 $url = (Get-EnvValue 'APP_URL').TrimEnd('/')
+if ((Get-EnvValue 'TOKENHUB_BIND_ADDRESS') -match '^(127\.|::1$|\[::1\]$|localhost$)') {
+    Info 'Loopback binding: open the printed URL from the Docker host.'
+}
 Write-Host ''
 Write-Host 'TokenHub is running.'
 Write-Host "  Admin console : $url/admin/"

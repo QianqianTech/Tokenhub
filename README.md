@@ -232,6 +232,18 @@ Docker 安装会获取应用镜像并启动 Caddy、PHP-FPM、MySQL、Redis、Qd
 
 ## 快速安装
 
+### Linux / macOS 一条命令
+
+启动 Docker 后，在终端执行下面的命令。脚本会下载源码包、选择适用的镜像并初始化 TokenHub。
+
+```bash
+curl -fsSL --retry 3 https://raw.githubusercontent.com/QianqianTech/Tokenhub/main/install.sh -o tokenhub-install.sh && bash tokenhub-install.sh --quick
+```
+
+安装完成后，打开 `http://localhost:8080/admin/`，用终端显示的初始账号和密码登录。公网服务器运行 `bash tokenhub-install.sh --quick --public-ip`，让脚本检测 IPv4 并配置 HTTPS 8443。使用域名时把 `--public-ip` 换成 `--site 你的域名`。[服务器访问与证书](deploy/docker/README.md#公网-ipv4-和-8443)
+
+快装会优先复用本机已加载的同架构镜像，ARM64 可直接拉取已发布的 1.0.4 镜像，其余情况由脚本构建。弱网环境可由技术人员提前制作离线包，用户解压后运行 `./load-images.sh --install`。[离线安装](docs/deployment/offline-docker-release.md#安装客户方)
+
 ### Docker Hub 快速安装
 
 TokenHub `1.0.3` 已推送以下五个 `linux/arm64` 镜像。安装脚本会按 Compose 配置拉取所需镜像。
@@ -249,7 +261,7 @@ TokenHub `1.0.3` 已推送以下五个 `linux/arm64` 镜像。安装脚本会按
 在 Linux、macOS 或 WSL 2 上执行以下命令。示例仅允许本机访问。
 
 ```bash
-git clone --depth 1 --branch v1.0.3 https://github.com/QianqianTech/Tokenhub.git tokenhub &&
+git -c http.version=HTTP/1.1 clone --depth 1 --branch v1.0.3 https://github.com/QianqianTech/Tokenhub.git tokenhub &&
 cd tokenhub &&
 bash deploy/docker/install.sh \
   --image-prefix docker.io/leofan2022/ --tag 1.0.3 \
@@ -269,7 +281,7 @@ bash deploy/docker/install.sh \
 | --- | --- |
 | 系统 | Linux；macOS + Docker Desktop；Windows + Docker Desktop（Linux 容器，建议 WSL 2 后端） |
 | 架构 | x86_64 / AMD64 或 ARM64；主机系统需满足 Docker 的支持要求 |
-| Docker | Engine 24+，Compose 2.20+；Docker Desktop 用户需先启动应用 |
+| Docker | Engine 24+、Compose 2.20+ 和 Buildx；Docker Desktop 用户需先启动应用 |
 | 下载工具 | Git；Linux/macOS 下载入口脚本还需要 curl，Windows 使用 PowerShell 5.1+ |
 | 资源 | 建议从 4 核 CPU、8 GB 内存、50 GB 可用磁盘起步；大量文档/OCR/并发调用需要增加资源 |
 | 网络 | 能访问 GitHub、镜像仓库和构建依赖源；模型调用还需能访问上游服务 |
@@ -283,6 +295,7 @@ bash deploy/docker/install.sh \
 git --version
 docker info
 docker compose version
+docker buildx version
 ```
 
 #### 2. Linux / macOS：下载脚本并安装
@@ -317,6 +330,8 @@ bash tokenhub-install.sh --site https://10.0.0.8 --yes
 
 更多网络和证书说明见 [Docker 部署包文档](deploy/docker/README.md#访问方式说明)。同一台机器上的多套部署需要分别设置 Compose 项目名和端口；默认项目名为 `tokenhub`，改变下载目录不会自动隔离另一套实例。
 
+公网 IPv4 可用 `--public-ip --https-port 8443` 配置 HTTPS。已装好的实例可保留密钥和数据卷，原地更改访问地址。[公网 IPv4 和 8443](deploy/docker/README.md#公网-ipv4-和-8443) · [切换已有安装](deploy/docker/README.md#将已有本机安装切换到公网-https)
+
 #### 3. Windows：下载 PowerShell 安装脚本
 
 先安装 Git 和 Docker Desktop，启动 Docker Desktop 并切换为 Linux 容器。在 PowerShell 中执行：
@@ -339,9 +354,11 @@ if ($?) {
 | --- | --- | --- |
 | `--dir PATH` | `-Directory PATH` | 指定新的源码目录，默认 `./tokenhub`；已有目录会被拒绝，避免覆盖配置和代码 |
 | `--ref REF` | `-Ref REF` | 获取指定分支、已有 tag 或完整提交 SHA；默认 `main` |
+| `--quick` | | Bash 直接下载源码包，无需 Git，自动选择镜像或构建 |
 | `--check` | `-Check` | 仅检查前置环境，不下载、不启动服务 |
 | `--download-only` | `-DownloadOnly` | 仅下载源码，不要求 Docker，不生成配置 |
 | `--site ADDRESS` | `-Site ADDRESS` | 域名、`https://IP` 或 `http://IP` |
+| `--public-ip` | `-Site https://IP`（手动指定） | Bash 自动查询出口 IPv4 并配置 HTTPS。公网端口 80 可达时申请公开证书 |
 | `--http-port N` / `--https-port N` | `-HttpPort N` / `-HttpsPort N` | 宿主机端口，默认 80 / 443 |
 | `--bind ADDRESS` | `-Bind ADDRESS` | 默认 `0.0.0.0`；本机体验选 `127.0.0.1` |
 | `--admin-user NAME` | `-AdminUser NAME` | 首个管理员用户名，默认 `admin`；密码随机生成 |
@@ -435,9 +452,9 @@ Windows 可以使用相同的 `docker compose` 命令，验证脚本使用 `powe
 | --- | --- |
 | 提示 Git / Docker 缺失 | 按前面的官方链接安装；重开终端后运行 `git --version`、`docker info` |
 | 无法连接 Docker | 启动 Docker Desktop 或 Docker 服务，确认当前用户有访问权限；Windows 选择 Linux 容器 |
-| GitHub 下载失败 | 检查 GitHub / raw.githubusercontent.com 的网络访问、Git 代理和 ref 是否存在；修复后重试 |
+| GitHub 下载失败 | 安装入口会用 HTTP/1.1 重试一次。持续失败时检查网络、Git 代理和 ref，或使用已校验的源码包 |
 | 目标目录已存在 | 首次安装换一个新目录；续装使用目录内 `deploy/docker/install.*`，升级按上节执行 |
-| 构建时依赖下载超时 | 检查 Docker 的网络/代理及镜像、系统包、Composer、Python、Go 依赖源的连通性；源码保留，修复后重试 |
+| Docker 镜像或构建依赖下载超时 | 按[安装网络排查](deploy/docker/README.md#安装网络排查)配置可访问的镜像源，回到原目录续装 |
 | 80 / 443 被占用 | 本机体验改用 8080 / 8443；域名自动证书需要公网可达的 80 / 443，已有代理时按部署文档配置 |
 | `init` 失败或 `/ready` 异常 | 在 `deploy/docker` 查看 `docker compose logs --tail=100 init php mysql redis qdrant`，再运行 `bin/doctor.php` |
 | 安装成功但模型不能调用 | 检查厂商地址和 Key、模型名称、能力、Key 授权、额度、上游余额及网络；TokenHub 不自带模型服务 |

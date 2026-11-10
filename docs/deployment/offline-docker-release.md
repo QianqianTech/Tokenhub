@@ -24,9 +24,10 @@ powershell -ExecutionPolicy Bypass -File scripts/package-offline-release.ps1 -Ou
 ## 安装（客户方）
 
 ```sh
-./load-images.sh                               # 校验 SHA256，再按本机架构执行 docker load
-cd tokenhub && ./install.sh --site tokenhub.example.com
+./load-images.sh --install --site https://10.0.0.8
 ```
+
+将示例 IP 换成实际访问地址。脚本会校验 SHA256、导入本机架构的镜像并启动安装。单独导入镜像时可执行 `./load-images.sh`。
 
 Windows：
 

@@ -2,13 +2,22 @@
 # Load the images of an offline bundle (shipped as load-images.sh in the bundle root).
 #
 #   ./load-images.sh [BUNDLE_DIRECTORY]
+#   ./load-images.sh --install [INSTALL_OPTIONS]
 #
 # Then install:  cd tokenhub && ./install.sh --site <domain-or-IP>
 # Data is never touched here; to move an existing installation use tokenhub/restore.sh with a backup.
 set -eu
 
-bundle_root=${1:-$(cd "$(dirname "$0")" && pwd)}
+install=0
+if [ "${1:-}" = --install ]; then
+  install=1
+  shift
+  bundle_root=$(cd "$(dirname "$0")" && pwd)
+else
+  bundle_root=${1:-$(cd "$(dirname "$0")" && pwd)}
+fi
 cd "$bundle_root"
+[ "$install" = 0 ] || test -f tokenhub/install.sh || { echo 'Missing TokenHub installer in the bundle.' >&2; exit 65; }
 
 case "$(docker version --format '{{.Server.Arch}}')" in
   amd64|x86_64) architecture=amd64 ;;
@@ -24,4 +33,5 @@ find "images/$architecture" -name '*.tar' -print | sort | while IFS= read -r ima
   echo "==> docker load $image"
   docker load --input "$image"
 done
+if [ "$install" = 1 ]; then exec bash tokenhub/install.sh "$@"; fi
 echo "Images loaded. Next: cd tokenhub && ./install.sh --site <domain-or-IP>"

@@ -17,10 +17,13 @@ MySQL 8.0 可以运行 TokenHub，自检会建议升级到 8.4 LTS。生产环�
 ## 安装
 
 ```sh
-git clone <仓库> tokenhub && cd tokenhub      # 或解压发布包
-sudo deploy/linux/install.sh --check          # 只检测系统并打印安装计划，不做改动
+git -c http.version=HTTP/1.1 clone --depth 1 https://github.com/QianqianTech/Tokenhub.git tokenhub &&
+cd tokenhub &&
+sudo deploy/linux/install.sh --check &&
 sudo deploy/linux/install.sh --site tokenhub.example.com
 ```
+
+GitHub 连接不稳定时，也可以校验并解压完整源码发布包，再从解压目录运行预检和安装。Ubuntu 22.04 需要能访问脚本使用的 PHP PPA；若服务器无法访问该源，可在主机上先配置提供受支持 PHP 版本的可信 APT 源。
 
 常用参数：
 

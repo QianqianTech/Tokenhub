@@ -14,13 +14,14 @@ set -euo pipefail
 # shellcheck source=lib.sh
 . "$(cd "$(dirname "$0")" && pwd)/lib.sh"
 
-SITE="" SITE_GIVEN=0 HTTP_PORT="" HTTPS_PORT="" BIND="" BUILD=0 PREFIX="" TAG="" VECTOR="" ADMIN_USER="" ADMIN_PASSWORD="" ASSUME_YES=0 START=1
+SITE="" SITE_GIVEN=0 PUBLIC_IP=0 HTTP_PORT="" HTTPS_PORT="" BIND="" BUILD=0 PREFIX="" TAG="" VECTOR="" ADMIN_USER="" ADMIN_PASSWORD="" ASSUME_YES=0 START=1 CHECK_ONLY=0
 
 usage() {
   sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'
   cat <<'TXT'
 Options:
   --site ADDRESS          domain, IP, https://IP, or several comma separated (default: plain HTTP)
+  --public-ip             detect the public IPv4 and use HTTPS (port 80 enables public certificates)
   --http-port N           host HTTP port (default 80)
   --https-port N          host HTTPS port (default 443)
   --bind ADDRESS          host address to publish on (default 0.0.0.0)
@@ -30,6 +31,7 @@ Options:
   --vector-store NAME     qdrant (default, recommended) or mysql_fallback
   --admin-user NAME       first administrator (default admin)
   --admin-password PASS   first administrator password (default: generated)
+  --check                 check Docker and source prerequisites only
   --no-start              only write .env
   -y, --yes               do not ask questions
 TXT
@@ -38,6 +40,7 @@ TXT
 while [ $# -gt 0 ]; do
   case "$1" in
     --site) SITE="${2:-}"; SITE_GIVEN=1; shift 2 ;;
+    --public-ip) PUBLIC_IP=1; shift ;;
     --http-port) HTTP_PORT="${2:-}"; shift 2 ;;
     --https-port) HTTPS_PORT="${2:-}"; shift 2 ;;
     --bind) BIND="${2:-}"; shift 2 ;;
@@ -47,6 +50,7 @@ while [ $# -gt 0 ]; do
     --vector-store) VECTOR="${2:-}"; shift 2 ;;
     --admin-user) ADMIN_USER="${2:-}"; shift 2 ;;
     --admin-password) ADMIN_PASSWORD="${2:-}"; shift 2 ;;
+    --check) CHECK_ONLY=1; shift ;;
     --no-start) START=0; shift ;;
     -y|--yes) ASSUME_YES=1; shift ;;
     -h|--help) usage; exit 0 ;;
@@ -54,18 +58,61 @@ while [ $# -gt 0 ]; do
   esac
 done
 
+if [ "$PUBLIC_IP" = 1 ]; then
+  [ "$SITE_GIVEN" = 0 ] || die "Choose --site or --public-ip."
+  case "$BIND" in 127.*|::1|'[::1]'|localhost) die "--public-ip requires a non-loopback bind address." ;; esac
+fi
+
 require_docker
+docker_os="$(docker info --format '{{.OSType}}')" || die "Cannot read the Docker server OS."
+[ "$docker_os" = linux ] || die "TokenHub needs Docker in Linux container mode."
+engine="$(docker version --format '{{.Server.Version}}')" || die "Cannot read the Docker Engine version."
+[[ "$engine" =~ ^([0-9]+)\. ]] && [ "${BASH_REMATCH[1]}" -ge 24 ] || die "Docker Engine 24+ is required (found $engine)."
 
 SOURCE_ROOT="$(cd "$KIT_DIR/../.." 2>/dev/null && pwd || true)"
-if [ "$BUILD" = 1 ] && [ ! -f "$SOURCE_ROOT/docker/release/php/Dockerfile" ]; then
-  die "--build needs the full TokenHub source tree (deploy/docker inside the repository)."
+if [ "$BUILD" = 1 ]; then
+  [ -f "$SOURCE_ROOT/docker/release/php/Dockerfile" ] || die "--build needs the full TokenHub source tree (deploy/docker inside the repository)."
+  if [ "$START" = 1 ]; then
+    docker buildx version >/dev/null 2>&1 || die "Docker Buildx is required for source builds (Ubuntu: install the docker-buildx-plugin package)."
+  fi
+fi
+if [ "$CHECK_ONLY" = 1 ]; then
+  info "Docker prerequisites passed (Engine $engine)."
+  exit 0
 fi
 export TOKENHUB_BUILD="$BUILD"
 
 # ------------------------------------------------------------------ .env
+is_public_ipv4() {
+  local octet='(0|[1-9][0-9]{0,2})' a b
+  [[ "$1" =~ ^$octet\.$octet\.$octet\.$octet$ ]] || return 1
+  a="${BASH_REMATCH[1]}" b="${BASH_REMATCH[2]}"
+  (( a > 0 && a < 224 && a != 10 && a != 127 && b <= 255
+     && BASH_REMATCH[3] <= 255 && BASH_REMATCH[4] <= 255
+     && !(a == 100 && b >= 64 && b <= 127) && !(a == 169 && b == 254)
+     && !(a == 172 && b >= 16 && b <= 31) && !(a == 192 && b == 168) ))
+}
+
+detect_public_ipv4() {
+  local address
+  if command -v ip >/dev/null 2>&1; then
+    # A route lookup can identify a directly assigned public IP without making a network request.
+    address="$(ip -4 route get 1.1.1.1 2>/dev/null | awk 'NR == 1 {for (i = 1; i < NF; i++) if ($i == "src") print $(i+1)}')" || address=""
+    if is_public_ipv4 "$address"; then printf '%s\n' "$address"; return; fi
+  fi
+  command -v curl >/dev/null 2>&1 || return 1
+  local curl_args=(-q -4 -fsS --noproxy '*' --connect-timeout 4 --max-time 8)
+  address="$(curl "${curl_args[@]}" https://api.ipify.org 2>/dev/null)" || address=""
+  if ! is_public_ipv4 "$address"; then
+    address="$(curl "${curl_args[@]}" https://www.cloudflare.com/cdn-cgi/trace 2>/dev/null | sed -n 's/^ip=//p')" || return 1
+    is_public_ipv4 "$address" || return 1
+  fi
+  printf '%s\n' "$address"
+}
+
 site_settings() {
   # Mirrors app/Console/Install/SiteAddress.php.
-  local input="$1" first host scheme addresses="" tls="" global="" kind_ip_https=0 kind_domain=0 entry
+  local input="$1" first host scheme port addresses="" tls="" global="" kind_ip_https=0 kind_domain=0 entry
   APP_URL_VALUE="" SESSION_SECURE_VALUE=false
   if [ -z "$input" ] || [ "$input" = ":80" ]; then
     SITE_ADDRESS=":80" CADDY_TLS="" CADDY_GLOBAL=""
@@ -88,7 +135,7 @@ site_settings() {
     if printf '%s' "$host" | grep -Eq '^[0-9]+(\.[0-9]+){3}$'; then
       scheme="${scheme:-http}"
       if [ "$scheme" = https ]; then
-        addresses="$addresses${addresses:+, }https://$entry"; kind_ip_https=1
+        addresses="$addresses${addresses:+, }https://$host"; kind_ip_https=1
         [ -n "$global" ] || global="default_sni $host"
       else
         case ", $addresses," in *", :80,"*) ;; *) addresses="$addresses${addresses:+, }:80" ;; esac
@@ -96,8 +143,14 @@ site_settings() {
     else
       printf '%s' "$host" | grep -Eiq '^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$' || die "Invalid domain or IP: $host"
       if [ "$host" = localhost ]; then scheme="${scheme:-http}"; else scheme="${scheme:-https}"; fi
-      if [ "$scheme" = https ]; then addresses="$addresses${addresses:+, }$entry"; kind_domain=1; else addresses="$addresses${addresses:+, }http://$entry"; fi
+      if [ "$scheme" = https ]; then addresses="$addresses${addresses:+, }$host"; kind_domain=1; else addresses="$addresses${addresses:+, }http://$host"; fi
     fi
+    port="$HTTP_PORT"
+    [ "$scheme" = http ] || port="$HTTPS_PORT"
+    case "$entry" in
+      "$host"|"$host:$port") ;;
+      *) die "Use a domain or IP in --site and set the published port with --${scheme}-port." ;;
+    esac
     if [ -z "$first" ]; then
       first="$scheme://$host"
       if [ "$scheme" = https ]; then
@@ -113,13 +166,21 @@ site_settings() {
 }
 
 if [ -f "$ENV_FILE" ]; then
-  info "Using existing $ENV_FILE (delete it to start over with new secrets)."
+  info "Using existing configuration and secrets from $ENV_FILE."
+  if [ "$PUBLIC_IP" = 1 ]; then
+    info "Reusing the saved site. To change the address, see the access settings in deploy/docker/README.md."
+  fi
 else
   TEMPLATE="$KIT_DIR/.env.example"
   [ -f "$TEMPLATE" ] || TEMPLATE="$SOURCE_ROOT/.env.example"
   [ -f "$TEMPLATE" ] || die ".env.example not found next to install.sh or in the source tree."
 
-  if [ "$SITE_GIVEN" = 0 ] && [ "$ASSUME_YES" = 0 ] && [ -t 0 ]; then
+  if [ "$PUBLIC_IP" = 1 ]; then
+    public_ip="$(detect_public_ipv4)" \
+      || die "Could not detect the public IPv4. Set --site https://<public-ip> or specify a domain."
+    SITE="https://$public_ip"
+    info "Detected public IPv4: $public_ip"
+  elif [ "$SITE_GIVEN" = 0 ] && [ "$ASSUME_YES" = 0 ] && [ -t 0 ]; then
     printf 'How will users reach TokenHub?\n'
     printf '  - a domain (tokenhub.example.com) gets an automatic HTTPS certificate\n'
     printf '  - https://<IP> uses HTTPS with a self-signed internal CA\n'
@@ -130,6 +191,10 @@ else
   if [ -z "$HTTP_PORT" ]; then HTTP_PORT=80; fi
   if [ -z "$HTTPS_PORT" ]; then HTTPS_PORT=443; fi
   site_settings "$SITE"
+  if [ "$PUBLIC_IP" = 1 ] && [ "$HTTP_PORT" = 80 ]; then
+    # Keep the TLS policy on one dotenv line. Compose expands the escaped newlines for Caddy.
+    CADDY_TLS='"tls {\n  issuer acme https://acme-v02.api.letsencrypt.org/directory {\n    profile shortlived\n    disable_tlsalpn_challenge\n  }\n  issuer internal\n}"'
+  fi
   case "$SITE_ADDRESS" in
     :80) ;;
     *)
@@ -162,8 +227,12 @@ else
   env_set TOKENHUB_BIND_ADDRESS "${BIND:-0.0.0.0}"
   env_set TOKENHUB_HTTP_PORT "$HTTP_PORT"
   env_set TOKENHUB_HTTPS_PORT "$HTTPS_PORT"
+  if [ "$SESSION_SECURE_VALUE" = true ] && [ "$HTTPS_PORT" != 443 ] && [[ "$SITE_ADDRESS" != *,* ]]; then
+    env_set TOKENHUB_HTTP_REDIRECT_URL "$APP_URL_VALUE"
+  fi
   env_set TOKENHUB_IMAGE_PREFIX "$PREFIX"
   env_set TOKENHUB_IMAGE_TAG "$TAG"
+  if [ -n "${COMPOSE_PROJECT_NAME:-}" ]; then env_set COMPOSE_PROJECT_NAME "$COMPOSE_PROJECT_NAME"; fi
   env_set TOKENHUB_ADMIN_USERNAME "$ADMIN_USER"
   env_set TOKENHUB_ADMIN_PASSWORD "$ADMIN_PASSWORD"
   env_set DB_HOST mysql
@@ -183,12 +252,24 @@ fi
 [ "$START" = 1 ] || exit 0
 
 # ------------------------------------------------------------------ images
+pull_images() {
+  info "Preparing Docker images..."
+  if ! compose pull "$@"; then
+    warn "Image pull failed. Retrying once..."
+    sleep 2
+    compose pull "$@" || die "Image pull failed. Check the Docker daemon's registry access and the image tag and architecture. Configuration is preserved in $ENV_FILE."
+  fi
+}
+
+up_options=(--no-build)
 if [ "$BUILD" = 1 ]; then
-  info "Building images from source (first build takes several minutes)..."
-  compose build
+  pull_images mysql redis qdrant
+  info "Building images from source (first build downloads base images and packages)..."
+  compose build || die "Source build failed. Check BuildKit registry and build dependency access (see deploy/docker/README.md). Fix the cause and rerun with --build. Configuration is preserved in $ENV_FILE."
+  up_options+=(--pull never)
 elif [ -n "$(env_get TOKENHUB_IMAGE_PREFIX)" ]; then
-  info "Pulling images..."
-  compose pull
+  pull_images
+  up_options+=(--pull never)
 else
   for image in tokenhub-php tokenhub-caddy tokenhub-rag-worker tokenhub-realtime-gateway; do
     docker image inspect "$image:$(env_get TOKENHUB_IMAGE_TAG)" >/dev/null 2>&1 \
@@ -209,7 +290,7 @@ detect_compose_subnets() {
 }
 current_trusted="$(env_get TRUSTED_PROXY_CIDRS)"
 if [ -z "$current_trusted" ] || [ "$current_trusted" = "127.0.0.1/32,::1/128" ]; then
-  compose up --no-start >/dev/null 2>&1 || true
+  compose up --no-start "${up_options[@]}" >/dev/null 2>&1 || true
   subnets="$(detect_compose_subnets)"
   if [ -n "$subnets" ]; then
     env_set TRUSTED_PROXY_CIDRS "127.0.0.1/32,::1/128,$subnets"
@@ -221,7 +302,7 @@ fi
 
 # ------------------------------------------------------------------ start
 info "Starting TokenHub..."
-compose up -d --remove-orphans || { compose logs --no-color --tail=80 init >&2 || true; die "Starting the stack failed (init log above)."; }
+compose up -d --remove-orphans "${up_options[@]}" || { compose logs --no-color --tail=80 init >&2 || true; die "Starting the stack failed (see the error and init log above)."; }
 wait_for_init 900
 info "Waiting for the web services..."
 wait_for_healthy php 300
@@ -231,6 +312,9 @@ info "Self-check:"
 compose exec -T php php bin/doctor.php || warn "Some checks reported problems (see above)."
 
 APP_URL_NOW="$(env_get APP_URL)"
+case "$(env_get TOKENHUB_BIND_ADDRESS)" in
+  127.*|::1|'[::1]'|localhost) info "Loopback binding: open the printed URL from the Docker host." ;;
+esac
 cat <<TXT
 
 TokenHub is running.

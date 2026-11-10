@@ -1,27 +1,45 @@
 # Build the TokenHub images from this source tree instead of pulling them:
 #   docker compose -f compose.yml -f compose.build.yml build
 # install.sh / install.ps1 use this file with --build.
+x-base-image-args: &base-image-args
+  BASE_IMAGE_PREFIX: ${TOKENHUB_BUILD_BASE_IMAGE_PREFIX:-}
+
 services:
   init:
     build:
       context: ../..
       dockerfile: docker/release/php/Dockerfile
       args:
+        <<: *base-image-args
         PHP_VERSION: ${PHP_VERSION:-8.4}
+        DEBIAN_MIRROR: ${TOKENHUB_BUILD_DEBIAN_MIRROR:-https://deb.debian.org}
         TOKENHUB_VERSION: ${TOKENHUB_IMAGE_TAG:-local}
   caddy:
     build:
       context: ../..
       dockerfile: docker/release/caddy/Dockerfile
+      args: *base-image-args
   rag-worker:
     build:
       context: ../..
       dockerfile: docker/release/rag-worker/Dockerfile
+      args:
+        <<: *base-image-args
+        PIP_INDEX_URL: ${TOKENHUB_BUILD_PIP_INDEX_URL:-https://pypi.org/simple}
   realtime-gateway:
     build:
       context: ../..
       dockerfile: docker/release/realtime-gateway/Dockerfile
+      args: *base-image-args
   worker-autoscaler:
     build:
       context: ../..
       dockerfile: docker/release/worker-autoscaler/Dockerfile
+      args: *base-image-args
+  # The source installer pulls these first. Reuse images already downloaded.
+  mysql:
+    pull_policy: missing
+  redis:
+    pull_policy: missing
+  qdrant:
+    pull_policy: missing

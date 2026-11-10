@@ -1,7 +1,8 @@
 # TokenHub realtime gateway (Go WebSocket relay, standard library only).
 # Pinned by digest through scripts/release/pin-base-images.sh (docker/release/base-images.env).
-ARG GO_IMAGE=golang:1.24-alpine
-ARG RUNTIME_IMAGE=alpine:3.20
+ARG BASE_IMAGE_PREFIX=
+ARG GO_IMAGE=${BASE_IMAGE_PREFIX}golang:1.24-alpine
+ARG RUNTIME_IMAGE=${BASE_IMAGE_PREFIX}alpine:3.20
 
 FROM ${GO_IMAGE} AS build
 WORKDIR /src
