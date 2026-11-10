@@ -350,17 +350,30 @@ sys.exit(subprocess.call([os.environ['BOOTSTRAP_REAL_GIT'], *args]))
 class BashBootstrapTest(BootstrapCases, unittest.TestCase):
     def use_source_archive(self):
         self.write("VERSION", "1.0.4\n")
+        for name in ("lib.sh", "README.md", "verify.sh", "verify.ps1", "backup.sh", "backup.ps1",
+                     "restore.sh", "upgrade.sh", "upgrade.ps1"):
+            self.write("deploy/docker/" + name, "# deployment fixture\n")
         archive = self.base / "source.tar.gz"
         with tarfile.open(archive, "w:gz") as bundle:
             for name in ("deploy", "docker", ".env.example", "VERSION"):
                 bundle.add(self.source / name, arcname="Tokenhub-main/" + name)
         self.env["INSTALL_ARCHIVE_FIXTURE"] = str(archive)
+        self.env["INSTALL_FILES_FIXTURE"] = str(self.source)
         curl = self.mock_bin / "curl"
         curl.write_text('''#!/usr/bin/env bash
 set -eu
-while [ "$1" != --output ]; do shift; done
-case "$3" in https://codeload.github.com/QianqianTech/Tokenhub/tar.gz/*) ;; *) exit 2 ;; esac
-cp "$INSTALL_ARCHIVE_FIXTURE" "$2"
+while [ "$#" -gt 0 ]; do
+    if [ "$1" != --output ]; then shift; continue; fi
+    case "$3" in
+      https://codeload.github.com/QianqianTech/Tokenhub/tar.gz/*)
+        cp "$INSTALL_ARCHIVE_FIXTURE" "$2" ;;
+      https://raw.githubusercontent.com/QianqianTech/Tokenhub/main/*)
+        file="${3#https://raw.githubusercontent.com/QianqianTech/Tokenhub/main/}"
+        cp "$INSTALL_FILES_FIXTURE/$file" "$2" ;;
+      *) exit 2 ;;
+    esac
+    shift 3
+done
 ''', encoding="utf-8")
         curl.chmod(0o755)
         git = self.mock_bin / "git"
@@ -380,6 +393,8 @@ cp "$INSTALL_ARCHIVE_FIXTURE" "$2"
         args = json.loads(self.capture.read_text())
         self.assertEqual(args, ["--tag", "1.0.4", "--site", "http://localhost", "--bind", "127.0.0.1",
                                 "--http-port", "8080", "--https-port", "8443"])
+        self.assertFalse((self.destination / "docker/release/php/Dockerfile").exists())
+        self.assertTrue(os.access(self.destination / "deploy/docker/verify.sh", os.X_OK))
 
     def test_quick_uses_published_images_on_arm64(self):
         self.use_source_archive()
@@ -393,6 +408,7 @@ cp "$INSTALL_ARCHIVE_FIXTURE" "$2"
         args = json.loads(self.capture.read_text())
         self.assertEqual(args[:2], ["--build", "--tag"])
         self.assertRegex(args[2], r"^source-[a-f0-9]{12}$")
+        self.assertTrue((self.destination / "docker/release/php/Dockerfile").is_file())
 
     def test_quick_protects_an_existing_project_even_in_a_new_directory(self):
         self.use_source_archive()

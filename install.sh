@@ -4,6 +4,7 @@ set -euo pipefail
 
 REPOSITORY=https://github.com/QianqianTech/Tokenhub.git
 ARCHIVE_BASE=https://codeload.github.com/QianqianTech/Tokenhub/tar.gz
+FILES_BASE=https://raw.githubusercontent.com/QianqianTech/Tokenhub
 INSTALL_DIR="$PWD/tokenhub"
 REF=main
 DOWNLOAD_ONLY=0 CHECK_ONLY=0 START=1 QUICK=0 SITE_GIVEN=0 PUBLIC_IP=0
@@ -24,7 +25,7 @@ TokenHub GitHub installer (Linux / macOS / Linux inside WSL 2)
 Usage: bash install.sh [options]
   --dir PATH             New source/install directory (default: ./tokenhub)
   --ref REF              GitHub branch, tag, or full commit SHA (default: main)
-  --quick                Download an archive and automatically choose images or a source build
+  --quick                Install from available images or build automatically if needed
   --download-only        Download source without requiring or starting Docker
   --check                Check prerequisites only; do not download or install
   --site ADDRESS         Public domain, https://IP, or http://IP
@@ -121,7 +122,7 @@ info "Prerequisites passed. Source: $REPOSITORY ($REF)"
 [ "$CHECK_ONLY" = 0 ] || exit 0
 
 case "$INSTALL_DIR" in /*) ;; *) INSTALL_DIR="$PWD/$INSTALL_DIR" ;; esac
-[ ! -e "$INSTALL_DIR" ] && [ ! -L "$INSTALL_DIR" ] || die "Destination already exists: $INSTALL_DIR. To resume, run its deploy/docker/install.sh --build; to upgrade, use upgrade.sh."
+[ ! -e "$INSTALL_DIR" ] && [ ! -L "$INSTALL_DIR" ] || die "Destination already exists: $INSTALL_DIR. To resume, use its deploy/docker/install.sh with the original install options. For upgrades, use upgrade.sh."
 if [ "$QUICK" = 1 ] && [ "$DOWNLOAD_ONLY" = 0 ] && [ "$START" = 1 ]; then
   project_filter="label=com.docker.compose.project=${COMPOSE_PROJECT_NAME:-tokenhub}"
   containers="$(docker ps -aq --filter "$project_filter")" || die "Cannot check existing Docker installations."
@@ -131,13 +132,60 @@ fi
 parent="$(dirname "$INSTALL_DIR")"
 mkdir -p -- "$parent"
 STAGING="$(mktemp -d "$parent/.tokenhub-download.XXXXXX")"
-info "Downloading source from GitHub..."
-if [ "$QUICK" = 1 ]; then
+source_dir="$STAGING/source"
+mkdir "$source_dir"
+kit_only=0
+image_mode="Building TokenHub from source"
+if [ "$QUICK" = 1 ] && [ "$DOWNLOAD_ONLY" = 0 ]; then
+  if curl -qfsSL --retry 2 --connect-timeout 8 --max-time 25 \
+      --output "$source_dir/VERSION" "$FILES_BASE/$REF/VERSION"; then
+    release="$(tr -d '[:space:]' <"$source_dir/VERSION")"
+    [[ "$release" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "The selected ref has an invalid VERSION."
+    arch="$(docker version --format '{{.Server.Arch}}')" || die "Cannot read the Docker server architecture."
+    case "$arch" in
+      amd64|x86_64) arch=amd64 ;;
+      arm64|aarch64) arch=arm64 ;;
+      *) die "Unsupported Docker server architecture: $arch" ;;
+    esac
+    cached=1
+    for image in tokenhub-php tokenhub-caddy tokenhub-rag-worker tokenhub-realtime-gateway; do
+      if [ "$(docker image inspect --format '{{.Architecture}}' "$image:$release" 2>/dev/null || true)" != "$arch" ]; then
+        cached=0
+        break
+      fi
+    done
+    if [ "$cached" = 1 ]; then
+      kit_only=1
+      image_args=(--tag "$release")
+      image_mode="Using locally loaded TokenHub $release images"
+    elif [ "$arch" = arm64 ] && [ "$release" = 1.0.4 ]; then
+      kit_only=1
+      image_args=(--image-prefix docker.io/leofan2022/ --tag "$release")
+      image_mode="Using published TokenHub $release images"
+    fi
+  fi
+  if [ "$kit_only" = 0 ] && [ "$START" = 1 ]; then require_buildx; fi
+fi
+
+if [ "$kit_only" = 1 ]; then
+  info "Downloading deployment files for TokenHub $release..."
+  mkdir -p "$source_dir/deploy/docker"
+  downloads=()
+  for file in .env.example deploy/docker/{compose.yml,install.sh,install.ps1,lib.sh,README.md,verify.sh,verify.ps1,backup.sh,backup.ps1,restore.sh,upgrade.sh,upgrade.ps1}; do
+    downloads+=(--output "$source_dir/$file" "$FILES_BASE/$REF/$file")
+  done
+  curl -qfsSL --retry 2 --connect-timeout 8 --max-time 45 --fail-early --parallel --parallel-max 6 \
+    "${downloads[@]}" || die "Could not download the TokenHub deployment files. Check GitHub connectivity and retry."
+  chmod +x "$source_dir/deploy/docker/"*.sh
+  revision="$REF"
+  revision_label="Deployment ref"
+elif [ "$QUICK" = 1 ]; then
+  info "Downloading the TokenHub source archive from GitHub..."
   archive="$STAGING/source.tar.gz"
-  curl -q --fail --show-error --silent --location --retry 3 --connect-timeout 10 --max-time 300 \
+  curl -q --fail --show-error --location --retry 3 --connect-timeout 10 --max-time 900 \
+    --speed-limit 1024 --speed-time 45 --progress-bar \
     --output "$archive" "$ARCHIVE_BASE/$REF" || die "Could not download the TokenHub archive. Check GitHub connectivity and retry."
-  mkdir "$STAGING/source"
-  tar -xzf "$archive" -C "$STAGING/source" --strip-components=1 || die "Could not unpack the TokenHub archive."
+  tar -xzf "$archive" -C "$source_dir" --strip-components=1 || die "Could not unpack the TokenHub archive."
   if command -v sha256sum >/dev/null 2>&1; then
     digest="$(sha256sum <"$archive")"
   else
@@ -146,55 +194,32 @@ if [ "$QUICK" = 1 ]; then
   revision="${digest%% *}"
   revision_label="Archive SHA-256"
 else
+  info "Downloading source from GitHub..."
   export GIT_TERMINAL_PROMPT=0
-  git init --quiet "$STAGING/source"
-  git -C "$STAGING/source" remote add origin "$REPOSITORY"
-  if ! git -C "$STAGING/source" fetch --depth 1 --no-tags origin "$REF"; then
+  git init --quiet "$source_dir"
+  git -C "$source_dir" remote add origin "$REPOSITORY"
+  if ! git -C "$source_dir" fetch --depth 1 --no-tags origin "$REF"; then
     info "GitHub download failed. Retrying once over HTTP/1.1..."
-    git -C "$STAGING/source" -c http.version=HTTP/1.1 fetch --depth 1 --no-tags origin "$REF" \
+    git -C "$source_dir" -c http.version=HTTP/1.1 fetch --depth 1 --no-tags origin "$REF" \
       || die "GitHub download failed. Check the ref and Git proxy, or use a verified TokenHub source archive."
   fi
-  git -C "$STAGING/source" checkout --quiet --detach FETCH_HEAD
-  revision="$(git -C "$STAGING/source" rev-parse HEAD)"
+  git -C "$source_dir" checkout --quiet --detach FETCH_HEAD
+  revision="$(git -C "$source_dir" rev-parse HEAD)"
   revision_label=Commit
 fi
-for file in deploy/docker/install.sh deploy/docker/compose.yml docker/release/php/Dockerfile .env.example; do
-  [ -f "$STAGING/source/$file" ] || die "Selected ref does not contain the Docker installer: $file"
+for file in deploy/docker/install.sh deploy/docker/compose.yml .env.example; do
+  [ -s "$source_dir/$file" ] || die "Selected ref does not contain the Docker installer: $file"
 done
-image_args=(--build --tag "source-${revision:0:12}")
-image_mode="Building TokenHub from source"
-if [ "$QUICK" = 1 ] && [ "$DOWNLOAD_ONLY" = 0 ]; then
-  release="$(tr -d '[:space:]' <"$STAGING/source/VERSION")" || die "The source archive is missing VERSION."
-  [[ "$release" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "The source archive has an invalid VERSION."
-  arch="$(docker version --format '{{.Server.Arch}}')" || die "Cannot read the Docker server architecture."
-  case "$arch" in
-    amd64|x86_64) arch=amd64 ;;
-    arm64|aarch64) arch=arm64 ;;
-    *) die "Unsupported Docker server architecture: $arch" ;;
-  esac
-  cached=1
-  for image in tokenhub-php tokenhub-caddy tokenhub-rag-worker tokenhub-realtime-gateway; do
-    if [ "$(docker image inspect --format '{{.Architecture}}' "$image:$release" 2>/dev/null || true)" != "$arch" ]; then
-      cached=0
-      break
-    fi
-  done
-  if [ "$cached" = 1 ]; then
-    image_args=(--tag "$release")
-    image_mode="Using locally loaded TokenHub $release images"
-  elif [ "$arch" = arm64 ] && [ "$release" = 1.0.4 ]; then
-    image_args=(--image-prefix docker.io/leofan2022/ --tag "$release")
-    image_mode="Using published TokenHub $release images"
-  elif [ "$START" = 1 ]; then
-    require_buildx
-  fi
+if [ "$kit_only" = 0 ]; then
+  [ -f "$source_dir/docker/release/php/Dockerfile" ] || die "Selected ref does not contain the release Dockerfiles."
+  image_args=(--build --tag "source-${revision:0:12}")
 fi
 # mkdir refuses a destination created by another process during the download.
 mkdir -- "$INSTALL_DIR"
-cp -R "$STAGING/source/." "$INSTALL_DIR/"
+cp -R "$source_dir/." "$INSTALL_DIR/"
 cleanup
 STAGING=""
-info "Source ready: $INSTALL_DIR"
+info "Files ready: $INSTALL_DIR"
 info "$revision_label: $revision"
 if [ "$DOWNLOAD_ONLY" = 1 ]; then
   info "Download complete. To install:"

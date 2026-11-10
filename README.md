@@ -234,7 +234,7 @@ Docker 安装会获取应用镜像并启动 Caddy、PHP-FPM、MySQL、Redis、Qd
 
 ### Linux / macOS 一条命令
 
-启动 Docker 后，在终端执行下面的命令。脚本会下载源码包、选择适用的镜像并初始化 TokenHub。
+启动 Docker 后，在终端执行下面的命令。脚本会选择适用的镜像并初始化 TokenHub。有现成镜像时只下载部署文件。
 
 ```bash
 curl -fsSL --retry 3 https://raw.githubusercontent.com/QianqianTech/Tokenhub/main/install.sh -o tokenhub-install.sh && bash tokenhub-install.sh --quick
@@ -354,7 +354,7 @@ if ($?) {
 | --- | --- | --- |
 | `--dir PATH` | `-Directory PATH` | 指定新的源码目录，默认 `./tokenhub`；已有目录会被拒绝，避免覆盖配置和代码 |
 | `--ref REF` | `-Ref REF` | 获取指定分支、已有 tag 或完整提交 SHA；默认 `main` |
-| `--quick` | | Bash 直接下载源码包，无需 Git，自动选择镜像或构建 |
+| `--quick` | | Bash 自动选择镜像或构建，无需 Git |
 | `--check` | `-Check` | 仅检查前置环境，不下载、不启动服务 |
 | `--download-only` | `-DownloadOnly` | 仅下载源码，不要求 Docker，不生成配置 |
 | `--site ADDRESS` | `-Site ADDRESS` | 域名、`https://IP` 或 `http://IP` |
